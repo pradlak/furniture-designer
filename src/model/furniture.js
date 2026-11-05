@@ -38,7 +38,9 @@ export const JOINT_TYPES = {
 // Blendy boczne (osobno dla lewej i prawej strony).
 //  plinth — cokół boczny: płyta pod korpusem w płaszczyźnie boku, zasłania nóżki z boku,
 //  full   — panel boczny na pełną wysokość (od podłogi do góry korpusu), przy boku korpusu,
-//  filler — listwa w płaszczyźnie frontu przy boku (wypełnia szczelinę do ściany).
+//  filler — listwa w płaszczyźnie frontu przy boku (wypełnia szczelinę do ściany);
+//           opcjonalnie (wallPanel) z panelem na pełną wysokość po zewnętrznej stronie listwy,
+//           przylegającym do ściany: korpus → listwa → panel → ściana.
 export const SIDE_BLEND_TYPES = [
   { key: 'none', label: 'Brak' },
   { key: 'plinth', label: 'Cokół boczny (pod korpusem)' },
@@ -57,6 +59,8 @@ export const PANEL_DEFS = [
   { key: 'plinth', name: 'Blenda dolna', thicknessAxis: 'z' },
   { key: 'blendLeft', name: 'Blenda lewa', thicknessAxis: 'x' },
   { key: 'blendRight', name: 'Blenda prawa', thicknessAxis: 'x' },
+  { key: 'wallPanelLeft', name: 'Panel lewy (przy ścianie)', thicknessAxis: 'x' },
+  { key: 'wallPanelRight', name: 'Panel prawy (przy ścianie)', thicknessAxis: 'x' },
 ];
 
 // Ręczne zmiany elementu: wymiary (sx, sy, sz) i przesunięcia (dx, dy, dz) w osiach X/Y/Z.
@@ -73,7 +77,10 @@ export function defaultAccessories() {
   return {
     legs: { enabled: false, height: 100 },
     plinth: { enabled: false, setback: 20 },
-    sideBlends: { left: { type: 'none', width: 50 }, right: { type: 'none', width: 50 } },
+    sideBlends: {
+      left: { type: 'none', width: 50, wallPanel: false },
+      right: { type: 'none', width: 50, wallPanel: false },
+    },
   };
 }
 
@@ -193,6 +200,7 @@ export function cabinetPanels(cabinet) {
   // --- blendy ---
   const blends = cabinet.sideBlends ?? {};
   const blendKey = { left: 'blendLeft', right: 'blendRight' };
+  const wallPanelKey = { left: 'wallPanelLeft', right: 'wallPanelRight' };
   const thicknessAxis = {}; // dla elementów, w których oś grubości zależy od wariantu
   const fillerWidth = (side) => (blends[side]?.type === 'filler' ? blends[side].width : 0);
   const wL = fillerWidth('left');
@@ -221,6 +229,13 @@ export function cabinetPanels(cabinet) {
       const w = fillerWidth(side);
       thicknessAxis[key] = 'z';
       base[key] = [side === 'left' ? -w : W, L, D - t, w, H, t];
+
+      // Panel przy ścianie — za listwą, od podłogi do góry, na całą głębokość.
+      if (blends[side].wallPanel) {
+        const pk = wallPanelKey[side];
+        const tp = thickAt(pk, 'x');
+        base[pk] = [side === 'left' ? -w - tp : W + w, 0, 0, tp, L + H, D];
+      }
     }
   }
 
@@ -233,7 +248,7 @@ export function cabinetPanels(cabinet) {
     // Ręczny wymiar obowiązuje zawsze dla grubości; dla pozostałych osi — tylko w elemencie niezależnym.
     const size = (a, auto) => (a === axis || o.free ? (o[`s${a}`] ?? auto) : auto);
     const overridden = OVERRIDE_KEYS.filter((k) => o[k] != null && (k[0] === 'd' || k[1] === axis || o.free));
-    const side = def.key === 'blendLeft' ? 'left' : def.key === 'blendRight' ? 'right' : null;
+    const side = { blendLeft: 'left', blendRight: 'right' }[def.key] ?? null;
     const panel = {
       key: def.key,
       name: def.name,
@@ -425,6 +440,7 @@ export function normalizeCabinet(raw = {}) {
   const sideBlend = (src = {}, d) => ({
     type: SIDE_BLEND_TYPES.some((t) => t.key === src.type) ? src.type : d.type,
     width: num(src.width, d.width, 1, sizeMax),
+    wallPanel: src.wallPanel === true,
   });
 
   return {

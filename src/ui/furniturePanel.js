@@ -63,6 +63,9 @@ function sideBlendFields(side) {
     <label class="field small">
       <span>Szerokość listwy <small>mm</small></span>
       <input type="number" step="1" min="1" max="${CABINET_LIMITS.sizeMax}" data-f="sideBlends.${side}.width" />
+    </label>
+    <label class="check small wide" title="Panel na pełną wysokość za listwą, przylegający do ściany">
+      <input type="checkbox" data-f="sideBlends.${side}.wallPanel" /> + panel przy ścianie (za listwą)
     </label>`;
 }
 
@@ -224,7 +227,11 @@ export function createFurniturePanel(root, store, ui, tabs) {
       el.querySelectorAll('[data-f^="plinth."]').forEach((input) => (input.disabled = !hasLegs));
       el.querySelectorAll('option[value="plinth"]').forEach((opt) => (opt.disabled = !hasLegs));
       for (const side of ['left', 'right']) {
-        el.querySelector(`[data-f="sideBlends.${side}.width"]`).disabled = c.sideBlends?.[side]?.type !== 'filler';
+        const isFiller = c.sideBlends?.[side]?.type === 'filler';
+        el.querySelector(`[data-f="sideBlends.${side}.width"]`).disabled = !isFiller;
+        const wallPanel = el.querySelector(`[data-f="sideBlends.${side}.wallPanel"]`);
+        wallPanel.disabled = !isFiller;
+        wallPanel.closest('label').classList.toggle('disabled', !isFiller);
       }
 
       const issues = cabinetIssues(c, project);
