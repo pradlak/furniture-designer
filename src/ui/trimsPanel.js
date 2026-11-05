@@ -1,4 +1,5 @@
-import { panelCutSize, defaultEdges } from '../model/furniture.js';
+import { panelCutSize } from '../model/furniture.js';
+import { projectSolids, trimEdgeSet, edgeCounts, TRIM_THICKNESS_AXIS, EDGE_LABELS } from '../model/edges.js';
 import {
   createTrim,
   rowOf,
@@ -162,6 +163,7 @@ export function createTrimsPanel(root, store, ui) {
 
   // Odświeża wartości, wymiary formatek i ostrzeżenia bez przebudowy DOM.
   function updateStatus(project) {
+    let solids = null; // bryły projektu do wyznaczania widocznych krawędzi — liczone raz
     for (const c of project.furniture) {
       const el = root.querySelector(`[data-kind="side-blends"][data-id="${c.id}"]`);
       if (el) updateSideBlendCard(el, c, project);
@@ -195,15 +197,21 @@ export function createTrimsPanel(root, store, ui) {
       if (segments.length) {
         // Formatki odcinków: długość × szerokość × grubość (zapas — na skrajnych odcinkach);
         // do cięcia — pomniejszone o obrzeże.
-        const cuts = segments.map((seg, i) =>
-          panelCutSize({
+        // Obrzeże — tylko na widocznych krawędziach odcinka.
+        solids ??= projectSolids(project);
+        const edgeSets = segments.map((seg, i) => trimEdgeSet(t, seg, i, solids));
+        const cuts = segments.map((seg, i) => {
+          const box = {
             ...seg,
-            material: trimMaterial(t, project),
-            edges: defaultEdges(t.type),
             allowanceMin: i === 0 ? allowance.min : 0,
             allowanceMax: i === segments.length - 1 ? allowance.max : 0,
-          }),
-        );
+          };
+          return panelCutSize({
+            ...box,
+            material: trimMaterial(t, project),
+            edges: edgeCounts(box, TRIM_THICKNESS_AXIS[t.type], edgeSets[i]),
+          });
+        });
         const dims = (c) => `${round1(c.length)} × ${round1(c.width)} × ${round1(c.thickness)}`;
         size =
           cuts.length > 1
@@ -212,7 +220,10 @@ export function createTrimsPanel(root, store, ui) {
         if (t.type === 'countertop' && t.depth == null) {
           size += ` · wystaje przed korpus: ${round1(countertopOverhang(t, project))} mm`;
         }
-        if (cuts[0].band) size += ` · do cięcia: ${cuts.map((c) => `${round1(c.cutLength)} × ${round1(c.cutWidth)}`).join(', ')} mm`;
+        if (cuts[0].band) {
+          size += ` · do cięcia: ${cuts.map((c) => `${round1(c.cutLength)} × ${round1(c.cutWidth)}`).join(', ')} mm`;
+          size += ` (obrzeże: ${[...new Set(edgeSets.flat())].map((k) => EDGE_LABELS[k]).join(', ') || 'brak'})`;
+        }
       }
       if (t.type === 'topBlend') {
         const fronts = [...new Set(frontHeightsUnder(t, project).map((f) => round1(f.height)))];

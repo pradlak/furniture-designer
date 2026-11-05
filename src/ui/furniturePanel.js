@@ -23,6 +23,7 @@ import { duplicateCabinet, slideCabinet } from '../model/placement.js';
 import { cabinetMaterials } from '../model/materials.js';
 import { setEye, materialSelect } from './widgets.js';
 import { sideBlendSummary } from './sideBlends.js';
+import { edgeKeys, EDGE_LABELS, projectSolids, panelEdgeSet, isManualEdgeSet, edgeCounts } from '../model/edges.js';
 
 import { escapeHtml, numberField, readNumberInput, setIfNotFocused, round1, commitEmptyAsZero } from './dom.js';
 
@@ -57,8 +58,11 @@ function jointSelect(label, field, options, value) {
     </label>`;
 }
 
-function edgeSelect(key) {
-  return `<select data-edge="${key}">${[0, 1, 2].map((n) => `<option value="${n}">${n}</option>`).join('')}</select>`;
+// Pola wyboru oklejonych krawędzi płyty (przód, góra, tył, dół / lewa, prawa — zależnie od ułożenia).
+function edgeChecks(thicknessAxis) {
+  return edgeKeys(thicknessAxis)
+    .map((k) => `<label class="check small"><input type="checkbox" data-edge-key="${k}" /> ${EDGE_LABELS[k]}</label>`)
+    .join('');
 }
 
 function setSummary(cardEl, section, text) {
@@ -251,10 +255,12 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
             </label>`,
           ).join('')}
         </div>
-        <div class="part-edges">
+        <div class="part-edges" title="Krawędzie oklejone obrzeżem. Domyślnie tylko widoczne — schowane przy ścianie, pod blatem albo przy innej płycie są pomijane.">
           <span class="part-material"></span>
-          <label title="Ile długich krawędzi jest oklejonych obrzeżem">obrzeże: dł. ${edgeSelect('l')}</label>
-          <label title="Ile krótkich krawędzi jest oklejonych obrzeżem">kr. ${edgeSelect('w')}</label>
+          <span class="edges-label">obrzeże <small class="auto-tag">auto</small>
+            <button type="button" class="icon tiny" data-reset-edges title="Automatycznie: tylko krawędzie widoczne">↺</button>
+          </span>
+          ${edgeChecks(p.thicknessAxis)}
         </div>
         <div class="part-cutsize"></div>
         <div class="allowance-note part-allowance"></div>
@@ -267,6 +273,7 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
 
   // Odświeża pola (np. po „Dopasuj do wnęki”), ostrzeżenia i elementy bez przebudowy DOM.
   function updateStatus(project) {
+    let solids = null; // bryły projektu do wyznaczania widocznych krawędzi — liczone raz
     for (const c of project.furniture) {
       const el = root.querySelector(`[data-kind="cabinet"][data-id="${c.id}"]`);
       if (!el) continue;
@@ -304,6 +311,7 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
         : '<li class="ok">Mieści się w przestrzeni.</li>';
 
       const panels = cabinetPanels(c, project);
+      solids ??= projectSolids(project);
       setSummary(el, 'parts', `${panels.length} płyt`);
       const legs = cabinetLegs(c, project);
       el.querySelector('.legs-info').textContent = legs.length
@@ -312,23 +320,28 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
       for (const p of panels) {
         const partEl = el.querySelector(`[data-part="${p.key}"]`);
         if (!partEl) continue;
-        const s = panelCutSize(p);
+        const edgeSet = panelEdgeSet(p, c, project, solids);
+        const s = panelCutSize({ ...p, edges: edgeCounts(p, p.thicknessAxis, edgeSet) });
         partEl.classList.toggle('invalid', !p.valid);
         partEl.querySelector('.part-cut').textContent = p.valid
           ? `${round1(s.length)} × ${round1(s.width)} × ${round1(s.thickness)} mm`
           : 'błędne wymiary';
         // Materiał, obrzeże i wymiar do cięcia (gotowy wymiar pomniejszony o taśmę).
         partEl.querySelector('.part-material').textContent = p.material.name;
-        partEl.querySelectorAll('[data-edge]').forEach((sel) => {
-          sel.value = p.edges[sel.dataset.edge];
-          sel.disabled = !s.band;
+        partEl.querySelectorAll('[data-edge-key]').forEach((cb) => {
+          cb.checked = edgeSet.includes(cb.dataset.edgeKey);
+          cb.disabled = !s.band;
         });
+        const manualEdges = isManualEdgeSet(p, c);
+        partEl.querySelector('.edges-label .auto-tag').hidden = manualEdges || !s.band;
+        partEl.querySelector('[data-reset-edges]').hidden = !manualEdges;
+        partEl.querySelector('.part-edges').classList.toggle('no-band', !s.band);
         partEl.querySelector('.part-allowance').textContent = s.allowance
           ? `⚠ Zapas na docięcie +${s.allowance} mm — docięcie na miejscu (wliczony w formatkę)`
           : '';
         partEl.querySelector('.part-cutsize').textContent =
           p.valid && s.band && (s.edges.l || s.edges.w)
-            ? `do cięcia: ${round1(s.cutLength)} × ${round1(s.cutWidth)} mm (obrzeże ${s.band} mm)`
+            ? `do cięcia: ${round1(s.cutLength)} × ${round1(s.cutWidth)} mm (obrzeże ${s.band} mm: ${edgeSet.map((k) => EDGE_LABELS[k]).join(', ')})`
             : '';
         partEl.querySelector('[data-reset-part]').hidden = p.overridden.length === 0 && !p.free;
         partEl.querySelector('[data-part-free]').checked = p.free;
@@ -373,12 +386,14 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
       return;
     }
 
-    // Obrzeże elementu: liczba oklejonych krawędzi długich (l) i krótkich (w).
-    if (input.dataset.edge) {
-      const value = Number(input.value);
+    // Obrzeże: zaznaczenie / odznaczenie krawędzi — od tej chwili wybór ręczny (↺ wraca do automatu).
+    if (input.dataset.edgeKey) {
+      const key = input.dataset.edgeKey;
       updateCabinet(id, (c, prj) => {
-        const current = cabinetPanels(c, prj).find((x) => x.key === part).edges;
-        const o = { ...c.panelOverrides?.[part], edges: { ...current, [input.dataset.edge]: value } };
+        const panel = cabinetPanels(c, prj).find((x) => x.key === part);
+        const current = panelEdgeSet(panel, c, prj);
+        const edgeSet = input.checked ? [...new Set([...current, key])] : current.filter((k) => k !== key);
+        const o = { ...c.panelOverrides?.[part], edgeSet };
         return { ...c, panelOverrides: { ...c.panelOverrides, [part]: o } };
       });
       return;
@@ -481,6 +496,12 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
     const id = e.target.closest('[data-kind="cabinet"]')?.dataset.id;
     if (toggleHidden && id) {
       updateCabinet(id, (c) => ({ ...c, hidden: !c.hidden }));
+    } else if (e.target.dataset.resetEdges !== undefined && id) {
+      const part = e.target.closest('[data-part]')?.dataset.part;
+      updateCabinet(id, (c) => {
+        const { edgeSet: _removed, ...o } = c.panelOverrides?.[part] ?? {};
+        return { ...c, panelOverrides: { ...c.panelOverrides, [part]: o } };
+      });
     } else if (action === 'show-trims' && id) {
       onShowTrims?.(id);
     } else if (togglePartHidden && id) {

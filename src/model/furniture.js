@@ -468,7 +468,6 @@ export function cabinetPanels(cabinet, project) {
       group,
       material,
       color: material.color,
-      edges: o.edges ?? defaultEdges(def.key),
       thicknessAxis: axis,
       side,
       blendType: side ? blends[side].type : null,
@@ -570,17 +569,10 @@ const BLEND_SIDE = { blendLeft: 'left', wallPanelLeft: 'left', blendRight: 'righ
 // Elementy z materiału blend (pozostałe — z materiału korpusu, plecy HDF — z HDF).
 const BLEND_KEYS = ['blendLeft', 'blendRight', 'wallPanelLeft', 'wallPanelRight'];
 
-// Domyślne obrzeże: ile krawędzi długich (l) i krótkich (w) formatki jest oklejonych.
-// Widoczna przednia krawędź konstrukcji — jedna długa; blendy — wszystkie; plecy i poprzeczki — brak.
-export function defaultEdges(key) {
-  if (['left', 'right', 'bottom', 'top', 'railFront', 'railBack', 'countertop'].includes(key)) return { l: 1, w: 0 };
-  if (BLEND_KEYS.includes(key) || key === 'plinth' || key === 'topBlend') return { l: 2, w: 2 };
-  return { l: 0, w: 0 };
-}
-
 // Wymiary formatki: długość × szerokość × grubość (dwa większe wymiary + najmniejszy)
 // oraz wymiar do cięcia — pomniejszony o obrzeże: taśma na długiej krawędzi zmniejsza szerokość,
 // na krótkiej — długość. Obrzeże ma tylko materiał z ustawioną grubością obrzeża.
+// `panel.edges` = { l, w } — liczba oklejonych krawędzi długich i krótkich (patrz model/edges.js).
 export function panelCutSize(panel) {
   // Zapas na docięcie wydłuża formatkę w osi X.
   const extra = (panel.allowanceMin ?? 0) + (panel.allowanceMax ?? 0);
@@ -715,8 +707,10 @@ export function normalizeCabinet(raw = {}) {
     }
     if (src.free === true) o.free = true;
     if (src.hidden === true) o.hidden = true;
-    if (src.edges && typeof src.edges === 'object') {
-      o.edges = { l: num(src.edges.l, 0, 0, 2), w: num(src.edges.w, 0, 0, 2) };
+    // Ręcznie wybrane oklejone krawędzie (np. ['zMax', 'yMax']); dawny zapis liczbowy pomijamy —
+    // takie płyty wracają do obrzeża automatycznego (na krawędziach widocznych).
+    if (Array.isArray(src.edgeSet)) {
+      o.edgeSet = src.edgeSet.filter((k) => ['xMin', 'xMax', 'yMin', 'yMax', 'zMin', 'zMax'].includes(k));
     }
     if (Object.keys(o).length) panelOverrides[key] = o;
   }

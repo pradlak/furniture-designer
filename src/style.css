@@ -373,3 +373,14 @@ body.resizing .viewport { pointer-events: none; }
 .welcome-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
 button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 button.primary:hover { color: #fff; filter: brightness(1.1); }
+
+/* --- obrzeże: wybór krawędzi --- */
+.part-edges { flex-wrap: wrap; row-gap: 2px; }
+.part-edges .part-material { flex-basis: 100%; }
+.part-edges .edges-label { font-weight: 600; }
+.part-edges .check.small { font-size: 11px; gap: 2px; }
+.part-edges.no-band .check.small { opacity: 0.45; }
+.edge-color-row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); margin: 0 0 6px; }
+.edge-color-row[hidden] { display: none; }
+.edge-color-row input[type='color'] { width: 32px; height: 24px; padding: 0 2px; border: 1px solid var(--border); border-radius: 4px; background: #fff; }
+.edge-color-row input[type='color']:disabled { opacity: 0.4; }

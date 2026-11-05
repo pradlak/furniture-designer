@@ -2,7 +2,36 @@ import * as THREE from 'three';
 import { MM, toScene } from './units.js';
 import { cabinetPanels, cabinetIssues, cabinetLegs } from '../model/furniture.js';
 import { trimSegments, trimIssues, trimAllowance } from '../model/trims.js';
-import { trimMaterial } from '../model/materials.js';
+import { trimMaterial, edgeColorOf, coreColorOf } from '../model/materials.js';
+import { projectSolids, panelEdgeSet, trimEdgeSet, TRIM_THICKNESS_AXIS } from '../model/edges.js';
+
+// Materiały ścian prostopadłościanu płyty (kolejność ścian BoxGeometry: +x, −x, +y, −y, +z, −z):
+// lica (ściany prostopadłe do osi grubości) w kolorze płyty, krawędzie — w kolorze rdzenia.
+// Oklejone krawędzie przykrywa potem warstwa obrzeża (addEdgeBanding).
+function panelFaceMaterials(material, thicknessAxis, materialFor) {
+  const face = materialFor(material.color);
+  const edge = materialFor(coreColorOf(material));
+  return ['x', 'x', 'y', 'y', 'z', 'z'].map((ax) => (ax === thicknessAxis ? face : edge));
+}
+
+// Obrzeże w widoku: cienka warstwa na oklejonej krawędzi, w kolorze obrzeża materiału.
+// (Prawdziwa grubość 0,8 mm byłaby niewidoczna — rysujemy co najmniej EDGE_VISUAL mm.)
+const EDGE_VISUAL = 1.2;
+const DIMS = { x: 'width', y: 'height', z: 'depth' };
+function addEdgeBanding(group, box, keys, band, color, materialFor, space) {
+  if (!band || !keys.length) return;
+  const t = Math.max(band, EDGE_VISUAL);
+  for (const key of keys) {
+    const ax = key[0];
+    const strip = { x: box.x, y: box.y, z: box.z, width: box.width, height: box.height, depth: box.depth };
+    strip[DIMS[ax]] = t;
+    strip[ax] = key.endsWith('Max') ? box[ax] + box[DIMS[ax]] - t * 0.5 : box[ax] - t * 0.5;
+    const geometry = new THREE.BoxGeometry(strip.width * MM, strip.height * MM, strip.depth * MM);
+    const mesh = new THREE.Mesh(geometry, materialFor(color));
+    mesh.position.set(...toScene(strip.x + strip.width / 2, strip.y + strip.height / 2, strip.z + strip.depth / 2, space));
+    group.add(mesh);
+  }
+}
 
 const LEG_COLOR = '#3f3f46';
 
@@ -60,6 +89,7 @@ export function buildFurniture(project, selectedId = null) {
   const trimVisible = (t) =>
     !t.hidden && (t.type === 'countertop' ? view.showCountertops !== false : view.showBlends !== false);
 
+  let solids = null; // bryły projektu do wyznaczania widocznych krawędzi (liczone raz, gdy potrzebne)
   for (const cabinet of project.furniture.filter((c) => !c.hidden)) {
     const hasIssues = cabinetIssues(cabinet, project).length > 0;
     const edgeColor = cabinet.id === selectedId ? EDGE_SELECTED : hasIssues ? EDGE_BAD : EDGE_OK;
@@ -69,13 +99,18 @@ export function buildFurniture(project, selectedId = null) {
     const cabinetGroup = new THREE.Group();
     cabinetGroup.name = cabinet.name;
     cabinetGroup.userData.cabinetId = cabinet.id; // do wybierania myszką
+    solids ??= projectSolids(project);
     for (const p of cabinetPanels(cabinet, project).filter(panelVisible)) {
       const geometry = new THREE.BoxGeometry(p.width * MM, p.height * MM, p.depth * MM);
-      const mesh = new THREE.Mesh(geometry, materialFor(p.color));
+      const mesh = new THREE.Mesh(geometry, panelFaceMaterials(p.material, p.thicknessAxis, materialFor));
       mesh.position.set(...toScene(p.x + p.width / 2, p.y + p.height / 2, p.z + p.depth / 2, project.space));
       mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geometry), edgeMat));
       cabinetGroup.add(mesh);
       addAllowance(cabinetGroup, p, p.allowanceMin, p.allowanceMax, project.space);
+      if (p.material.edgeBanding) {
+        const keys = panelEdgeSet(p, cabinet, project, solids);
+        addEdgeBanding(cabinetGroup, p, keys, p.material.edgeBanding, edgeColorOf(p.material), materialFor, project.space);
+      }
     }
 
     const legs = cabinetLegs(cabinet, project);
@@ -96,11 +131,16 @@ export function buildFurniture(project, selectedId = null) {
   for (const trim of (project.trims ?? []).filter(trimVisible)) {
     const segments = trimSegments(trim, project);
     if (!segments.length) continue;
-    const mat = materialFor(trimMaterial(trim, project).color);
+    const mat = panelFaceMaterials(trimMaterial(trim, project), TRIM_THICKNESS_AXIS[trim.type], materialFor);
     const edgeMat = new THREE.LineBasicMaterial({ color: trimIssues(trim, project).length ? EDGE_BAD : EDGE_OK });
     disposables.push(edgeMat);
     const a = trimAllowance(trim, project);
+    const tm = trimMaterial(trim, project);
+    if (tm.edgeBanding) solids ??= projectSolids(project);
     segments.forEach((box, i) => {
+      if (tm.edgeBanding) {
+        addEdgeBanding(group, box, trimEdgeSet(trim, box, i, solids), tm.edgeBanding, edgeColorOf(tm), materialFor, project.space);
+      }
       const geometry = new THREE.BoxGeometry(box.width * MM, box.height * MM, box.depth * MM);
       const mesh = new THREE.Mesh(geometry, mat);
       mesh.position.set(...toScene(box.x + box.width / 2, box.y + box.height / 2, box.z + box.depth / 2, project.space));

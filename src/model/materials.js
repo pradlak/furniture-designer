@@ -1,5 +1,6 @@
 // Biblioteka materiałów projektu (płyty). Każdy element mebla bierze z materiału grubość, kolor
-// i grubość obrzeża (taśmy oklejającej krawędzie — ABS/PCV, zwykle 0,8–2 mm).
+// i obrzeże (taśma oklejająca krawędzie — ABS/PCV, zwykle 0,8–2 mm): grubość i kolor
+// (edgeColor: null = taki sam jak płyta).
 // Ten moduł nie importuje modelu mebli (żeby uniknąć zależności cyklicznych).
 
 export const MATERIAL_TYPES = [
@@ -12,10 +13,19 @@ export const MATERIAL_TYPES = [
 
 export const MATERIAL_THICKNESSES = [3, 8, 12, 16, 18, 19, 22, 25, 28, 36, 38, 40];
 export const EDGE_BANDING_OPTIONS = [0, 0.4, 0.8, 1, 2];
+export const DEFAULT_EDGE_BANDING = 0.8;
+
+// Kolor obrzeża materiału (domyślnie taki sam jak płyta).
+export const edgeColorOf = (material) => material.edgeColor ?? material.color;
+
+// Kolor krawędzi BEZ obrzeża: płyta meblowa i HDF mają laminat tylko na licach, a w krawędzi widać
+// brązowy rdzeń; MDF lakierowany i blat mają wykończone także krawędzie (kolor płyty).
+const CORE_COLORS = { chipboard: '#b48d5e', hdf: '#8b6b47' };
+export const coreColorOf = (material) => CORE_COLORS[material.type] ?? material.color;
 
 export function defaultMaterials() {
   return [
-    { id: 'mat-white', name: 'Płyta biała 18', type: 'chipboard', thickness: 18, color: '#f2f2ef', edgeBanding: 1 },
+    { id: 'mat-white', name: 'Płyta biała 18', type: 'chipboard', thickness: 18, color: '#f2f2ef', edgeBanding: DEFAULT_EDGE_BANDING, edgeColor: null },
     { id: 'mat-mdf-green', name: 'MDF lakierowany zielony 18', type: 'mdf', thickness: 18, color: '#5f7f5c', edgeBanding: 0 },
     { id: 'mat-hdf', name: 'HDF biały 3', type: 'hdf', thickness: 3, color: '#ecebe6', edgeBanding: 0 },
     { ...DEFAULT_WORKTOP },
@@ -38,7 +48,8 @@ export function createMaterial() {
     type: 'chipboard',
     thickness: 18,
     color: '#d9d4c7',
-    edgeBanding: 1,
+    edgeBanding: DEFAULT_EDGE_BANDING,
+    edgeColor: null,
   };
 }
 
@@ -89,5 +100,6 @@ export function normalizeMaterials(raw) {
       thickness: num(m.thickness, 18, 1, 100),
       color: typeof m.color === 'string' && /^#[0-9a-f]{6}$/i.test(m.color) ? m.color : '#d9d4c7',
       edgeBanding: num(m.edgeBanding, 0, 0, 5),
+      edgeColor: typeof m.edgeColor === 'string' && /^#[0-9a-f]{6}$/i.test(m.edgeColor) ? m.edgeColor : null,
     }));
 }

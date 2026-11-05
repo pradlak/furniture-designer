@@ -1,4 +1,5 @@
-import { cabinetPanels, cabinetLegs, panelCutSize, defaultEdges } from './furniture.js';
+import { cabinetPanels, cabinetLegs, panelCutSize } from './furniture.js';
+import { projectSolids, panelEdgeSet, trimEdgeSet, edgeCounts, TRIM_THICKNESS_AXIS, EDGE_LABELS } from './edges.js';
 import { trimSegments, trimAllowance, TRIM_TYPES } from './trims.js';
 import { trimMaterial } from './materials.js';
 
@@ -10,7 +11,8 @@ const round = (v) => Math.round(v * 10) / 10;
 
 export function buildCutList(project) {
   const rows = [];
-  const add = (name, owner, material, cut) => {
+  const solids = projectSolids(project);
+  const add = (name, owner, material, cut, edgeSet) => {
     rows.push({
       name,
       owner,
@@ -24,11 +26,15 @@ export function buildCutList(project) {
       edgesW: cut.band ? cut.edges.w : 0,
       band: cut.band,
       allowance: round(cut.allowance ?? 0),
+      edgeNames: cut.band ? edgeSet.map((k) => EDGE_LABELS[k]).join(', ') : '',
     });
   };
 
   for (const c of project.furniture) {
-    for (const p of cabinetPanels(c, project).filter((x) => x.valid)) add(p.name, c.name, p.material, panelCutSize(p));
+    for (const p of cabinetPanels(c, project).filter((x) => x.valid)) {
+      const set = panelEdgeSet(p, c, project, solids);
+      add(p.name, c.name, p.material, panelCutSize({ ...p, edges: edgeCounts(p, p.thicknessAxis, set) }), set);
+    }
   }
 
   for (const t of project.trims ?? []) {
@@ -36,21 +42,17 @@ export function buildCutList(project) {
     const a = trimAllowance(t, project);
     const segments = trimSegments(t, project);
     segments.forEach((seg, i) => {
-      const cut = panelCutSize({
-        ...seg,
-        material,
-        edges: defaultEdges(t.type),
-        allowanceMin: i === 0 ? a.min : 0,
-        allowanceMax: i === segments.length - 1 ? a.max : 0,
-      });
-      add(t.name || TRIM_TYPES[t.type].label, 'wspólne', material, cut);
+      const box = { ...seg, allowanceMin: i === 0 ? a.min : 0, allowanceMax: i === segments.length - 1 ? a.max : 0 };
+      const set = trimEdgeSet(t, seg, i, solids);
+      const cut = panelCutSize({ ...box, material, edges: edgeCounts(box, TRIM_THICKNESS_AXIS[t.type], set) });
+      add(t.name || TRIM_TYPES[t.type].label, 'wspólne', material, cut, set);
     });
   }
 
   // Łączenie jednakowych formatek (nazwy i meble zbieramy w jedną kolumnę).
   const merged = new Map();
   for (const r of rows) {
-    const key = [r.material, r.thickness, r.length, r.width, r.edgesL, r.edgesW, r.band, r.allowance].join('|');
+    const key = [r.material, r.thickness, r.length, r.width, r.edgesL, r.edgesW, r.band, r.allowance, r.edgeNames].join('|');
     const m = merged.get(key);
     if (m) {
       m.qty += 1;
@@ -95,6 +97,7 @@ export function cutListCsv(project) {
     'Obrzeże dł. (szt.)',
     'Obrzeże kr. (szt.)',
     'Grubość obrzeża',
+    'Oklejone krawędzie',
     'Zapas na docięcie',
   ];
   const lines = [header.join(';')];
@@ -114,6 +117,7 @@ export function cutListCsv(project) {
         r.edgesL,
         r.edgesW,
         r.band ? num(r.band) : '',
+        r.edgeNames,
         r.allowance ? `${num(r.allowance)} (wliczony)` : '',
       ]
         .map(cell)

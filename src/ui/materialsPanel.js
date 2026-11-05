@@ -31,7 +31,8 @@ export function createMaterialsPanel(root, store) {
       <h2>Materiały</h2>
       <p class="hint">Płyty używane w projekcie. Materiał określa grubość i kolor elementów.
         <b>Obrzeże</b> to taśma (ABS/PCV) oklejająca krawędzie płyty — wymiar gotowego elementu
-        zawiera obrzeże, a wymiar do cięcia jest o nie mniejszy. Lakierowany MDF i HDF zwykle nie mają obrzeża.</p>
+        zawiera obrzeże, a wymiar do cięcia jest o nie mniejszy. Domyślnie ma kolor płyty, ale można wybrać inny
+        (w widoku 3D oklejone krawędzie mają kolor obrzeża). Lakierowany MDF i HDF zwykle nie mają obrzeża.</p>
       <div class="items">
         ${project.materials.map(renderMaterial).join('') || '<p class="empty">Brak materiałów.</p>'}
       </div>
@@ -68,6 +69,11 @@ export function createMaterialsPanel(root, store) {
             </select>
           </label>
         </div>
+        <div class="edge-color-row">
+          <span>Kolor obrzeża:</span>
+          <label class="check small"><input type="checkbox" data-edge-same /> jak płyta</label>
+          <input type="color" data-edge-color title="Kolor obrzeża" />
+        </div>
         <p class="material-usage hint"></p>
       </div>`;
   }
@@ -79,6 +85,15 @@ export function createMaterialsPanel(root, store) {
       el.querySelectorAll('[data-f]').forEach((input) => {
         if (!input.classList.contains('invalid')) setIfNotFocused(input, m[input.dataset.f]);
       });
+      // Kolor obrzeża: „jak płyta” albo własny; ukryty, gdy materiał nie ma obrzeża.
+      const sameColor = m.edgeColor == null;
+      const row = el.querySelector('.edge-color-row');
+      row.hidden = !m.edgeBanding;
+      row.querySelector('[data-edge-same]').checked = sameColor;
+      const picker = row.querySelector('[data-edge-color]');
+      picker.disabled = sameColor;
+      setIfNotFocused(picker, m.edgeColor ?? m.color);
+
       const used = usage(project, m.id);
       el.querySelector('.material-usage').textContent = used.length ? `Używany — ${used.join(', ')}` : 'Nieużywany';
     }
@@ -87,6 +102,16 @@ export function createMaterialsPanel(root, store) {
   root.addEventListener('input', (e) => {
     const input = e.target;
     const id = input.closest('.material')?.dataset.id;
+    // Kolor obrzeża: zaznaczone „jak płyta” = null; odznaczenie zaczyna od koloru płyty.
+    if (id && input.dataset.edgeSame !== undefined) {
+      const m = store.get().materials.find((x) => x.id === id);
+      updateMaterial(id, { edgeColor: input.checked ? null : m.color });
+      return;
+    }
+    if (id && input.dataset.edgeColor !== undefined) {
+      updateMaterial(id, { edgeColor: input.value });
+      return;
+    }
     const field = input.dataset.f;
     if (!id || !field) return;
     let value = input.value;
