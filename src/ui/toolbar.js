@@ -25,15 +25,15 @@ export function createToolbar(root, store, viewer) {
       ${VIEWS.map((v) => `<button type="button" data-view="${v.key}">${v.label}</button>`).join('')}
     </div>
     <div class="group">
-      <label class="check">
-        <input type="checkbox" data-action="toggle-walls" />
-        Pokaż ściany
-      </label>
+      <span class="group-label">Pokaż:</span>
+      <label class="check"><input type="checkbox" data-view-flag="showWalls" /> Ściany</label>
+      <label class="check"><input type="checkbox" data-view-flag="showCountertops" /> Blaty</label>
+      <label class="check"><input type="checkbox" data-view-flag="showBlends" /> Blendy</label>
     </div>
   `;
 
   const fileInput = root.querySelector('input[type="file"]');
-  const wallsToggle = root.querySelector('[data-action="toggle-walls"]');
+  const viewFlags = [...root.querySelectorAll('[data-view-flag]')];
 
   root.addEventListener('click', (e) => {
     const { action, view } = e.target.dataset ?? {};
@@ -47,9 +47,11 @@ export function createToolbar(root, store, viewer) {
     if (action === 'import') fileInput.click();
   });
 
-  wallsToggle.addEventListener('change', () => {
-    store.set((p) => ({ ...p, view: { ...p.view, showWalls: wallsToggle.checked } }));
-  });
+  for (const box of viewFlags) {
+    box.addEventListener('change', () => {
+      store.set((p) => ({ ...p, view: { ...p.view, [box.dataset.viewFlag]: box.checked } }));
+    });
+  }
 
   fileInput.addEventListener('change', async () => {
     const file = fileInput.files?.[0];
@@ -66,7 +68,7 @@ export function createToolbar(root, store, viewer) {
   const undoBtn = root.querySelector('[data-action="undo"]');
   const redoBtn = root.querySelector('[data-action="redo"]');
   const sync = (project) => {
-    wallsToggle.checked = project.view.showWalls;
+    for (const box of viewFlags) box.checked = project.view[box.dataset.viewFlag] !== false;
     undoBtn.disabled = !store.canUndo();
     redoBtn.disabled = !store.canRedo();
   };

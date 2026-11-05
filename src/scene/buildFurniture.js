@@ -38,7 +38,13 @@ export function buildFurniture(project, selectedId = null) {
     return byColor.get(color);
   };
 
-  for (const cabinet of project.furniture) {
+  const view = project.view ?? {};
+  const panelVisible = (p) =>
+    p.valid && !p.hidden && (view.showBlends !== false || p.group !== 'blend');
+  const trimVisible = (t) =>
+    !t.hidden && (t.type === 'countertop' ? view.showCountertops !== false : view.showBlends !== false);
+
+  for (const cabinet of project.furniture.filter((c) => !c.hidden)) {
     const hasIssues = cabinetIssues(cabinet, project).length > 0;
     const edgeColor = cabinet.id === selectedId ? EDGE_SELECTED : hasIssues ? EDGE_BAD : EDGE_OK;
     const edgeMat = new THREE.LineBasicMaterial({ color: edgeColor });
@@ -47,7 +53,7 @@ export function buildFurniture(project, selectedId = null) {
     const cabinetGroup = new THREE.Group();
     cabinetGroup.name = cabinet.name;
     cabinetGroup.userData.cabinetId = cabinet.id; // do wybierania myszką
-    for (const p of cabinetPanels(cabinet, project).filter((p) => p.valid)) {
+    for (const p of cabinetPanels(cabinet, project).filter(panelVisible)) {
       const geometry = new THREE.BoxGeometry(p.width * MM, p.height * MM, p.depth * MM);
       const mesh = new THREE.Mesh(geometry, materialFor(p.color));
       mesh.position.set(...toScene(p.x + p.width / 2, p.y + p.height / 2, p.z + p.depth / 2, project.space));
@@ -70,7 +76,7 @@ export function buildFurniture(project, selectedId = null) {
   }
 
   // Blendy wspólne (blenda dolna, blenda górna) — w kolorze swojego materiału.
-  for (const trim of project.trims ?? []) {
+  for (const trim of (project.trims ?? []).filter(trimVisible)) {
     const box = trimBox(trim, project);
     if (!box || box.height <= 0) continue;
     const mat = materialFor(trimMaterial(trim, project).color);

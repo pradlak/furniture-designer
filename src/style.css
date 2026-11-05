@@ -285,3 +285,11 @@ select {
   width: 32px; height: 30px; padding: 0 2px; border: 1px solid var(--border); border-radius: 4px; background: #fff; flex: none;
 }
 .material-usage { margin: 0; }
+
+/* --- ukrywanie elementów --- */
+button.eye { font-size: 13px; line-height: 1; padding: 4px 6px; }
+button.icon.eye { padding: 0 4px; line-height: 18px; font-size: 12px; }
+button.eye.off { opacity: 0.35; text-decoration: line-through; }
+.item.is-hidden > :not(.item-head),
+.part.is-hidden > :not(.part-head),
+.item.is-hidden .item-head input[type='text'] { opacity: 0.55; }

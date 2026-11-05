@@ -7,8 +7,9 @@ import { defaultMaterials, normalizeMaterials } from './materials.js';
 export const PROJECT_VERSION = 5;
 const STORAGE_KEY = 'furnitureDesigner.project';
 
+// Widoczność w 3D: ściany i całe grupy elementów (blaty; blendy — wspólne i boczne).
 export function createDefaultView() {
-  return { showWalls: true };
+  return { showWalls: true, showCountertops: true, showBlends: true };
 }
 
 export function createDefaultProject() {
@@ -35,7 +36,11 @@ export function normalizeProject(raw) {
     materials: normalizeMaterials(raw.materials),
     furniture,
     trims: (Array.isArray(raw.trims) ? raw.trims : []).map((t) => normalizeTrim(t, ids)).filter(Boolean),
-    view: { showWalls: raw.view?.showWalls !== false },
+    view: {
+      showWalls: raw.view?.showWalls !== false,
+      showCountertops: raw.view?.showCountertops !== false,
+      showBlends: raw.view?.showBlends !== false,
+    },
   };
 
   // Zgodność wstecz: blenda dolna była kiedyś opcją pojedynczego korpusu.

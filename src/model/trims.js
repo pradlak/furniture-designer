@@ -7,6 +7,8 @@ import {
   plinthHeight,
   boxCorners,
   boxesOverlap,
+  cabinetBounds,
+  cabinetContext,
   newId,
 } from './furniture.js';
 import { isPointInside } from './space.js';
@@ -19,17 +21,31 @@ import { isPointInside } from './space.js';
 //             (panele boczne są na zewnątrz, więc blenda dochodzi do nich),
 //  topBlend — blenda górna: pas w płaszczyźnie frontu (przed korpusem) przy jego górnej krawędzi,
 //             kończy się równo z górą i bokami korpusów; front pod nią jest niższy:
-//             front = wysokość korpusu − blenda − szczelina.
+//             front = wysokość korpusu − blenda − szczelina,
+//  countertop — blat: leży na korpusach, z tyłu od pleców, z przodu wysunięty o overhang (30 mm);
+//             domyślnie maksymalnie szeroki — do ścian albo sąsiednich mebli / przeszkód;
+//             x, length (długość) i depth (głębokość) mogą być ustawione ręcznie (null = automatycznie).
 
 export const TRIM_TYPES = {
   plinth: { label: 'Blenda dolna' },
   topBlend: { label: 'Blenda górna' },
+  countertop: { label: 'Blat' },
 };
 
 export const TRIM_DEFAULTS = {
   plinth: { height: null, gap: 5, setback: 20 }, // height: null = automatyczna
   topBlend: { height: 60, gap: 3 },
+  // includeFront — wysunięcie liczone od frontu (front ma grubość blendy górnej / materiału blend)
+  countertop: { overhang: 30, includeFront: true, x: null, length: null, depth: null },
 };
+
+// Pola, które mogą być automatyczne (null) — wyświetlamy wtedy wartość wyliczoną (z trimBox).
+export const AUTO_FIELDS = { plinth: ['height'], topBlend: [], countertop: ['x', 'length', 'depth'] };
+const AUTO_FROM_BOX = { height: 'height', x: 'x', length: 'width', depth: 'depth' };
+export function trimFieldValue(trim, field, project) {
+  if (trim[field] != null || !AUTO_FIELDS[trim.type]?.includes(field)) return trim[field];
+  return trimBox(trim, project)?.[AUTO_FROM_BOX[field]] ?? '';
+}
 
 export function createTrim(type, cabinetIds, project) {
   const first = project.furniture.find((c) => c.id === cabinetIds[0]);
@@ -39,7 +55,10 @@ export function createTrim(type, cabinetIds, project) {
     type,
     name: `${TRIM_TYPES[type].label} ${count + 1}`,
     cabinetIds: [...cabinetIds],
-    materialId: first?.blendMaterialId ?? project.materials?.find((m) => m.type === 'mdf')?.id ?? null,
+    materialId:
+      type === 'countertop'
+        ? (project.materials?.find((m) => m.type === 'worktop')?.id ?? null)
+        : (first?.blendMaterialId ?? project.materials?.find((m) => m.type === 'mdf')?.id ?? null),
     ...TRIM_DEFAULTS[type],
   };
 }
@@ -89,11 +108,49 @@ export function trimBox(trim, project) {
       depth: thickness,
     };
   }
+  if (trim.type === 'countertop') return countertopBox(trim, project, cabs, front, thickness);
+
   // blenda górna: tylko na szerokość korpusów (bez listew), przed frontem korpusu
   const left = Math.min(...cabs.map((c) => c.x));
   const right = Math.max(...cabs.map((c) => c.x + c.width));
   const top = Math.max(...cabs.map((c) => c.y + legHeight(c) + c.height));
   return { x: left, y: top - trim.height, z: front, width: right - left, height: trim.height, depth: thickness };
+}
+
+// O ile blat wystaje przed korpus: wysunięcie + (opcjonalnie) grubość frontu,
+// np. 30 + 18 = 48 mm. Przy kilku korpusach — najgrubszy front.
+export function countertopOverhang(trim, project) {
+  if (!trim.includeFront) return trim.overhang;
+  const cabs = trimCabinets(trim, project);
+  const front = cabs.length ? Math.max(...cabs.map((c) => cabinetContext(c, project).frontThickness)) : 0;
+  return trim.overhang + front;
+}
+
+// Blat: na korpusach; automatycznie od ściany do ściany (albo do sąsiedniego mebla / przeszkody).
+function countertopBox(trim, project, cabs, front, thickness) {
+  const bounds = cabs.map((c) => cabinetBounds(c, project));
+  const rowLeft = Math.min(...bounds.map((b) => b.x));
+  const rowRight = Math.max(...bounds.map((b) => b.x + b.width));
+  const top = Math.max(...cabs.map((c) => c.y + legHeight(c) + c.height));
+  const back = Math.min(...cabs.map((c) => c.z));
+  const depth = trim.depth ?? front + countertopOverhang(trim, project) - back;
+
+  // Co ogranicza blat na boki: inne meble i przeszkody na wysokości blatu i w jego głębokości.
+  const inBand = (o) => o.y < top + thickness && o.y + o.height > top && o.z < back + depth && o.z + o.depth > back;
+  const others = [
+    ...project.furniture.filter((c) => !trim.cabinetIds.includes(c.id)).map((c) => cabinetBounds(c, project)),
+    ...project.space.obstacles,
+  ].filter(inBand);
+  const { walls, width: spaceWidth } = project.space;
+  let left = walls.left ? 0 : rowLeft;
+  let right = walls.right ? spaceWidth : rowRight;
+  for (const o of others) {
+    if (o.x + o.width <= rowLeft + 0.01) left = Math.max(left, o.x + o.width);
+    if (o.x >= rowRight - 0.01) right = Math.min(right, o.x);
+  }
+
+  const x = trim.x ?? left;
+  return { x, y: top, z: back, width: trim.length ?? right - x, height: thickness, depth };
 }
 
 // Wysokość frontu pod blendą górną (dla każdego objętego korpusu).
@@ -113,11 +170,14 @@ export function trimIssues(trim, project) {
     else if (differ(legHeight)) issues.push('Objęte korpusy mają różną wysokość nóżek.');
     else if (h > Math.min(...cabs.map(legHeight))) issues.push('Blenda jest wyższa niż nóżki — nie zmieści się pod korpusem.');
     if (h <= 0) issues.push('Wysokość blendy musi być większa od zera.');
-  } else {
+  } else if (trim.type === 'topBlend') {
     if (differ((c) => c.y + legHeight(c) + c.height)) {
       issues.push('Górne krawędzie objętych korpusów nie są w jednej linii.');
     }
     if (cabs.some((c) => c.height - trim.height - trim.gap <= 0)) issues.push('Blenda jest wyższa niż korpus.');
+  }
+  if (trim.type === 'countertop' && differ((c) => c.y + legHeight(c) + c.height)) {
+    issues.push('Górne krawędzie objętych korpusów nie są w jednej linii — blat leży na najwyższym.');
   }
   if (differ((c) => c.z + c.depth)) issues.push('Fronty objętych korpusów nie są w jednej linii.');
 
@@ -126,6 +186,12 @@ export function trimIssues(trim, project) {
     if (!boxCorners(box).every((p) => isPointInside(p, project.space))) issues.push('Wychodzi poza przestrzeń.');
     const hit = project.space.obstacles.filter((o) => boxesOverlap(box, o)).map((o) => o.name);
     if (hit.length) issues.push(`Koliduje z: ${hit.join(', ')}.`);
+    if (trim.type === 'countertop') {
+      const hitCabs = project.furniture
+        .filter((c) => !trim.cabinetIds.includes(c.id) && boxesOverlap(box, cabinetBounds(c, project)))
+        .map((c) => c.name);
+      if (hitCabs.length) issues.push(`Nachodzi na: ${hitCabs.join(', ')}.`);
+    }
   }
   return issues;
 }
@@ -142,6 +208,7 @@ export function normalizeTrim(raw = {}, cabinetIds) {
     id: typeof raw.id === 'string' && raw.id ? raw.id : newId(),
     type: raw.type,
     name: typeof raw.name === 'string' ? raw.name : TRIM_TYPES[raw.type].label,
+    hidden: raw.hidden === true,
     cabinetIds: Array.isArray(raw.cabinetIds) ? raw.cabinetIds.filter((id) => cabinetIds.includes(id)) : [],
     materialId: typeof raw.materialId === 'string' ? raw.materialId : null,
   };
@@ -149,9 +216,16 @@ export function normalizeTrim(raw = {}, cabinetIds) {
     trim.height = raw.height == null ? null : num(raw.height, null, 1, 2000);
     trim.gap = num(raw.gap, def.gap, 0, 500);
     trim.setback = num(raw.setback, def.setback, -500, 5000);
-  } else {
+  } else if (raw.type === 'topBlend') {
     trim.height = num(raw.height, def.height, 1, 2000);
     trim.gap = num(raw.gap, def.gap, 0, 100);
+  } else {
+    const opt = (v, min, max) => (v == null ? null : num(v, null, min, max));
+    trim.overhang = num(raw.overhang, def.overhang, -500, 1000);
+    trim.includeFront = raw.includeFront !== false;
+    trim.x = opt(raw.x, -20000, 20000);
+    trim.length = opt(raw.length, 1, 20000);
+    trim.depth = opt(raw.depth, 1, 20000);
   }
   return trim;
 }

@@ -19,15 +19,37 @@ import {
   getPath,
   setPath,
   sidePanelExtension,
-  plinthHeight,
   defaultEdges,
 } from '../model/furniture.js';
 import { duplicateCabinet, slideCabinet } from '../model/placement.js';
-import { createTrim, rowOf, trimBox, trimIssues, frontHeightsUnder } from '../model/trims.js';
+import {
+  createTrim,
+  rowOf,
+  trimBox,
+  trimIssues,
+  frontHeightsUnder,
+  AUTO_FIELDS,
+  trimFieldValue,
+  countertopOverhang,
+} from '../model/trims.js';
 import { cabinetMaterials, trimMaterial } from '../model/materials.js';
 
-// Wysokość blendy do wyświetlenia: dla blendy dolnej automatycznej — wyliczona.
-const trimHeightValue = (t, project) => round1(t.type === 'plinth' ? plinthHeight(t, project) : t.height);
+// Wartość pola blendy / blatu do wyświetlenia (dla pól automatycznych — wyliczona).
+const trimValue = (t, field, project) => {
+  const v = trimFieldValue(t, field, project);
+  return typeof v === 'number' ? round1(v) : v;
+};
+
+// Pole w karcie korpusu dla blendy / blatu: wysokość blendy albo wysunięcie blatu.
+const INLINE_FIELD = { plinth: ['height', 'wys.'], topBlend: ['height', 'wys.'], countertop: ['overhang', 'wysunięcie'] };
+const TRIM_SHORT = { plinth: 'dolna', topBlend: 'górna', countertop: 'blat' };
+
+const AUTO_TITLES = {
+  height: 'Automatycznie: nóżki − 5 mm (bez nóżek 80 mm)',
+  x: 'Automatycznie: do ściany albo sąsiedniego mebla',
+  length: 'Automatycznie: do ścian albo sąsiednich mebli',
+  depth: 'Automatycznie: od pleców do frontu + wysunięcie',
+};
 import { escapeHtml, numberField, readNumberInput, setIfNotFocused, round1 } from './dom.js';
 
 const POSITION_FIELDS = [
@@ -63,6 +85,13 @@ function jointSelect(label, field, options, value) {
 
 // Blenda boczna jednej strony. Widoczne są tylko opcje pasujące do wybranego wariantu
 // (patrz updateStatus): szerokość i panel przy ścianie — dla listwy; wysunięcie — dla panelu i listwy.
+// Przycisk 👁: wyszarzony, gdy element jest ukryty w widoku 3D.
+function setEye(btn, hidden, what) {
+  if (!btn) return;
+  btn.classList.toggle('off', !!hidden);
+  btn.title = hidden ? `Pokaż ${what} w widoku 3D` : `Ukryj ${what} w widoku 3D`;
+}
+
 function edgeSelect(key) {
   return `<select data-edge="${key}">${[0, 1, 2].map((n) => `<option value="${n}">${n}</option>`).join('')}</select>`;
 }
@@ -149,17 +178,19 @@ export function createFurniturePanel(root, store, ui, tabs) {
         <button type="button" data-action="add-cabinet">+ Korpus</button>
       </div>
 
-      <h3>Blendy dolne i górne</h3>
+      <h3>Blendy i blaty</h3>
       <p class="hint">Jedna blenda może obejmować kilka korpusów — zaznacz, które.
         Blenda dolna zasłania nóżki (wysokość = nóżki − szczelina) i dochodzi do paneli bocznych.
         Blenda górna jest w płaszczyźnie frontu przy górnej krawędzi korpusu —
-        front pod nią = wysokość korpusu − blenda − szczelina.</p>
+        front pod nią = wysokość korpusu − blenda − szczelina.
+        Blat leży na korpusach, z przodu wysunięty (domyślnie 30 mm), domyślnie od ściany do ściany.</p>
       <div class="items">
         ${project.trims.map((t) => renderTrim(t, project)).join('') || '<p class="empty">Brak.</p>'}
       </div>
       <div class="add-row">
         <button type="button" data-add-trim="plinth">+ Blenda dolna</button>
         <button type="button" data-add-trim="topBlend">+ Blenda górna</button>
+        <button type="button" data-add-trim="countertop">+ Blat</button>
       </div>
       <datalist id="leg-heights">${LEG_HEIGHTS.map((h) => `<option value="${h}"></option>`).join('')}</datalist>
     `;
@@ -259,10 +290,11 @@ export function createFurniturePanel(root, store, ui, tabs) {
     const blends = `
       <div class="grid-2">${['left', 'right'].map((side) => sideBlendFields(side)).join('')}</div>
       <div class="trim-row">
-        <span class="sub-title">Blenda dolna i górna</span>
+        <span class="sub-title">Blenda dolna, górna i blat</span>
         <div class="cabinet-trims"></div>
         <button type="button" data-add-trim="plinth" title="Blenda dolna dla tego korpusu i sąsiadów w rzędzie">+ blenda dolna</button>
         <button type="button" data-add-trim="topBlend" title="Blenda górna dla tego korpusu i sąsiadów w rzędzie">+ blenda górna</button>
+        <button type="button" data-add-trim="countertop" title="Blat na tym korpusie i sąsiadach w rzędzie">+ blat</button>
       </div>`;
 
     const parts = `
@@ -279,6 +311,7 @@ export function createFurniturePanel(root, store, ui, tabs) {
       <div class="item cabinet" data-kind="cabinet" data-id="${c.id}">
         <div class="item-head">
           <input type="text" data-f="name" value="${escapeHtml(c.name)}" aria-label="Nazwa mebla" />
+          <button type="button" class="eye" data-toggle-hidden="cabinet">👁</button>
           <button type="button" data-action="duplicate" title="Duplikuj (Ctrl+D)">⧉</button>
           <button type="button" class="danger" data-remove="${c.id}" title="Usuń (Delete)">✕</button>
         </div>
@@ -286,30 +319,41 @@ export function createFurniturePanel(root, store, ui, tabs) {
         ${section('body', 'Korpus', body)}
         ${section('stiff', 'Wzmocnienia', stiff)}
         ${section('legs', 'Nóżki', legs)}
-        ${section('blends', 'Blendy', blends)}
+        ${section('blends', 'Blendy i blat', blends)}
         ${section('parts', 'Elementy', parts, 'parts')}
       </div>`;
   }
 
   function renderTrim(t, project) {
-    const heightField = `
-      <label class="field small">
-        <span>Wysokość <small>mm</small>${
-          t.type === 'plinth'
-            ? ` <small class="auto-tag">auto</small>
-               <button type="button" class="icon tiny" data-reset-trim-height="${t.id}" title="Wysokość automatyczna: nóżki − 5 mm (bez nóżek 80 mm)">↺</button>`
-            : ''
-        }</span>
-        <input type="number" step="1" min="1" max="2000" data-f="height" />
-      </label>`;
-    const fields =
-      t.type === 'plinth'
-        ? [heightField, numberField('Cofnięcie', 'setback', t.setback, { min: -500, max: 5000, small: true })]
-        : [heightField, numberField('Szczelina do frontu', 'gap', t.gap, { min: 0, max: 100, small: true })];
+    // Pole automatyczne: pokazuje wartość wyliczoną, wpisanie ustawia ją ręcznie, ↺ wraca do automatu.
+    const field = (label, key, opts = {}) => {
+      if (!AUTO_FIELDS[t.type].includes(key)) return numberField(label, key, '', { small: true, ...opts });
+      return `
+        <label class="field small" data-auto="${key}">
+          <span>${label} <small class="auto-tag">auto</small>
+            <button type="button" class="icon tiny" data-reset-trim-field="${key}" data-trim-id="${t.id}" title="${AUTO_TITLES[key]}">↺</button>
+          </span>
+          <input type="number" step="1" min="${opts.min ?? 1}" max="${opts.max ?? 20000}" data-f="${key}" />
+        </label>`;
+    };
+    const fields = {
+      plinth: [field('Wysokość', 'height', { max: 2000 }), field('Cofnięcie', 'setback', { min: -500, max: 5000 })],
+      topBlend: [field('Wysokość', 'height', { min: 1, max: 2000 }), field('Szczelina do frontu', 'gap', { min: 0, max: 100 })],
+      countertop: [
+        field('Wysunięcie z przodu', 'overhang', { min: -500, max: 1000 }),
+        `<label class="check small front-check" title="Wysunięcie liczone od przedniej powierzchni frontu (dodaje grubość frontu)">
+          <input type="checkbox" data-f="includeFront" /> licz od frontu
+        </label>`,
+        field('Od lewej (X)', 'x', { min: -20000 }),
+        field('Długość', 'length'),
+        field('Głębokość', 'depth'),
+      ],
+    }[t.type];
     return `
       <div class="item trim ${t.type}" data-kind="trim" data-id="${t.id}">
         <div class="item-head">
           <input type="text" data-f="name" value="${escapeHtml(t.name)}" aria-label="Nazwa" />
+          <button type="button" class="eye" data-toggle-trim-hidden="${t.id}">👁</button>
           <button type="button" class="danger" data-remove-trim="${t.id}" title="Usuń">✕</button>
         </div>
         <div class="trim-cabinets">
@@ -338,22 +382,34 @@ export function createFurniturePanel(root, store, ui, tabs) {
       const el = root.querySelector(`[data-kind="trim"][data-id="${t.id}"]`);
       if (!el) continue;
       el.querySelectorAll('[data-f]').forEach((input) => {
-        const value = input.dataset.f === 'height' ? trimHeightValue(t, project) : t[input.dataset.f];
+        if (input.type === 'checkbox') {
+          input.checked = !!t[input.dataset.f];
+          return;
+        }
+        const value = trimValue(t, input.dataset.f, project);
         if (!input.classList.contains('invalid')) setIfNotFocused(input, value);
       });
-      const isAuto = t.type === 'plinth' && t.height == null;
-      el.querySelector('.auto-tag')?.toggleAttribute('hidden', !isAuto);
-      el.querySelector('[data-reset-trim-height]')?.toggleAttribute('hidden', isAuto);
+      el.querySelectorAll('[data-auto]').forEach((label) => {
+        const isAuto = t[label.dataset.auto] == null;
+        label.querySelector('.auto-tag').hidden = !isAuto;
+        label.querySelector('[data-reset-trim-field]').hidden = isAuto;
+      });
+      el.classList.toggle('is-hidden', !!t.hidden);
+      setEye(el.querySelector('[data-toggle-trim-hidden]'), t.hidden, 'element');
       el.querySelectorAll('[data-trim-cabinet]').forEach((cb) => (cb.checked = t.cabinetIds.includes(cb.dataset.trimCabinet)));
       el.querySelectorAll('[data-cab-name]').forEach((span) => {
         span.textContent = project.furniture.find((c) => c.id === span.dataset.cabName)?.name ?? '';
       });
       const box = trimBox(t, project);
-      let size =
-        box && box.height > 0 ? `Formatka: ${round1(box.width)} × ${round1(box.height)} × ${round1(box.depth)} mm` : '';
+      let size = '';
       if (box && box.height > 0) {
-        // Blendy mają oklejone wszystkie krawędzie (jeśli materiał ma obrzeże).
+        // Formatka: długość × szerokość × grubość; do cięcia — pomniejszona o obrzeże
+        // (blendy: wszystkie krawędzie, blat: przednia; jeśli materiał ma obrzeże).
         const cut = panelCutSize({ ...box, material: trimMaterial(t, project), edges: defaultEdges(t.type) });
+        size = `Formatka: ${round1(cut.length)} × ${round1(cut.width)} × ${round1(cut.thickness)} mm`;
+        if (t.type === 'countertop' && t.depth == null) {
+          size += ` · wystaje przed korpus: ${round1(countertopOverhang(t, project))} mm`;
+        }
         if (cut.band) size += ` · do cięcia: ${round1(cut.cutLength)} × ${round1(cut.cutWidth)} mm`;
       }
       if (t.type === 'topBlend') {
@@ -379,10 +435,12 @@ export function createFurniturePanel(root, store, ui, tabs) {
           (t) => `
           <div class="cab-trim">
             <span class="cab-trim-name" data-trim-name="${t.id}"></span>
-            <label class="cab-trim-height">wys.
-              <input type="number" step="1" min="1" max="2000" data-trim-field="height" data-trim-id="${t.id}" /> mm
+            <label class="cab-trim-height">${INLINE_FIELD[t.type][1]}
+              <input type="number" step="1" min="${t.type === 'countertop' ? -500 : 1}" max="2000"
+                data-trim-field="${INLINE_FIELD[t.type][0]}" data-trim-id="${t.id}" /> mm
             </label>
-            <button type="button" class="icon danger" data-remove-trim="${t.id}" title="Usuń tę blendę">✕</button>
+            <button type="button" class="icon eye" data-toggle-trim-hidden="${t.id}">👁</button>
+            <button type="button" class="icon danger" data-remove-trim="${t.id}" title="Usuń">✕</button>
           </div>`,
         )
         .join('');
@@ -390,8 +448,9 @@ export function createFurniturePanel(root, store, ui, tabs) {
     for (const t of covering) {
       container.querySelector(`[data-trim-name="${t.id}"]`).textContent =
         t.name + (t.type === 'plinth' && t.height == null ? ' (auto)' : '');
+      setEye(container.querySelector(`[data-toggle-trim-hidden="${t.id}"]`), t.hidden, 'element');
       const input = container.querySelector(`[data-trim-id="${t.id}"]`);
-      if (!input.classList.contains('invalid')) setIfNotFocused(input, trimHeightValue(t, project));
+      if (!input.classList.contains('invalid')) setIfNotFocused(input, trimValue(t, INLINE_FIELD[t.type][0], project));
     }
   }
 
@@ -401,6 +460,7 @@ export function createFurniturePanel(root, store, ui, tabs) {
         <div class="part-head">
           <span class="part-name">${p.name}</span>
           <span class="part-cut"></span>
+          <button type="button" class="icon eye" data-toggle-part-hidden="${p.key}">👁</button>
           <label class="check small" title="Płyta nie zmienia korpusu i nie dopasowuje się do niego (poza grubościami sąsiadów)">
             <input type="checkbox" data-part-free ${p.free ? 'checked' : ''} /> Niezależny
           </label>
@@ -444,6 +504,8 @@ export function createFurniturePanel(root, store, ui, tabs) {
       const hasLegs = !!c.legs?.enabled;
       el.querySelectorAll('option[value="plinth"]').forEach((opt) => (opt.disabled = !hasLegs));
       updateCabinetTrims(el.querySelector('.cabinet-trims'), c, project);
+      el.classList.toggle('is-hidden', !!c.hidden);
+      setEye(el.querySelector('[data-toggle-hidden="cabinet"]'), c.hidden, 'korpus');
       el.querySelector('.rail-width').hidden = c.topType !== 'rails';
 
       // Podsumowania w nagłówkach sekcji.
@@ -464,7 +526,7 @@ export function createFurniturePanel(root, store, ui, tabs) {
         .filter(Boolean);
       const trimNames = project.trims
         .filter((t) => t.cabinetIds.includes(c.id))
-        .map((t) => (t.type === 'plinth' ? 'dolna' : 'górna'));
+        .map((t) => TRIM_SHORT[t.type]);
       if (trimNames.length) blendParts.push(trimNames.join(', '));
       setSummary(el, 'blends', blendParts.join(' · ') || 'brak');
       for (const side of ['left', 'right']) {
@@ -514,6 +576,8 @@ export function createFurniturePanel(root, store, ui, tabs) {
         partEl.querySelector('[data-reset-part]').hidden = p.overridden.length === 0 && !p.free;
         partEl.querySelector('[data-part-free]').checked = p.free;
         partEl.classList.toggle('free', p.free);
+        partEl.classList.toggle('is-hidden', p.hidden);
+        setEye(partEl.querySelector('[data-toggle-part-hidden]'), p.hidden, 'płytę');
         for (const f of PART_FIELDS) {
           const input = partEl.querySelector(`[data-pf="${f.key}"]`);
           input.classList.toggle('overridden', p.overridden.includes(f.key));
@@ -541,7 +605,9 @@ export function createFurniturePanel(root, store, ui, tabs) {
     const field = input.dataset.f;
     if (!field) return;
     let value = input.value;
-    if (input.type === 'number') {
+    if (input.type === 'checkbox') {
+      value = input.checked;
+    } else if (input.type === 'number') {
       value = readNumberInput(input);
       if (value === undefined) return;
     } else if (input.dataset.type === 'number') {
@@ -651,7 +717,7 @@ export function createFurniturePanel(root, store, ui, tabs) {
     if (trimId) {
       const trim = store.get().trims.find((t) => t.id === trimId);
       const field = input.dataset.trimField ?? input.dataset.f;
-      if (trim) input.value = field === 'height' ? trimHeightValue(trim, store.get()) : trim[field];
+      if (trim) input.value = trimValue(trim, field, store.get());
       return;
     }
     const id = input.closest('[data-kind="cabinet"]')?.dataset.id;
@@ -687,15 +753,28 @@ export function createFurniturePanel(root, store, ui, tabs) {
 
   root.addEventListener('click', (e) => {
     selectFrom(e.target);
-    const { action, remove, resetPart, slide, addTrim, removeTrim, resetTrimHeight, removeStiff } =
-      e.target.dataset ?? {};
+    const {
+      action, remove, resetPart, slide, addTrim, removeTrim, resetTrimField, trimId, removeStiff,
+      toggleHidden, toggleTrimHidden, togglePartHidden,
+    } = e.target.dataset ?? {};
     const id = e.target.closest('[data-kind="cabinet"]')?.dataset.id;
-    if (action === 'add-stiff' && id) {
+    if (toggleHidden && id) {
+      updateCabinet(id, (c) => ({ ...c, hidden: !c.hidden }));
+    } else if (toggleTrimHidden) {
+      updateTrim(toggleTrimHidden, (t) => ({ ...t, hidden: !t.hidden }));
+    } else if (togglePartHidden && id) {
+      updateCabinet(id, (c) => {
+        const o = { ...c.panelOverrides?.[togglePartHidden] };
+        if (o.hidden) delete o.hidden;
+        else o.hidden = true;
+        return { ...c, panelOverrides: { ...c.panelOverrides, [togglePartHidden]: o } };
+      });
+    } else if (action === 'add-stiff' && id) {
       updateCabinet(id, (c) => ({ ...c, stiffeners: [...(c.stiffeners ?? []), createStiffener(c)] }));
     } else if (removeStiff && id) {
       updateCabinet(id, (c) => ({ ...c, stiffeners: c.stiffeners.filter((st) => st.id !== removeStiff) }));
-    } else if (resetTrimHeight) {
-      updateTrim(resetTrimHeight, (t) => ({ ...t, height: null }));
+    } else if (resetTrimField && trimId) {
+      updateTrim(trimId, (t) => ({ ...t, [resetTrimField]: null }));
     } else if (addTrim) {
       // Z karty korpusu: ten korpus + sąsiedzi w rzędzie; z dołu panelu: zaznaczony korpus i jego rząd
       // (a gdy nic nie jest zaznaczone — wszystkie korpusy).

@@ -383,6 +383,7 @@ export function cabinetPanels(cabinet, project) {
       height: size('y', sy),
       depth: size('z', sz),
       free: !!o.free,
+      hidden: !!o.hidden, // ukryta tylko w widoku 3D
       overridden,
     };
     panel.valid = panel.width > 0 && panel.height > 0 && panel.depth > 0;
@@ -465,7 +466,7 @@ const BLEND_KEYS = ['blendLeft', 'blendRight', 'wallPanelLeft', 'wallPanelRight'
 // Domyślne obrzeże: ile krawędzi długich (l) i krótkich (w) formatki jest oklejonych.
 // Widoczna przednia krawędź konstrukcji — jedna długa; blendy — wszystkie; plecy i poprzeczki — brak.
 export function defaultEdges(key) {
-  if (['left', 'right', 'bottom', 'top', 'railFront', 'railBack'].includes(key)) return { l: 1, w: 0 };
+  if (['left', 'right', 'bottom', 'top', 'railFront', 'railBack', 'countertop'].includes(key)) return { l: 1, w: 0 };
   if (BLEND_KEYS.includes(key) || key === 'plinth' || key === 'topBlend') return { l: 2, w: 2 };
   return { l: 0, w: 0 };
 }
@@ -595,6 +596,7 @@ export function normalizeCabinet(raw = {}) {
       if (src[k] !== null && Number.isFinite(Number(src[k]))) o[k] = num(src[k], 0, -sizeMax, sizeMax);
     }
     if (src.free === true) o.free = true;
+    if (src.hidden === true) o.hidden = true;
     if (src.edges && typeof src.edges === 'object') {
       o.edges = { l: num(src.edges.l, 0, 0, 2), w: num(src.edges.w, 0, 0, 2) };
     }
@@ -612,6 +614,7 @@ export function normalizeCabinet(raw = {}) {
   return {
     id: typeof raw.id === 'string' && raw.id ? raw.id : newId(),
     name: typeof raw.name === 'string' ? raw.name : 'Korpus',
+    hidden: raw.hidden === true,
     x: num(raw.x, 0, -sizeMax, sizeMax),
     y: num(raw.y, 0, -sizeMax, sizeMax),
     z: num(raw.z, 0, -sizeMax, sizeMax),

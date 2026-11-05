@@ -6,10 +6,11 @@ export const MATERIAL_TYPES = [
   { key: 'chipboard', label: 'Płyta meblowa (laminowana)' },
   { key: 'mdf', label: 'MDF lakierowany' },
   { key: 'hdf', label: 'HDF' },
+  { key: 'worktop', label: 'Blat' },
   { key: 'other', label: 'Inny' },
 ];
 
-export const MATERIAL_THICKNESSES = [3, 8, 12, 16, 18, 19, 22, 25, 28, 36];
+export const MATERIAL_THICKNESSES = [3, 8, 12, 16, 18, 19, 22, 25, 28, 36, 38, 40];
 export const EDGE_BANDING_OPTIONS = [0, 0.4, 0.8, 1, 2];
 
 export function defaultMaterials() {
@@ -17,8 +18,18 @@ export function defaultMaterials() {
     { id: 'mat-white', name: 'Płyta biała 18', type: 'chipboard', thickness: 18, color: '#f2f2ef', edgeBanding: 1 },
     { id: 'mat-mdf-green', name: 'MDF lakierowany zielony 18', type: 'mdf', thickness: 18, color: '#5f7f5c', edgeBanding: 0 },
     { id: 'mat-hdf', name: 'HDF biały 3', type: 'hdf', thickness: 3, color: '#ecebe6', edgeBanding: 0 },
+    { ...DEFAULT_WORKTOP },
   ];
 }
+
+const DEFAULT_WORKTOP = {
+  id: 'mat-worktop',
+  name: 'Blat laminowany dąb 38',
+  type: 'worktop',
+  thickness: 38,
+  color: '#b8905e',
+  edgeBanding: 0,
+};
 
 export function createMaterial() {
   return {
@@ -36,6 +47,7 @@ const FALLBACK = {
   chipboard: { id: null, name: 'Płyta 18', type: 'chipboard', thickness: 18, color: '#d2b48c', edgeBanding: 0 },
   mdf: { id: null, name: 'MDF 18', type: 'mdf', thickness: 18, color: '#d2b48c', edgeBanding: 0 },
   hdf: { id: null, name: 'HDF 3', type: 'hdf', thickness: 3, color: '#e9e4da', edgeBanding: 0 },
+  worktop: { id: null, name: 'Blat 38', type: 'worktop', thickness: 38, color: '#b8905e', edgeBanding: 0 },
 };
 
 export const materialById = (project, id) => project?.materials?.find((m) => m.id === id) ?? null;
@@ -56,11 +68,14 @@ export function cabinetMaterials(cabinet, project) {
   };
 }
 
-// Materiał blendy wspólnej (dolnej / górnej).
-export const trimMaterial = (trim, project) => resolveMaterial(project, trim.materialId, 'mdf');
+// Materiał blendy wspólnej (dolnej / górnej) albo blatu.
+export const trimMaterial = (trim, project) =>
+  resolveMaterial(project, trim.materialId, trim.type === 'countertop' ? 'worktop' : 'mdf');
 
 export function normalizeMaterials(raw) {
   if (!Array.isArray(raw) || !raw.length) return defaultMaterials();
+  // Starsze projekty nie miały materiału na blat — dokładamy domyślny.
+  if (!raw.some((m) => m?.type === 'worktop')) raw = [...raw, { ...DEFAULT_WORKTOP }];
   const num = (v, def, min, max) => {
     const n = Number(v);
     return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : def;
