@@ -112,14 +112,28 @@ export function defaultAccessories() {
 function defaultSideBlend() {
   // allowance — zapas na docięcie listwy (w stronę ściany); nie liczy się do kolizji
   // hidden — blendy tej strony ukryte w widoku 3D
-  return { type: 'none', width: 50, wallPanel: false, flushFront: false, extend: 0, allowance: 0, hidden: false };
+  // width: null = automatycznie (wypełnia wolne miejsce do ściany / sąsiada — patrz sideBlendWidth)
+  // wallPanelDepth — głębokość panelu przy ścianie liczona od frontu (null = pełna głębokość korpusu);
+  //                  zwykle widać tylko jego przód, więc nie ma sensu ciąć go na całą głębokość
+  return {
+    type: 'none',
+    width: null,
+    wallPanel: false,
+    wallPanelDepth: DEFAULT_WALL_PANEL_DEPTH,
+    // fullPanelDepth — to samo dla panelu na pełną wysokość; domyślnie pełna głębokość (bok zwykle widać cały)
+    fullPanelDepth: null,
+    flushFront: false,
+    extend: 0,
+    allowance: 0,
+    hidden: false,
+  };
 }
 
 // O ile panel boczny danej strony wystaje przed korpus.
 export function sidePanelExtension(cabinet, side, project) {
   const sb = cabinet.sideBlends?.[side];
   if (!sb) return 0;
-  return sb.flushFront ? cabinetContext(cabinet, project).frontThickness : sb.extend;
+  return sb.flushFront ? cabinetContext(cabinet, project).frontThickness : (sb.extend ?? 0);
 }
 
 export function createCabinet(project, overrides = {}) {
@@ -179,9 +193,64 @@ export function plinthHeight(trim, project) {
 }
 
 // Szerokość pasów frontu przy bokach korpusu (listwy przy ścianie) — blendy i cokoły je obejmują.
-export function frontSpan(cabinet) {
-  const w = (side) => (cabinet.sideBlends?.[side]?.type === 'filler' ? cabinet.sideBlends[side].width : 0);
+export function frontSpan(cabinet, project) {
+  const w = (side) => sideBlendWidth(cabinet, side, project);
   return [cabinet.x - w('left'), cabinet.x + cabinet.width + w('right')];
+}
+
+// Szerokość blendy bocznej (0, gdy po tej stronie nie ma blendy). Ręczna — albo automatyczna:
+// wypełnia wolne miejsce od boku korpusu do ściany / sąsiedniego mebla / przeszkody,
+// pomniejszone o panel przy ścianie. Gdy po tej stronie nie ma ściany ani sąsiada — DEFAULT_FILLER_WIDTH.
+export const DEFAULT_FILLER_WIDTH = 50;
+export const DEFAULT_WALL_PANEL_DEPTH = 60;
+export function sideBlendWidth(cabinet, side, project) {
+  const sb = cabinet.sideBlends?.[side];
+  if (sb?.type !== 'filler') return 0;
+  if (sb.width != null) return sb.width;
+  const gap = sideGap(cabinet, side, project);
+  if (gap == null) return DEFAULT_FILLER_WIDTH;
+  const mats = cabinetMaterials(cabinet, project);
+  const key = side === 'left' ? 'wallPanelLeft' : 'wallPanelRight';
+  const panel = sb.wallPanel ? (cabinet.panelOverrides?.[key]?.sx ?? mats.blend.thickness) : 0;
+  return gap - panel;
+}
+
+// Wolne miejsce od boku korpusu do najbliższej przeszkody po danej stronie (w pasie frontu,
+// na wysokości korpusu) albo null, gdy nic tam nie ma. Sąsiednie meble liczymy z ich panelami
+// bocznymi, ale bez ich blend bocznych (żeby dwie automatyczne blendy nie zależały od siebie).
+function sideGap(cabinet, side, project) {
+  if (!project) return null;
+  const { space } = project;
+  const L = legHeight(cabinet);
+  const t = cabinetMaterials(cabinet, project).blend.thickness;
+  const zFront = cabinet.z + cabinet.depth + sidePanelExtension(cabinet, side, project);
+  const y0 = cabinet.y + L;
+  const y1 = y0 + cabinet.height;
+  const inBand = (o) => o.y < y1 && o.y + o.height > y0 && o.z < zFront && o.z + o.depth > zFront - t;
+
+  const neighbour = (c) => {
+    const panel = (s) => (c.sideBlends?.[s]?.type === 'full' ? cabinetMaterials(c, project).blend.thickness : 0);
+    const x = c.x - panel('left');
+    const ext = Math.max(sidePanelExtension(c, 'left', project), sidePanelExtension(c, 'right', project));
+    return { x, y: c.y, z: c.z, width: c.width + panel('left') + panel('right'), height: legHeight(c) + c.height, depth: c.depth + ext };
+  };
+  const others = [
+    ...project.furniture.filter((c) => c.id !== cabinet.id).map(neighbour),
+    ...space.obstacles,
+  ].filter(inBand);
+
+  if (side === 'left') {
+    let limit = space.walls.left ? 0 : null;
+    for (const o of others) {
+      if (o.x + o.width <= cabinet.x + 0.01) limit = Math.max(limit ?? -Infinity, o.x + o.width);
+    }
+    return limit == null ? null : cabinet.x - limit;
+  }
+  let limit = space.walls.right ? space.width : null;
+  for (const o of others) {
+    if (o.x >= cabinet.x + cabinet.width - 0.01) limit = Math.min(limit ?? Infinity, o.x);
+  }
+  return limit == null ? null : limit - (cabinet.x + cabinet.width);
 }
 
 // Zapas na docięcie listwy przy ścianie po danej stronie korpusu (0, gdy nie ma listwy).
@@ -341,7 +410,7 @@ export function cabinetPanels(cabinet, project) {
   const wallPanelKey = { left: 'wallPanelLeft', right: 'wallPanelRight' };
   const thicknessAxis = {}; // dla elementów, w których oś grubości zależy od wariantu
   const allowance = {}; // zapas na docięcie wzdłuż osi X: { min, max } (tylko do formatki i podglądu)
-  const fillerWidth = (side) => (blends[side]?.type === 'filler' ? blends[side].width : 0);
+  const fillerWidth = (side) => sideBlendWidth(cabinet, side, project);
   // Panele boczne sięgają od podłogi do góry korpusu.
   const fullHeight = L + H;
 
@@ -354,7 +423,10 @@ export function cabinetPanels(cabinet, project) {
       base[key] = [side === 'left' ? 0 : W - t, 0, 0, t, ctx.plinthHeight ?? L, ctx.plinthBack ?? D];
     } else if (type === 'full') {
       const t = thickAt(key, 'x', mats.blend.thickness);
-      base[key] = [side === 'left' ? -t : W, 0, 0, t, fullHeight, D + sidePanelExtension(cabinet, side, project)];
+      // Może być skrócony od tyłu — przednia krawędź zostaje na linii frontu.
+      const fullDepth = D + sidePanelExtension(cabinet, side, project);
+      const pd = Math.min(blends[side].fullPanelDepth ?? fullDepth, fullDepth);
+      base[key] = [side === 'left' ? -t : W, 0, fullDepth - pd, t, fullHeight, pd];
     } else if (type === 'filler') {
       // Listwa: przednia krawędź na linii frontu korpusu, albo wysunięta (do linii frontu / ręcznie).
       const t = thickAt(key, 'z', mats.blend.thickness);
@@ -369,7 +441,10 @@ export function cabinetPanels(cabinet, project) {
       if (blends[side].wallPanel) {
         const pk = wallPanelKey[side];
         const tp = thickAt(pk, 'x', mats.blend.thickness);
-        base[pk] = [side === 'left' ? -w - tp : W + w, 0, 0, tp, fullHeight, D + ext];
+        // Skrócony od tyłu — przednia krawędź zostaje na linii frontu (D + ext).
+        const fullDepth = D + ext;
+        const pd = Math.min(blends[side].wallPanelDepth ?? fullDepth, fullDepth);
+        base[pk] = [side === 'left' ? -w - tp : W + w, 0, fullDepth - pd, tp, fullHeight, pd];
       }
     }
   }
@@ -443,6 +518,10 @@ function linkedTarget(panel, axis, cabinet) {
   }
   if (axis === 'z' && (panel.key === 'railFront' || panel.key === 'railBack')) return 'railWidth';
   if (axis === 'y' && panel.blendType === 'plinth') return 'legs.height';
+  if (axis === 'z' && panel.blendType === 'full') return `sideBlends.${panel.side}.fullPanelDepth`;
+  if (axis === 'z' && (panel.key === 'wallPanelLeft' || panel.key === 'wallPanelRight')) {
+    return `sideBlends.${BLEND_SIDE[panel.key]}.wallPanelDepth`;
+  }
   if (axis === 'x' && panel.blendType === 'filler') return `sideBlends.${panel.side}.width`;
   return AXIS_PROP[axis];
 }
@@ -463,7 +542,7 @@ export function resizePanelLinked(cabinet, key, axis, value, project) {
   const panel = cabinetPanels(cabinet, project).find((p) => p.key === key);
   if (!panel) return null;
   const path = linkedTarget(panel, axis, cabinet);
-  const next = getPath(cabinet, path) + (value - panel[AXIS_PROP[axis]]);
+  const next = (getPath(cabinet, path) ?? panel[AXIS_PROP[axis]]) + (value - panel[AXIS_PROP[axis]]);
   const [min, max] = LINKED_LIMITS[path] ?? (path.startsWith('stiffeners.') ? [1, CABINET_LIMITS.sizeMax] : [CABINET_LIMITS.sizeMin, CABINET_LIMITS.sizeMax]);
   if (next < min || next > max) return null;
   return setPath(cabinet, path, next);
@@ -555,7 +634,15 @@ export function cabinetIssues(cabinet, project) {
   const issues = [];
   const panels = cabinetPanels(cabinet, project);
 
-  const invalid = panels.filter((p) => !p.valid).map((p) => p.name);
+  // Blenda boczna automatyczna bez miejsca (korpus stoi przy ścianie / sąsiedzie) — osobny komunikat.
+  const noRoom = ['left', 'right'].filter(
+    (side) => cabinet.sideBlends?.[side]?.type === 'filler' && sideBlendWidth(cabinet, side, project) <= 0,
+  );
+  for (const side of noRoom) {
+    issues.push(`Brak miejsca na blendę boczną ${side === 'left' ? 'lewą' : 'prawą'} — korpus stoi przy ścianie lub sąsiednim elemencie.`);
+  }
+  const noRoomKeys = noRoom.map((s) => (s === 'left' ? 'blendLeft' : 'blendRight'));
+  const invalid = panels.filter((p) => !p.valid && !noRoomKeys.includes(p.key)).map((p) => p.name);
   if (invalid.length) issues.push(`Za mały korpus albo za grube płyty: ${invalid.join(', ')}.`);
 
   const valid = panels.filter((p) => p.valid);
@@ -636,8 +723,11 @@ export function normalizeCabinet(raw = {}) {
 
   const sideBlend = (src = {}, d) => ({
     type: SIDE_BLEND_TYPES.some((t) => t.key === src.type) ? src.type : d.type,
-    width: num(src.width, d.width, 1, sizeMax),
+    width: src.width == null ? null : num(src.width, DEFAULT_FILLER_WIDTH, 1, sizeMax),
     wallPanel: src.wallPanel === true,
+    // starsze projekty nie miały tego pola — ich panele zostają pełnej głębokości
+    wallPanelDepth: src.wallPanelDepth == null ? null : num(src.wallPanelDepth, DEFAULT_WALL_PANEL_DEPTH, 1, sizeMax),
+    fullPanelDepth: src.fullPanelDepth == null ? null : num(src.fullPanelDepth, 1, 1, sizeMax),
     flushFront: src.flushFront === true,
     extend: num(src.extend, 0, 0, 500),
     allowance: num(src.allowance, 0, 0, 500),

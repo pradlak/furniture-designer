@@ -313,6 +313,13 @@ export function createTrimsPanel(root, store, ui) {
       updateTrim(autoTrimId, (t) => ({ ...t, [autoKey]: null }));
       return;
     }
+    // Wyczyszczona szerokość blendy bocznej wraca do automatycznej.
+    const sideCabinet = input.closest('[data-kind="side-blends"]')?.dataset.id;
+    if (sideCabinet && input.closest('[data-side-auto]') && input.value.trim() === '') {
+      input.classList.remove('invalid');
+      updateCabinet(sideCabinet, (c) => setPath(c, input.dataset.f, null));
+      return;
+    }
     if (commitEmptyAsZero(input)) return;
     if (!input.classList.contains('invalid') && input.value.trim() !== '') return;
     input.classList.remove('invalid');
@@ -330,7 +337,11 @@ export function createTrimsPanel(root, store, ui) {
     const data = e.target.dataset ?? {};
     const id = e.target.closest('[data-kind="trim"]')?.dataset.id;
     const cabinetId = e.target.closest('[data-kind="side-blends"]')?.dataset.id;
-    if (data.toggleSideHidden && cabinetId) {
+    if (data.resetSideField && data.side && cabinetId) {
+      updateCabinet(cabinetId, (c) => setPath(c, `sideBlends.${data.side}.${data.resetSideField}`, null));
+    } else if (data.resetSideWidth && cabinetId) {
+      updateCabinet(cabinetId, (c) => setPath(c, `sideBlends.${data.resetSideWidth}.width`, null));
+    } else if (data.toggleSideHidden && cabinetId) {
       const side = data.toggleSideHidden;
       updateCabinet(cabinetId, (c) => setPath(c, `sideBlends.${side}.hidden`, !c.sideBlends?.[side]?.hidden));
     } else if (data.addTrim) {

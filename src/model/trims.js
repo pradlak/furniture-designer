@@ -78,8 +78,8 @@ export function rowOf(cabinetId, project) {
       if (row.has(c.id)) continue;
       const touches = project.furniture.some((r) => {
         if (!row.has(r.id)) return false;
-        const [rl, rr] = frontSpan(r);
-        const [cl, cr] = frontSpan(c);
+        const [rl, rr] = frontSpan(r, project);
+        const [cl, cr] = frontSpan(c, project);
         // stykają się frontami (z listwami) albo obrysami (np. z panelem bocznym między nimi)
         const br = cabinetBounds(r, project);
         const bc = cabinetBounds(c, project);
@@ -111,8 +111,9 @@ export function trimAllowanceParts(trim, project) {
   if (trim.type !== 'plinth') return none;
   const cabs = trimCabinets(trim, project);
   if (!cabs.length) return none;
-  const leftmost = cabs.reduce((a, c) => (frontSpan(c)[0] < frontSpan(a)[0] ? c : a));
-  const rightmost = cabs.reduce((a, c) => (frontSpan(c)[1] > frontSpan(a)[1] ? c : a));
+  const span = (c) => frontSpan(c, project);
+  const leftmost = cabs.reduce((a, c) => (span(c)[0] < span(a)[0] ? c : a));
+  const rightmost = cabs.reduce((a, c) => (span(c)[1] > span(a)[1] ? c : a));
   const side = (cabinet, s, own) =>
     [
       { source: `blenda boczna ${cabinet.name}`, value: fillerAllowance(cabinet, s) },
@@ -125,7 +126,7 @@ export function trimAllowanceParts(trim, project) {
 export function trimBox(trim, project) {
   const cabs = trimCabinets(trim, project);
   if (!cabs.length) return null;
-  const spans = cabs.map(frontSpan);
+  const spans = cabs.map((c) => frontSpan(c, project));
   const x = Math.min(...spans.map((s) => s[0]));
   const width = Math.max(...spans.map((s) => s[1])) - x;
   const front = trimFront(trim, project);

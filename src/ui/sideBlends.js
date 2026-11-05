@@ -1,5 +1,5 @@
-import { SIDE_BLEND_TYPES, CABINET_LIMITS, sidePanelExtension, getPath } from '../model/furniture.js';
-import { escapeHtml, setIfNotFocused } from './dom.js';
+import { SIDE_BLEND_TYPES, CABINET_LIMITS, sidePanelExtension, sideBlendWidth, getPath } from '../model/furniture.js';
+import { escapeHtml, setIfNotFocused, round1 } from './dom.js';
 import { setEye } from './widgets.js';
 
 // Blendy boczne korpusu (lewa i prawa): blenda boczna (przy ścianie), panel na pełną wysokość, cokół boczny.
@@ -19,6 +19,27 @@ export function sideBlendSummary(cabinet) {
     .join(' · ');
 }
 
+// Głębokość panelu (przy ścianie / na pełną wysokość) — skracanie od tyłu; puste = pełna głębokość.
+function panelDepthField(side, field, cls, title) {
+  return `
+    <label class="field small ${cls}" data-side-auto="${field}" title="${title}">
+      <span>Głębokość panelu <small class="auto-tag">pełna</small>
+        <button type="button" class="icon tiny" data-reset-side-field="${field}" data-side="${side}" title="Pełna głębokość korpusu">↺</button>
+      </span>
+      <input type="number" step="1" min="1" max="${CABINET_LIMITS.sizeMax}" data-f="sideBlends.${side}.${field}" />
+    </label>`;
+}
+
+// Odświeża pole głębokości panelu: widoczność, znacznik „pełna” i wyliczoną pełną głębokość.
+function updatePanelDepth(label, visible, value, fullDepth) {
+  label.hidden = !visible;
+  const isFull = value == null;
+  label.querySelector('.auto-tag').hidden = !isFull;
+  label.querySelector('[data-reset-side-field]').hidden = isFull;
+  const input = label.querySelector('input');
+  if (isFull && !input.classList.contains('invalid')) setIfNotFocused(input, round1(fullDepth));
+}
+
 // Jedna strona. Widoczne są tylko opcje pasujące do wariantu (patrz updateSideBlendCard).
 function sideFields(side) {
   return `
@@ -33,13 +54,16 @@ function sideFields(side) {
         <button type="button" class="icon eye" data-toggle-side-hidden="${side}">👁</button>
       </div>
       <div class="grid-2 filler-opts">
-        <label class="field small">
-          <span>Szerokość blendy <small>mm</small></span>
+        <label class="field small" data-side-auto="width">
+          <span>Szerokość blendy <small class="auto-tag">auto</small>
+            <button type="button" class="icon tiny" data-reset-side-width="${side}" title="Automatycznie: wypełnia miejsce do ściany / sąsiada (minus panel przy ścianie)">↺</button>
+          </span>
           <input type="number" step="1" min="1" max="${CABINET_LIMITS.sizeMax}" data-f="sideBlends.${side}.width" />
         </label>
         <label class="check small" title="Panel na pełną wysokość za blendą boczną, przylegający do ściany">
           <input type="checkbox" data-f="sideBlends.${side}.wallPanel" /> + panel przy ścianie
         </label>
+        ${panelDepthField(side, 'wallPanelDepth', 'wall-panel-depth', 'Panel jest widoczny głównie z przodu — można go skrócić od tyłu (oszczędność materiału)')}
         <label class="field small allowance-field" title="Blenda boczna dłuższa o zapas w stronę ściany — do docięcia na miejscu. Blenda dolna wydłuża się razem z nią. Zapas nie powoduje kolizji.">
           <span>Zapas na docięcie <small>mm</small></span>
           <input type="number" step="1" min="0" max="500" data-f="sideBlends.${side}.allowance" />
@@ -53,6 +77,7 @@ function sideFields(side) {
           <span>Wysunięcie <small>mm</small></span>
           <input type="number" step="1" min="0" max="500" data-f="sideBlends.${side}.extend" />
         </label>
+        ${panelDepthField(side, 'fullPanelDepth', 'full-panel-depth', 'Panel można skrócić od tyłu, jeśli jego tylna część jest niewidoczna')}
       </div>
     </div>`;
 }
@@ -85,10 +110,21 @@ export function updateSideBlendCard(el, cabinet, project) {
     const isFiller = sb?.type === 'filler';
     const canExtend = sb?.type === 'full' || isFiller;
     box.querySelector('.filler-opts').hidden = !isFiller;
+    // Głębokość paneli: przy ścianie (gdy jest) i na pełną wysokość; „pełna” = głębokość korpusu + wysunięcie.
+    const fullDepth = cabinet.depth + sidePanelExtension(cabinet, side, project);
+    updatePanelDepth(box.querySelector('.wall-panel-depth'), isFiller && sb?.wallPanel, sb?.wallPanelDepth, fullDepth);
+    updatePanelDepth(box.querySelector('.full-panel-depth'), sb?.type === 'full', sb?.fullPanelDepth, fullDepth);
     box.querySelector('.panel-opts').hidden = !canExtend;
     const extend = box.querySelector(`[data-f="sideBlends.${side}.extend"]`);
     extend.disabled = !!sb?.flushFront;
     if (canExtend && sb.flushFront) extend.value = sidePanelExtension(cabinet, side, project); // wartość wyliczona
+    // Szerokość: dla automatycznej pokazujemy wartość wyliczoną.
+    const widthInput = box.querySelector(`[data-f="sideBlends.${side}.width"]`);
+    const isAuto = sb?.width == null;
+    if (isAuto && !widthInput.classList.contains('invalid')) setIfNotFocused(widthInput, round1(sideBlendWidth(cabinet, side, project)));
+    box.querySelector('[data-side-auto="width"] .auto-tag').hidden = !isAuto;
+    box.querySelector('[data-reset-side-width]').hidden = isAuto;
+
     const eye = box.querySelector('[data-toggle-side-hidden]');
     eye.hidden = !sb || sb.type === 'none';
     setEye(eye, sb?.hidden, 'blendę');
