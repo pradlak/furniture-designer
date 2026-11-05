@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { MM, toScene } from './units.js';
 import { cabinetPanels, cabinetIssues, cabinetLegs } from '../model/furniture.js';
+import { trimBox, trimIssues } from '../model/trims.js';
 
 const LEG_COLOR = '#3f3f46';
 
@@ -37,7 +38,7 @@ export function buildFurniture(project, selectedId = null) {
     const cabinetGroup = new THREE.Group();
     cabinetGroup.name = cabinet.name;
     cabinetGroup.userData.cabinetId = cabinet.id; // do wybierania myszką
-    for (const p of cabinetPanels(cabinet).filter((p) => p.valid)) {
+    for (const p of cabinetPanels(cabinet, project).filter((p) => p.valid)) {
       const geometry = new THREE.BoxGeometry(p.width * MM, p.height * MM, p.depth * MM);
       const mesh = new THREE.Mesh(geometry, p.kind === 'hdf' ? hdfMat : boardMat);
       mesh.position.set(...toScene(p.x + p.width / 2, p.y + p.height / 2, p.z + p.depth / 2, project.space));
@@ -45,7 +46,7 @@ export function buildFurniture(project, selectedId = null) {
       cabinetGroup.add(mesh);
     }
 
-    const legs = cabinetLegs(cabinet);
+    const legs = cabinetLegs(cabinet, project);
     if (legs.length) {
       const legMat = new THREE.MeshLambertMaterial({ color: LEG_COLOR });
       disposables.push(legMat);
@@ -57,6 +58,21 @@ export function buildFurniture(project, selectedId = null) {
       }
     }
     group.add(cabinetGroup);
+  }
+
+  // Blendy wspólne (blenda dolna, blenda górna) — w kolorze pierwszego objętego korpusu.
+  for (const trim of project.trims ?? []) {
+    const box = trimBox(trim, project);
+    if (!box || box.height <= 0) continue;
+    const first = project.furniture.find((c) => c.id === trim.cabinetIds[0]);
+    const mat = boardMaterial(first?.color ?? '#d2b48c');
+    const edgeMat = new THREE.LineBasicMaterial({ color: trimIssues(trim, project).length ? EDGE_BAD : EDGE_OK });
+    disposables.push(mat, edgeMat);
+    const geometry = new THREE.BoxGeometry(box.width * MM, box.height * MM, box.depth * MM);
+    const mesh = new THREE.Mesh(geometry, mat);
+    mesh.position.set(...toScene(box.x + box.width / 2, box.y + box.height / 2, box.z + box.depth / 2, project.space));
+    mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geometry), edgeMat));
+    group.add(mesh);
   }
   return group;
 }

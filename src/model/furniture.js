@@ -56,7 +56,6 @@ export const PANEL_DEFS = [
   { key: 'bottom', name: 'Wieniec dolny', thicknessAxis: 'y' },
   { key: 'top', name: 'Wieniec górny', thicknessAxis: 'y' },
   { key: 'back', name: 'Plecy', thicknessAxis: 'z' },
-  { key: 'plinth', name: 'Blenda dolna', thicknessAxis: 'z' },
   { key: 'blendLeft', name: 'Blenda lewa', thicknessAxis: 'x' },
   { key: 'blendRight', name: 'Blenda prawa', thicknessAxis: 'x' },
   { key: 'wallPanelLeft', name: 'Panel lewy (przy ścianie)', thicknessAxis: 'x' },
@@ -76,12 +75,24 @@ export const CABINET_LIMITS = { sizeMin: 50, sizeMax: LIMITS.spaceMax };
 export function defaultAccessories() {
   return {
     legs: { enabled: false, height: 100 },
-    plinth: { enabled: false, setback: 20 },
     sideBlends: {
-      left: { type: 'none', width: 50, wallPanel: false },
-      right: { type: 'none', width: 50, wallPanel: false },
+      left: { ...defaultSideBlend() },
+      right: { ...defaultSideBlend() },
     },
   };
+}
+
+// flushFront — panel boczny / listwa wysunięte do linii frontu (o grubość blendy górnej / frontu),
+// extend     — ręczne wysunięcie do przodu, gdy flushFront jest wyłączone.
+function defaultSideBlend() {
+  return { type: 'none', width: 50, wallPanel: false, flushFront: false, extend: 0 };
+}
+
+// O ile panel boczny danej strony wystaje przed korpus.
+export function sidePanelExtension(cabinet, side, project) {
+  const sb = cabinet.sideBlends?.[side];
+  if (!sb) return 0;
+  return sb.flushFront ? cabinetContext(cabinet, project).frontThickness : sb.extend;
 }
 
 export function createCabinet(project, overrides = {}) {
@@ -116,6 +127,50 @@ export function createCabinet(project, overrides = {}) {
 
 export const legHeight = (cabinet) => (cabinet.legs?.enabled ? cabinet.legs.height : 0);
 
+// --- blendy wspólne (blenda dolna, blenda górna) — patrz model/trims.js ---
+// Tu tylko to, czego potrzebuje sam korpus, żeby się do nich dopasować.
+
+export const trimCabinets = (trim, project) =>
+  project.furniture.filter((c) => trim.cabinetIds.includes(c.id));
+
+// Linia frontu blendy: najbardziej wysunięty front objętych korpusów.
+export const trimFront = (trim, project) =>
+  Math.max(...trimCabinets(trim, project).map((c) => c.z + c.depth));
+
+// Wysokość blendy dolnej: ręczna (trim.height) albo automatyczna — nóżki − szczelina,
+// a gdy objęte korpusy nie mają nóżek — PLINTH_DEFAULT_HEIGHT.
+export const PLINTH_DEFAULT_HEIGHT = 80;
+export function plinthHeight(trim, project) {
+  if (trim.height != null) return trim.height;
+  const cabs = trimCabinets(trim, project);
+  const L = cabs.length ? Math.min(...cabs.map(legHeight)) : 0;
+  return L > 0 ? L - trim.gap : PLINTH_DEFAULT_HEIGHT;
+}
+
+// Szerokość pasów frontu przy bokach korpusu (listwy przy ścianie) — blendy i cokoły je obejmują.
+export function frontSpan(cabinet) {
+  const w = (side) => (cabinet.sideBlends?.[side]?.type === 'filler' ? cabinet.sideBlends[side].width : 0);
+  return [cabinet.x - w('left'), cabinet.x + cabinet.width + w('right')];
+}
+
+// Jak blendy wspólne wpływają na korpus:
+//  plinthBack   — tylna krawędź blendy dolnej (względem korpusu): do niej sięgają cokoły boczne,
+//                 a przednie nóżki stoją za nią,
+//  plinthHeight — wysokość blendy dolnej (cokół boczny ma taką samą).
+export function cabinetContext(cabinet, project) {
+  const trims = project?.trims ?? [];
+  const plinth = trims.find((t) => t.type === 'plinth' && t.cabinetIds.includes(cabinet.id));
+  const L = legHeight(cabinet);
+  // Grubość warstwy frontu: blenda górna, jeśli obejmuje korpus; inaczej zakładamy front z płyty korpusu.
+  const topBlend = trims.find((t) => t.type === 'topBlend' && t.cabinetIds.includes(cabinet.id));
+  const ctx = { plinthBack: null, plinthHeight: null, frontThickness: topBlend?.thickness ?? cabinet.thickness };
+  if (plinth && L > 0) {
+    ctx.plinthBack = trimFront(plinth, project) - plinth.setback - plinth.thickness - cabinet.z;
+    ctx.plinthHeight = plinthHeight(plinth, project);
+  }
+  return ctx;
+}
+
 // Największa wysokość, jaką może mieć bryła o podstawie (x, z, w, d) stojąca na wysokości y0,
 // żeby nie wyjść ponad sufit ani przez skosy.
 export function maxHeightAt(space, x, z, w, d, y0 = 0) {
@@ -129,9 +184,10 @@ export function maxHeightAt(space, x, z, w, d, y0 = 0) {
 
 // Wypełnia całą wnękę razem z blendami bocznymi; wysokość korpusu obniżona o nóżki
 // i tak, żeby mebel zmieścił się pod skosami.
-export function fitCabinetToSpace(cabinet, space) {
+export function fitCabinetToSpace(cabinet, project) {
+  const { space } = project;
   // Ile elementy (np. panele boczne, listwy) wystają poza korpus z każdej strony.
-  const b = cabinetBounds(cabinet);
+  const b = cabinetBounds(cabinet, project);
   const extraL = cabinet.x - b.x;
   const extraR = b.x + b.width - (cabinet.x + cabinet.width);
   const extraBack = cabinet.z - b.z;
@@ -152,11 +208,14 @@ export function fitCabinetToSpace(cabinet, space) {
 // Rozkład mebla na płyty. Każda płyta: prostopadłościan w układzie przestrzeni.
 //  - boki i wieńce łączone zgodnie z bottomJoint / topJoint (patrz JOINT_TYPES),
 //  - plecy: HDF nakładany z tyłu na cały korpus albo płyta wpuszczona między boki i wieńce,
-//  - blenda dolna (przed nóżkami) i blendy boczne (patrz SIDE_BLEND_TYPES).
+//  - blendy boczne (patrz SIDE_BLEND_TYPES), dopasowane do blendy dolnej
+//    obejmujących korpus (te są osobnymi elementami projektu — model/trims.js).
 // Grubość każdego elementu może być zmieniona ręcznie — sąsiednie elementy się do niej dopasowują.
 // Pozostałe ręczne zmiany (wymiary, przesunięcia) nakładane są na końcu.
-export function cabinetPanels(cabinet) {
+// `project` jest potrzebny tylko do dopasowania do blend wspólnych (może go nie być).
+export function cabinetPanels(cabinet, project) {
   const { width: W, height: H, depth: D, backType } = cabinet;
+  const ctx = cabinetContext(cabinet, project);
   const ov = cabinet.panelOverrides ?? {};
   const thickAt = (key, axis, fallback = cabinet.thickness) => ov[key]?.[`s${axis}`] ?? fallback;
   const thick = (key, fallback) => thickAt(key, PANEL_DEFS.find((p) => p.key === key).thicknessAxis, fallback);
@@ -203,38 +262,32 @@ export function cabinetPanels(cabinet) {
   const wallPanelKey = { left: 'wallPanelLeft', right: 'wallPanelRight' };
   const thicknessAxis = {}; // dla elementów, w których oś grubości zależy od wariantu
   const fillerWidth = (side) => (blends[side]?.type === 'filler' ? blends[side].width : 0);
-  const wL = fillerWidth('left');
-  const wR = fillerWidth('right');
-
-  // Blenda dolna — przed nóżkami, na całą szerokość (razem z listwami przy ścianie).
-  let plinthBack = D; // tylna krawędź blendy dolnej (do niej sięgają cokoły boczne)
-  if (L > 0 && cabinet.plinth?.enabled) {
-    const tP = thick('plinth');
-    const front = D - cabinet.plinth.setback;
-    plinthBack = front - tP;
-    base.plinth = [-wL, 0, plinthBack, W + wL + wR, L, tP];
-  }
+  // Panele boczne sięgają od podłogi do góry korpusu.
+  const fullHeight = L + H;
 
   for (const side of ['left', 'right']) {
     const key = blendKey[side];
     const type = blends[side]?.type;
     if (type === 'plinth' && L > 0) {
+      // Cokół boczny: tej samej wysokości co blenda dolna, sięga do jej tylnej krawędzi.
       const t = thickAt(key, 'x');
-      base[key] = [side === 'left' ? 0 : W - t, 0, 0, t, L, plinthBack];
+      base[key] = [side === 'left' ? 0 : W - t, 0, 0, t, ctx.plinthHeight ?? L, ctx.plinthBack ?? D];
     } else if (type === 'full') {
       const t = thickAt(key, 'x');
-      base[key] = [side === 'left' ? -t : W, 0, 0, t, L + H, D];
+      base[key] = [side === 'left' ? -t : W, 0, 0, t, fullHeight, D + sidePanelExtension(cabinet, side, project)];
     } else if (type === 'filler') {
+      // Listwa: przednia krawędź na linii frontu korpusu, albo wysunięta (do linii frontu / ręcznie).
       const t = thickAt(key, 'z');
       const w = fillerWidth(side);
+      const ext = sidePanelExtension(cabinet, side, project);
       thicknessAxis[key] = 'z';
-      base[key] = [side === 'left' ? -w : W, L, D - t, w, H, t];
+      base[key] = [side === 'left' ? -w : W, L, D + ext - t, w, H, t];
 
-      // Panel przy ścianie — za listwą, od podłogi do góry, na całą głębokość.
+      // Panel przy ścianie — za listwą, od podłogi do góry, na całą głębokość (wysunięty razem z listwą).
       if (blends[side].wallPanel) {
         const pk = wallPanelKey[side];
         const tp = thickAt(pk, 'x');
-        base[pk] = [side === 'left' ? -w - tp : W + w, 0, 0, tp, L + H, D];
+        base[pk] = [side === 'left' ? -w - tp : W + w, 0, 0, tp, fullHeight, D + ext];
       }
     }
   }
@@ -273,12 +326,11 @@ export function cabinetPanels(cabinet) {
 
 // Nóżki: 4 w narożnikach (oś LEG_INSET mm od krawędzi), przy szerokich korpusach dodatkowa para
 // pośrodku. Przednie nóżki stoją za blendą dolną.
-export function cabinetLegs(cabinet) {
+export function cabinetLegs(cabinet, project) {
   const L = legHeight(cabinet);
   if (!L) return [];
   const { width: W, depth: D } = cabinet;
-  const plinth = cabinetPanels(cabinet).find((p) => p.key === 'plinth');
-  const frontLimit = plinth ? plinth.z - cabinet.z : D;
+  const frontLimit = Math.min(D, cabinetContext(cabinet, project).plinthBack ?? D);
 
   const xs = W > 1000 ? [LEG_INSET, W / 2, W - LEG_INSET] : [LEG_INSET, W - LEG_INSET];
   const zBack = LEG_INSET;
@@ -292,7 +344,7 @@ export function cabinetLegs(cabinet) {
 
 // Ścieżka w obiekcie korpusu, której dotyczy zmiana wymiaru powiązanego elementu w danej osi.
 function linkedTarget(panel, axis) {
-  if (axis === 'y' && (panel.key === 'plinth' || panel.blendType === 'plinth')) return 'legs.height';
+  if (axis === 'y' && panel.blendType === 'plinth') return 'legs.height';
   if (axis === 'x' && panel.blendType === 'filler') return `sideBlends.${panel.side}.width`;
   return AXIS_PROP[axis];
 }
@@ -306,10 +358,10 @@ const LINKED_LIMITS = {
 // Zmiana wymiaru elementu powiązanego (oś inna niż grubość) przekłada się na wymiar korpusu
 // (albo wysokość nóżek / szerokość listwy), dzięki czemu pozostałe elementy dopasowują się same.
 // Np. szerokość boku (Z) → głębokość korpusu, długość wieńca (X) → szerokość korpusu,
-// wysokość blendy dolnej (Y) → wysokość nóżek.
+// wysokość cokołu bocznego (Y) → wysokość nóżek.
 // Zwraca nowy korpus albo null, jeśli wartość wyszłaby poza dozwolony zakres.
-export function resizePanelLinked(cabinet, key, axis, value) {
-  const panel = cabinetPanels(cabinet).find((p) => p.key === key);
+export function resizePanelLinked(cabinet, key, axis, value, project) {
+  const panel = cabinetPanels(cabinet, project).find((p) => p.key === key);
   if (!panel) return null;
   const path = linkedTarget(panel, axis);
   const next = getPath(cabinet, path) + (value - panel[AXIS_PROP[axis]]);
@@ -335,10 +387,10 @@ export function panelCutSize(panel) {
 }
 
 // Prostopadłościan obejmujący wszystkie płyty i nóżki mebla.
-export function cabinetBounds(cabinet) {
+export function cabinetBounds(cabinet, project) {
   const boxes = [
-    ...cabinetPanels(cabinet).filter((p) => p.valid),
-    ...cabinetLegs(cabinet).map((l) => ({
+    ...cabinetPanels(cabinet, project).filter((p) => p.valid),
+    ...cabinetLegs(cabinet, project).map((l) => ({
       x: l.x - l.diameter / 2,
       y: l.y,
       z: l.z - l.diameter / 2,
@@ -367,7 +419,7 @@ export function cabinetBounds(cabinet) {
 export function cabinetIssues(cabinet, project) {
   const { space, furniture } = project;
   const issues = [];
-  const panels = cabinetPanels(cabinet);
+  const panels = cabinetPanels(cabinet, project);
 
   const invalid = panels.filter((p) => !p.valid).map((p) => p.name);
   if (invalid.length) issues.push(`Za mały korpus albo za grube płyty: ${invalid.join(', ')}.`);
@@ -379,7 +431,7 @@ export function cabinetIssues(cabinet, project) {
       if (boxesOverlap(valid[i], valid[j])) overlapping.push(`${valid[i].name} i ${valid[j].name}`);
   if (overlapping.length) issues.push(`Elementy nachodzą na siebie: ${overlapping.join('; ')}.`);
 
-  const bounds = cabinetBounds(cabinet);
+  const bounds = cabinetBounds(cabinet, project);
   if (!boxCorners(bounds).every((p) => isPointInside(p, space))) {
     issues.push(
       slopePlanes(space).length
@@ -391,14 +443,14 @@ export function cabinetIssues(cabinet, project) {
   if (hitObstacles.length) issues.push(`Koliduje z: ${hitObstacles.join(', ')}.`);
 
   const hitCabinets = furniture
-    .filter((c) => c.id !== cabinet.id && boxesOverlap(bounds, cabinetBounds(c)))
+    .filter((c) => c.id !== cabinet.id && boxesOverlap(bounds, cabinetBounds(c, project)))
     .map((c) => c.name || 'mebel');
   if (hitCabinets.length) issues.push(`Nachodzi na: ${hitCabinets.join(', ')}.`);
 
   return issues;
 }
 
-function boxCorners(b) {
+export function boxCorners(b) {
   const pts = [];
   for (const x of [b.x, b.x + b.width])
     for (const y of [b.y, b.y + b.height]) for (const z of [b.z, b.z + b.depth]) pts.push([x, y, z]);
@@ -406,7 +458,7 @@ function boxCorners(b) {
 }
 
 // Prawdziwe nachodzenie (samo stykanie się ścianami nie jest kolizją).
-function boxesOverlap(a, b, eps = 0.01) {
+export function boxesOverlap(a, b, eps = 0.01) {
   return (
     a.x < b.x + b.width - eps &&
     b.x < a.x + a.width - eps &&
@@ -441,6 +493,8 @@ export function normalizeCabinet(raw = {}) {
     type: SIDE_BLEND_TYPES.some((t) => t.key === src.type) ? src.type : d.type,
     width: num(src.width, d.width, 1, sizeMax),
     wallPanel: src.wallPanel === true,
+    flushFront: src.flushFront === true,
+    extend: num(src.extend, 0, 0, 500),
   });
 
   return {
@@ -460,10 +514,6 @@ export function normalizeCabinet(raw = {}) {
     legs: {
       enabled: raw.legs?.enabled === true,
       height: num(raw.legs?.height, def.legs.height, LEG_LIMITS.min, LEG_LIMITS.max),
-    },
-    plinth: {
-      enabled: raw.plinth?.enabled === true,
-      setback: num(raw.plinth?.setback, def.plinth.setback, 0, sizeMax),
     },
     sideBlends: {
       left: sideBlend(raw.sideBlends?.left, def.sideBlends.left),

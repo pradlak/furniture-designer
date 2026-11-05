@@ -11,7 +11,7 @@ const spaceSize = (space, axis) => space[DIM[axis]];
 // Inne meble i przeszkody jako prostopadłościany.
 function otherBoxes(project, cabinetId) {
   return [
-    ...project.furniture.filter((c) => c.id !== cabinetId).map(cabinetBounds),
+    ...project.furniture.filter((c) => c.id !== cabinetId).map((c) => cabinetBounds(c, project)),
     ...project.space.obstacles,
   ];
 }
@@ -20,7 +20,7 @@ function otherBoxes(project, cabinetId) {
 // i krawędzi innych mebli / przeszkód, jeśli krawędź jest bliżej niż `threshold` mm.
 export function snapPosition(project, cabinetId, pos, axes, threshold = 30) {
   const cabinet = project.furniture.find((c) => c.id === cabinetId);
-  const b = cabinetBounds(cabinet);
+  const b = cabinetBounds(cabinet, project);
   const others = otherBoxes(project, cabinetId);
   const result = { ...pos };
 
@@ -47,7 +47,7 @@ export function snapPosition(project, cabinetId, pos, axes, threshold = 30) {
 // innego mebla lub przeszkody leżącej na drodze.
 export function slideCabinet(project, cabinetId, direction) {
   const cabinet = project.furniture.find((c) => c.id === cabinetId);
-  const b = cabinetBounds(cabinet);
+  const b = cabinetBounds(cabinet, project);
   const axis = direction[1];
   const dim = DIM[axis];
   const perp = AXES.filter((a) => a !== axis);
@@ -71,7 +71,7 @@ export function slideCabinet(project, cabinetId, direction) {
 // Kopia korpusu ustawiona obok oryginału: z prawej, a jeśli tam nie ma miejsca — z lewej.
 export function duplicateCabinet(project, cabinetId) {
   const cabinet = project.furniture.find((c) => c.id === cabinetId);
-  const b = cabinetBounds(cabinet);
+  const b = cabinetBounds(cabinet, project);
   const copy = { ...structuredClone(cabinet), id: newId(), name: `${cabinet.name} (kopia)` };
 
   for (const dx of [b.width, -b.width]) {

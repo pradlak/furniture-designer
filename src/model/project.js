@@ -1,8 +1,9 @@
 import { createDefaultSpace, normalizeSpace } from './space.js';
 import { normalizeCabinet } from './furniture.js';
+import { normalizeTrim, createTrim } from './trims.js';
 
-// Projekt = przestrzeń + meble + ustawienia widoku.
-export const PROJECT_VERSION = 3;
+// Projekt = przestrzeń + meble + blendy wspólne + ustawienia widoku.
+export const PROJECT_VERSION = 4;
 const STORAGE_KEY = 'furnitureDesigner.project';
 
 export function createDefaultView() {
@@ -10,19 +11,31 @@ export function createDefaultView() {
 }
 
 export function createDefaultProject() {
-  return { version: PROJECT_VERSION, space: createDefaultSpace(), furniture: [], view: createDefaultView() };
+  return { version: PROJECT_VERSION, space: createDefaultSpace(), furniture: [], trims: [], view: createDefaultView() };
 }
 
 export function normalizeProject(raw) {
   if (!raw || typeof raw !== 'object' || !raw.space) {
     throw new Error('To nie jest prawidłowy plik projektu.');
   }
-  return {
+  const rawFurniture = Array.isArray(raw.furniture) ? raw.furniture : [];
+  const furniture = rawFurniture.map(normalizeCabinet);
+  const ids = furniture.map((c) => c.id);
+  const project = {
     version: PROJECT_VERSION,
     space: normalizeSpace(raw.space),
-    furniture: Array.isArray(raw.furniture) ? raw.furniture.map(normalizeCabinet) : [],
+    furniture,
+    trims: (Array.isArray(raw.trims) ? raw.trims : []).map((t) => normalizeTrim(t, ids)).filter(Boolean),
     view: { showWalls: raw.view?.showWalls !== false },
   };
+
+  // Zgodność wstecz: blenda dolna była kiedyś opcją pojedynczego korpusu.
+  rawFurniture.forEach((rc, i) => {
+    if (!rc?.plinth?.enabled) return;
+    const trim = createTrim('plinth', [furniture[i].id], project);
+    project.trims.push({ ...trim, setback: Number(rc.plinth.setback) || 0, gap: 0 });
+  });
+  return project;
 }
 
 export function loadProject() {
