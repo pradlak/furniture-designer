@@ -55,3 +55,16 @@ Układ współrzędnych przestrzeni (mm): **x** od lewej ściany, **y** od podł
 - korpus mebla: płyty o zadanej grubości, półki, przegrody, drzwi, szuflady,
 - lista elementów do rozkroju (formatki), okleina, materiały,
 - rzut 2D z wymiarami, eksport do PDF.
+
+## Gałęzie i publikacja
+
+- **`dev`** — codzienna praca (commity i `git push` tutaj nic nie publikują),
+- **`prod`** — wersja opublikowana; Cloudflare Pages buduje stronę tylko z tej gałęzi.
+
+Publikacja: będąc na `dev` z zapisanymi zmianami (commit) uruchom
+
+```bash
+npm run deploy
+```
+
+Skrypt sprawdza build, wysyła `dev`, przenosi zmiany na `prod` i wysyła `prod` — Cloudflare publikuje nową wersję.
