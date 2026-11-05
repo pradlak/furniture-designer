@@ -14,6 +14,37 @@ export const BACK_TYPES = [
   { key: 'none', label: 'Brak' },
 ];
 
+// Sposób łączenia wieńca z bokami.
+//  inset   — wieniec między bokami, boki na całą wysokość,
+//  overlay — wieniec na całą szerokość korpusu; boki stoją na wieńcu dolnym / wieniec górny leży na bokach.
+export const JOINT_TYPES = {
+  bottom: [
+    { key: 'inset', label: 'Między bokami' },
+    { key: 'overlay', label: 'Pod bokami (boki stoją na wieńcu)' },
+  ],
+  top: [
+    { key: 'inset', label: 'Między bokami' },
+    { key: 'overlay', label: 'Na bokach (leży na bokach)' },
+  ],
+};
+
+// Elementy korpusu. `thicknessAxis` — oś, wzdłuż której mierzymy grubość płyty.
+export const PANEL_DEFS = [
+  { key: 'left', name: 'Bok lewy', thicknessAxis: 'x' },
+  { key: 'right', name: 'Bok prawy', thicknessAxis: 'x' },
+  { key: 'bottom', name: 'Wieniec dolny', thicknessAxis: 'y' },
+  { key: 'top', name: 'Wieniec górny', thicknessAxis: 'y' },
+  { key: 'back', name: 'Plecy', thicknessAxis: 'z' },
+];
+
+// Ręczne zmiany elementu: wymiary (sx, sy, sz) i przesunięcia (dx, dy, dz) w osiach X/Y/Z.
+// Element jest domyślnie powiązany z korpusem: jego wymiary (poza grubością) wynikają z wymiarów
+// korpusu, a ich zmiana zmienia korpus (patrz resizePanelLinked). Flaga `free` odłącza element —
+// wtedy ręczne wymiary dotyczą tylko jego.
+export const OVERRIDE_KEYS = ['sx', 'sy', 'sz', 'dx', 'dy', 'dz'];
+
+const AXIS_PROP = { x: 'width', y: 'height', z: 'depth' };
+
 export const CABINET_LIMITS = { sizeMin: 50, sizeMax: LIMITS.spaceMax };
 
 export function createCabinet(project, overrides = {}) {
@@ -37,7 +68,10 @@ export function createCabinet(project, overrides = {}) {
     depth,
     thickness: DEFAULT_THICKNESS,
     backType: 'hdf',
+    bottomJoint: 'inset',
+    topJoint: 'inset',
     color: DEFAULT_CABINET_COLOR,
+    panelOverrides: {},
     ...overrides,
   };
 }
@@ -67,33 +101,93 @@ export function fitCabinetToSpace(cabinet, space) {
 }
 
 // Rozkład korpusu na płyty. Każda płyta: prostopadłościan w układzie przestrzeni.
-//  - boki na całą wysokość,
-//  - wieńce (górny i dolny) między bokami,
+//  - boki i wieńce łączone zgodnie z bottomJoint / topJoint (patrz JOINT_TYPES),
 //  - plecy: HDF nakładany z tyłu na cały korpus albo płyta wpuszczona między boki i wieńce.
+// Grubość każdego elementu może być zmieniona ręcznie — sąsiednie elementy się do niej dopasowują.
+// Pozostałe ręczne zmiany (wymiary, przesunięcia) nakładane są na końcu.
 export function cabinetPanels(cabinet) {
-  const { width: W, height: H, depth: D, thickness: t, backType } = cabinet;
-  const panels = [];
-  const add = (name, kind, x, y, z, width, height, depth) => {
-    if (width > 0 && height > 0 && depth > 0) {
-      panels.push({ name, kind, x: cabinet.x + x, y: cabinet.y + y, z: cabinet.z + z, width, height, depth });
-    }
+  const { width: W, height: H, depth: D, backType } = cabinet;
+  const ov = cabinet.panelOverrides ?? {};
+  const thick = (key, fallback = cabinet.thickness) => {
+    const axis = PANEL_DEFS.find((p) => p.key === key).thicknessAxis;
+    return ov[key]?.[`s${axis}`] ?? fallback;
   };
 
+  const tL = thick('left');
+  const tR = thick('right');
+  const tB = thick('bottom');
+  const tT = thick('top');
+
+  // Połączenia wieńców z bokami: zakres boków w pionie i wieńców w poziomie.
+  const bottomOverlay = cabinet.bottomJoint === 'overlay';
+  const topOverlay = cabinet.topJoint === 'overlay';
+  const sideY0 = bottomOverlay ? tB : 0;
+  const sideH = (topOverlay ? H - tT : H) - sideY0;
+  const span = (overlay) => (overlay ? [0, W] : [tL, W - tL - tR]); // [x, szerokość] wieńca
+
+  // Domyślne bryły: [x, y, z, sx, sy, sz] względem narożnika korpusu.
+  // Wieniec górny i dolny różnią się tylko pozycją w pionie i sposobem łączenia.
+  const base = {};
+  const [bx, bw] = span(bottomOverlay);
+  const [tx, tw] = span(topOverlay);
   if (backType === 'board') {
-    add('Bok lewy', 'board', 0, 0, 0, t, H, D);
-    add('Bok prawy', 'board', W - t, 0, 0, t, H, D);
-    add('Wieniec dolny', 'board', t, 0, t, W - 2 * t, t, D - t);
-    add('Wieniec górny', 'board', t, H - t, t, W - 2 * t, t, D - t);
-    add('Plecy', 'board', t, t, 0, W - 2 * t, H - 2 * t, t);
+    const tK = thick('back');
+    base.left = [0, sideY0, 0, tL, sideH, D];
+    base.right = [W - tR, sideY0, 0, tR, sideH, D];
+    // Plecy siedzą między wieńcami (w pionie), więc wieńce mają pełną głębokość.
+    base.bottom = [bx, 0, 0, bw, tB, D];
+    base.top = [tx, H - tT, 0, tw, tT, D];
+    base.back = [tL, tB, 0, W - tL - tR, H - tB - tT, tK];
   } else {
-    const b = backType === 'hdf' ? HDF_THICKNESS : 0;
-    add('Bok lewy', 'board', 0, 0, b, t, H, D - b);
-    add('Bok prawy', 'board', W - t, 0, b, t, H, D - b);
-    add('Wieniec dolny', 'board', t, 0, b, W - 2 * t, t, D - b);
-    add('Wieniec górny', 'board', t, H - t, b, W - 2 * t, t, D - b);
-    if (b) add('Plecy', 'hdf', 0, 0, 0, W, H, b);
+    const b = backType === 'hdf' ? thick('back', HDF_THICKNESS) : 0;
+    base.left = [0, sideY0, b, tL, sideH, D - b];
+    base.right = [W - tR, sideY0, b, tR, sideH, D - b];
+    base.bottom = [bx, 0, b, bw, tB, D - b];
+    base.top = [tx, H - tT, b, tw, tT, D - b];
+    if (b) base.back = [0, 0, 0, W, H, b];
+  }
+
+  const panels = [];
+  for (const def of PANEL_DEFS) {
+    if (!base[def.key]) continue;
+    const [x, y, z, sx, sy, sz] = base[def.key];
+    const o = ov[def.key] ?? {};
+    // Ręczny wymiar obowiązuje zawsze dla grubości; dla pozostałych osi — tylko w elemencie niezależnym.
+    const size = (axis, auto) => (axis === def.thicknessAxis || o.free ? (o[`s${axis}`] ?? auto) : auto);
+    const overridden = OVERRIDE_KEYS.filter(
+      (k) => o[k] != null && (k[0] === 'd' || k[1] === def.thicknessAxis || o.free),
+    );
+    const panel = {
+      key: def.key,
+      name: def.name,
+      kind: def.key === 'back' && backType === 'hdf' ? 'hdf' : 'board',
+      thicknessAxis: def.thicknessAxis,
+      x: cabinet.x + x + (o.dx ?? 0),
+      y: cabinet.y + y + (o.dy ?? 0),
+      z: cabinet.z + z + (o.dz ?? 0),
+      width: size('x', sx),
+      height: size('y', sy),
+      depth: size('z', sz),
+      free: !!o.free,
+      overridden,
+    };
+    panel.valid = panel.width > 0 && panel.height > 0 && panel.depth > 0;
+    panels.push(panel);
   }
   return panels;
+}
+
+// Zmiana wymiaru elementu powiązanego (oś inna niż grubość) przekłada się na wymiar korpusu,
+// dzięki czemu wszystkie pozostałe elementy dopasowują się automatycznie.
+// Np. szerokość boku (Z) → głębokość korpusu, długość wieńca (X) → szerokość korpusu.
+// Zwraca nowy korpus albo null, jeśli korpus wyszedłby poza dozwolony zakres.
+export function resizePanelLinked(cabinet, key, axis, value) {
+  const prop = AXIS_PROP[axis];
+  const panel = cabinetPanels(cabinet).find((p) => p.key === key);
+  if (!panel) return null;
+  const next = cabinet[prop] + (value - panel[prop]);
+  if (next < CABINET_LIMITS.sizeMin || next > CABINET_LIMITS.sizeMax) return null;
+  return { ...cabinet, [prop]: next };
 }
 
 // Wymiary formatki: długość × szerokość × grubość (dwa większe wymiary + najmniejszy).
@@ -102,28 +196,54 @@ export function panelCutSize(panel) {
   return { length, width, thickness };
 }
 
+// Prostopadłościan obejmujący wszystkie płyty korpusu (po ręcznych zmianach może wystawać poza korpus).
+export function cabinetBounds(cabinet) {
+  const panels = cabinetPanels(cabinet).filter((p) => p.valid);
+  if (!panels.length) return cabinet;
+  const min = (f) => Math.min(...panels.map(f));
+  const max = (f) => Math.max(...panels.map(f));
+  const x = min((p) => p.x);
+  const y = min((p) => p.y);
+  const z = min((p) => p.z);
+  return {
+    x,
+    y,
+    z,
+    width: max((p) => p.x + p.width) - x,
+    height: max((p) => p.y + p.height) - y,
+    depth: max((p) => p.z + p.depth) - z,
+  };
+}
+
 // Lista problemów z korpusem (pusta = wszystko w porządku).
 export function cabinetIssues(cabinet, project) {
   const { space, furniture } = project;
   const issues = [];
-  const { width: W, height: H, depth: D, thickness: t } = cabinet;
-  const back = cabinet.backType === 'hdf' ? HDF_THICKNESS : cabinet.backType === 'board' ? t : 0;
+  const panels = cabinetPanels(cabinet);
 
-  if (W <= 2 * t || H <= 2 * t || D <= back) {
-    issues.push('Korpus jest za mały dla wybranej grubości płyty.');
-  }
-  if (!boxCorners(cabinet).every((p) => isPointInside(p, space))) {
+  const invalid = panels.filter((p) => !p.valid).map((p) => p.name);
+  if (invalid.length) issues.push(`Za mały korpus albo za grube płyty: ${invalid.join(', ')}.`);
+
+  const valid = panels.filter((p) => p.valid);
+  const overlapping = [];
+  for (let i = 0; i < valid.length; i++)
+    for (let j = i + 1; j < valid.length; j++)
+      if (boxesOverlap(valid[i], valid[j])) overlapping.push(`${valid[i].name} i ${valid[j].name}`);
+  if (overlapping.length) issues.push(`Elementy nachodzą na siebie: ${overlapping.join('; ')}.`);
+
+  const bounds = cabinetBounds(cabinet);
+  if (!boxCorners(bounds).every((p) => isPointInside(p, space))) {
     issues.push(
       slopePlanes(space).length
         ? 'Wychodzi poza przestrzeń (sprawdź też skosy).'
         : 'Wychodzi poza przestrzeń.',
     );
   }
-  const hitObstacles = space.obstacles.filter((o) => boxesOverlap(cabinet, o)).map((o) => o.name || 'przeszkoda');
+  const hitObstacles = space.obstacles.filter((o) => boxesOverlap(bounds, o)).map((o) => o.name || 'przeszkoda');
   if (hitObstacles.length) issues.push(`Koliduje z: ${hitObstacles.join(', ')}.`);
 
   const hitCabinets = furniture
-    .filter((c) => c.id !== cabinet.id && boxesOverlap(cabinet, c))
+    .filter((c) => c.id !== cabinet.id && boxesOverlap(bounds, cabinetBounds(c)))
     .map((c) => c.name || 'mebel');
   if (hitCabinets.length) issues.push(`Nachodzi na: ${hitCabinets.join(', ')}.`);
 
@@ -155,6 +275,19 @@ export function normalizeCabinet(raw = {}) {
     return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : def;
   };
   const { sizeMin, sizeMax } = CABINET_LIMITS;
+
+  const panelOverrides = {};
+  for (const { key } of PANEL_DEFS) {
+    const src = raw.panelOverrides?.[key];
+    if (!src || typeof src !== 'object') continue;
+    const o = {};
+    for (const k of OVERRIDE_KEYS) {
+      if (src[k] !== null && Number.isFinite(Number(src[k]))) o[k] = num(src[k], 0, -sizeMax, sizeMax);
+    }
+    if (src.free === true) o.free = true;
+    if (Object.keys(o).length) panelOverrides[key] = o;
+  }
+
   return {
     id: typeof raw.id === 'string' && raw.id ? raw.id : newId(),
     name: typeof raw.name === 'string' ? raw.name : 'Korpus',
@@ -166,10 +299,13 @@ export function normalizeCabinet(raw = {}) {
     depth: num(raw.depth, 560, sizeMin, sizeMax),
     thickness: num(raw.thickness, DEFAULT_THICKNESS, 1, 100),
     backType: BACK_TYPES.some((b) => b.key === raw.backType) ? raw.backType : 'hdf',
+    bottomJoint: raw.bottomJoint === 'overlay' ? 'overlay' : 'inset',
+    topJoint: raw.topJoint === 'overlay' ? 'overlay' : 'inset',
     color: typeof raw.color === 'string' && /^#[0-9a-f]{6}$/i.test(raw.color) ? raw.color : DEFAULT_CABINET_COLOR,
+    panelOverrides,
   };
 }
 
-function newId() {
+export function newId() {
   return globalThis.crypto?.randomUUID?.() ?? `id-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }

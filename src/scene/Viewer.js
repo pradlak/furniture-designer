@@ -58,7 +58,7 @@ export class Viewer {
     });
   }
 
-  setProject(project, { refit = false } = {}) {
+  setProject(project, { refit = false, selectedId = null } = {}) {
     const first = !this.space;
     if (this.spaceGroup) {
       this.scene.remove(this.spaceGroup);
@@ -67,7 +67,8 @@ export class Viewer {
     this.space = project.space;
     this.spaceGroup = new THREE.Group();
     this.spaceGroup.add(buildSpace(project.space, project.view));
-    this.spaceGroup.add(buildFurniture(project));
+    this.furnitureGroup = buildFurniture(project, selectedId);
+    this.spaceGroup.add(this.furnitureGroup);
     this.scene.add(this.spaceGroup);
     if (first || refit) this.setView('perspective');
   }

@@ -17,6 +17,10 @@ export function createToolbar(root, store, viewer) {
       <input type="file" accept="application/json,.json" hidden />
     </div>
     <div class="group">
+      <button type="button" data-action="undo" title="Cofnij (Ctrl+Z)">↶ Cofnij</button>
+      <button type="button" data-action="redo" title="Ponów (Ctrl+Y)">↷ Ponów</button>
+    </div>
+    <div class="group">
       <span class="group-label">Widok:</span>
       ${VIEWS.map((v) => `<button type="button" data-view="${v.key}">${v.label}</button>`).join('')}
     </div>
@@ -37,6 +41,8 @@ export function createToolbar(root, store, viewer) {
     if (action === 'new' && confirm('Utworzyć nowy projekt? Bieżące zmiany zostaną utracone.')) {
       store.set(createDefaultProject(), { replace: true });
     }
+    if (action === 'undo') store.undo();
+    if (action === 'redo') store.redo();
     if (action === 'export') exportProject(store.get());
     if (action === 'import') fileInput.click();
   });
@@ -57,8 +63,12 @@ export function createToolbar(root, store, viewer) {
     }
   });
 
+  const undoBtn = root.querySelector('[data-action="undo"]');
+  const redoBtn = root.querySelector('[data-action="redo"]');
   const sync = (project) => {
     wallsToggle.checked = project.view.showWalls;
+    undoBtn.disabled = !store.canUndo();
+    redoBtn.disabled = !store.canRedo();
   };
   sync(store.get());
   return { sync };

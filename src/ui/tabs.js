@@ -27,4 +27,6 @@ export function initTabs(nav) {
   } catch {
     // ignorujemy
   }
+
+  return { activate };
 }

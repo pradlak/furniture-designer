@@ -2,26 +2,40 @@ import * as THREE from 'three';
 import { MM, toScene } from './units.js';
 import { cabinetPanels, cabinetIssues } from '../model/furniture.js';
 
-const HDF_COLOR = 0xe9e4da;
+const HDF_COLOR = '#e9e4da';
 const EDGE_OK = 0x5b4630;
 const EDGE_BAD = 0xdc2626;
 
+// Część koloru płyty „świeci” sama z siebie, żeby wybrany kolor (np. biały) był widoczny wiernie,
+// a światło sceny dodawało tylko lekkie cieniowanie potrzebne do odczytania kształtu.
+const SELF_LIGHT = 0.3;
+
+function boardMaterial(color) {
+  const c = new THREE.Color(color);
+  return new THREE.MeshLambertMaterial({ color: c, emissive: c.clone().multiplyScalar(SELF_LIGHT) });
+}
+
+const EDGE_SELECTED = 0x2563eb;
+
 // Buduje meble projektu: każda płyta korpusu to osobny prostopadłościan z obrysem krawędzi.
-export function buildFurniture(project) {
+// Zaznaczony korpus ma niebieskie krawędzie, korpus z problemami — czerwone.
+export function buildFurniture(project, selectedId = null) {
   const group = new THREE.Group();
   const disposables = [];
   group.userData.disposables = disposables;
 
   for (const cabinet of project.furniture) {
     const hasIssues = cabinetIssues(cabinet, project).length > 0;
-    const boardMat = new THREE.MeshStandardMaterial({ color: cabinet.color, roughness: 0.8 });
-    const hdfMat = new THREE.MeshStandardMaterial({ color: HDF_COLOR, roughness: 0.9 });
-    const edgeMat = new THREE.LineBasicMaterial({ color: hasIssues ? EDGE_BAD : EDGE_OK });
+    const boardMat = boardMaterial(cabinet.color);
+    const hdfMat = boardMaterial(HDF_COLOR);
+    const edgeColor = cabinet.id === selectedId ? EDGE_SELECTED : hasIssues ? EDGE_BAD : EDGE_OK;
+    const edgeMat = new THREE.LineBasicMaterial({ color: edgeColor });
     disposables.push(boardMat, hdfMat, edgeMat);
 
     const cabinetGroup = new THREE.Group();
     cabinetGroup.name = cabinet.name;
-    for (const p of cabinetPanels(cabinet)) {
+    cabinetGroup.userData.cabinetId = cabinet.id; // do wybierania myszką
+    for (const p of cabinetPanels(cabinet).filter((p) => p.valid)) {
       const geometry = new THREE.BoxGeometry(p.width * MM, p.height * MM, p.depth * MM);
       const mesh = new THREE.Mesh(geometry, p.kind === 'hdf' ? hdfMat : boardMat);
       mesh.position.set(...toScene(p.x + p.width / 2, p.y + p.height / 2, p.z + p.depth / 2, project.space));
