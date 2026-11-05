@@ -78,9 +78,13 @@ function addSurface(group, faces, transform, color) {
   group.add(new THREE.Mesh(geometry, material));
 }
 
+// Zwalnia zasoby usuniętej grupy. Etykiety wymiarów (CSS2DObject) to elementy HTML — Three.js usuwa je
+// ze strony tylko przy odpięciu samej etykiety, a nie całej grupy, w której siedzą, więc usuwamy je tu.
+// Bez tego stare etykiety zostawały na ekranie i przy obracaniu widoku wyglądały jak duplikaty.
 export function disposeGroup(group) {
   group.traverse((obj) => {
     obj.geometry?.dispose();
     obj.userData.disposables?.forEach((m) => m.dispose());
+    if (obj.isCSS2DObject) obj.element?.remove();
   });
 }
