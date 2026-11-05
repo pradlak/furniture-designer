@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { MM, toScene } from './units.js';
 import { cabinetPanels, cabinetIssues, cabinetLegs } from '../model/furniture.js';
-import { trimBox, trimIssues } from '../model/trims.js';
+import { trimBox, trimIssues, trimAllowance } from '../model/trims.js';
 import { trimMaterial } from '../model/materials.js';
 
 const LEG_COLOR = '#3f3f46';
@@ -19,6 +19,22 @@ function boardMaterial(color) {
 }
 
 const EDGE_SELECTED = 0x2563eb;
+
+// Zapas na docięcie: wyraźnie inny (pomarańczowy, półprzezroczysty), żeby było widać, co jest do docięcia.
+const allowanceMat = new THREE.MeshLambertMaterial({ color: 0xf97316, transparent: true, opacity: 0.55, depthWrite: false });
+const allowanceEdges = new THREE.LineBasicMaterial({ color: 0xc2410c });
+
+// Dorysowuje zapas wzdłuż osi X po obu stronach bryły (min — po stronie mniejszego X).
+function addAllowance(group, box, min, max, space) {
+  for (const [x0, len] of [[box.x - min, min], [box.x + box.width, max]]) {
+    if (len <= 0) continue;
+    const geometry = new THREE.BoxGeometry(len * MM, box.height * MM, box.depth * MM);
+    const mesh = new THREE.Mesh(geometry, allowanceMat);
+    mesh.position.set(...toScene(x0 + len / 2, box.y + box.height / 2, box.z + box.depth / 2, space));
+    mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geometry), allowanceEdges));
+    group.add(mesh);
+  }
+}
 
 // Buduje meble projektu: każda płyta korpusu to osobny prostopadłościan z obrysem krawędzi.
 // Zaznaczony korpus ma niebieskie krawędzie, korpus z problemami — czerwone.
@@ -59,6 +75,7 @@ export function buildFurniture(project, selectedId = null) {
       mesh.position.set(...toScene(p.x + p.width / 2, p.y + p.height / 2, p.z + p.depth / 2, project.space));
       mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geometry), edgeMat));
       cabinetGroup.add(mesh);
+      addAllowance(cabinetGroup, p, p.allowanceMin, p.allowanceMax, project.space);
     }
 
     const legs = cabinetLegs(cabinet, project);
@@ -87,6 +104,8 @@ export function buildFurniture(project, selectedId = null) {
     mesh.position.set(...toScene(box.x + box.width / 2, box.y + box.height / 2, box.z + box.depth / 2, project.space));
     mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geometry), edgeMat));
     group.add(mesh);
+    const a = trimAllowance(trim, project);
+    addAllowance(group, box, a.min, a.max, project.space);
   }
   return group;
 }

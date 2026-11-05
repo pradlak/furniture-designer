@@ -110,7 +110,8 @@ export function defaultAccessories() {
 // flushFront — panel boczny / listwa wysunięte do linii frontu (o grubość blendy górnej / frontu),
 // extend     — ręczne wysunięcie do przodu, gdy flushFront jest wyłączone.
 function defaultSideBlend() {
-  return { type: 'none', width: 50, wallPanel: false, flushFront: false, extend: 0 };
+  // allowance — zapas na docięcie listwy (w stronę ściany); nie liczy się do kolizji
+  return { type: 'none', width: 50, wallPanel: false, flushFront: false, extend: 0, allowance: 0 };
 }
 
 // O ile panel boczny danej strony wystaje przed korpus.
@@ -179,6 +180,12 @@ export function plinthHeight(trim, project) {
 export function frontSpan(cabinet) {
   const w = (side) => (cabinet.sideBlends?.[side]?.type === 'filler' ? cabinet.sideBlends[side].width : 0);
   return [cabinet.x - w('left'), cabinet.x + cabinet.width + w('right')];
+}
+
+// Zapas na docięcie listwy przy ścianie po danej stronie korpusu (0, gdy nie ma listwy).
+export function fillerAllowance(cabinet, side) {
+  const sb = cabinet.sideBlends?.[side];
+  return sb?.type === 'filler' ? (sb.allowance ?? 0) : 0;
 }
 
 // Jak blendy wspólne wpływają na korpus:
@@ -322,6 +329,7 @@ export function cabinetPanels(cabinet, project) {
   const blendKey = { left: 'blendLeft', right: 'blendRight' };
   const wallPanelKey = { left: 'wallPanelLeft', right: 'wallPanelRight' };
   const thicknessAxis = {}; // dla elementów, w których oś grubości zależy od wariantu
+  const allowance = {}; // zapas na docięcie wzdłuż osi X: { min, max } (tylko do formatki i podglądu)
   const fillerWidth = (side) => (blends[side]?.type === 'filler' ? blends[side].width : 0);
   // Panele boczne sięgają od podłogi do góry korpusu.
   const fullHeight = L + H;
@@ -343,6 +351,8 @@ export function cabinetPanels(cabinet, project) {
       const ext = sidePanelExtension(cabinet, side, project);
       thicknessAxis[key] = 'z';
       base[key] = [side === 'left' ? -w : W, L, D + ext - t, w, H, t];
+      const a = fillerAllowance(cabinet, side);
+      if (a) allowance[key] = side === 'left' ? { min: a, max: 0 } : { min: 0, max: a };
 
       // Panel przy ścianie — za listwą, od podłogi do góry, na całą głębokość (wysunięty razem z listwą).
       if (blends[side].wallPanel) {
@@ -383,6 +393,9 @@ export function cabinetPanels(cabinet, project) {
       height: size('y', sy),
       depth: size('z', sz),
       free: !!o.free,
+      // zapas na docięcie (mm) po stronie mniejszego / większego X — poza wymiarem nominalnym
+      allowanceMin: allowance[def.key]?.min ?? 0,
+      allowanceMax: allowance[def.key]?.max ?? 0,
       hidden: !!o.hidden, // ukryta tylko w widoku 3D
       overridden,
     };
@@ -475,7 +488,9 @@ export function defaultEdges(key) {
 // oraz wymiar do cięcia — pomniejszony o obrzeże: taśma na długiej krawędzi zmniejsza szerokość,
 // na krótkiej — długość. Obrzeże ma tylko materiał z ustawioną grubością obrzeża.
 export function panelCutSize(panel) {
-  const [thickness, width, length] = [panel.width, panel.height, panel.depth].sort((a, b) => a - b);
+  // Zapas na docięcie wydłuża formatkę w osi X.
+  const extra = (panel.allowanceMin ?? 0) + (panel.allowanceMax ?? 0);
+  const [thickness, width, length] = [panel.width + extra, panel.height, panel.depth].sort((a, b) => a - b);
   const band = panel.material?.edgeBanding ?? 0;
   const edges = band ? (panel.edges ?? { l: 0, w: 0 }) : { l: 0, w: 0 };
   return {
@@ -484,6 +499,7 @@ export function panelCutSize(panel) {
     thickness,
     band,
     edges,
+    allowance: extra,
     cutLength: length - edges.w * band,
     cutWidth: width - edges.l * band,
   };
@@ -609,6 +625,7 @@ export function normalizeCabinet(raw = {}) {
     wallPanel: src.wallPanel === true,
     flushFront: src.flushFront === true,
     extend: num(src.extend, 0, 0, 500),
+    allowance: num(src.allowance, 0, 0, 500),
   });
 
   return {

@@ -293,3 +293,8 @@ button.eye.off { opacity: 0.35; text-decoration: line-through; }
 .item.is-hidden > :not(.item-head),
 .part.is-hidden > :not(.part-head),
 .item.is-hidden .item-head input[type='text'] { opacity: 0.55; }
+
+/* --- zapas na docięcie --- */
+.allowance-note { font-size: 11px; font-weight: 600; color: #c2410c; margin: 2px 0 0; }
+.allowance-note:empty { display: none; }
+.allowance-field span { color: #c2410c; }

@@ -4,6 +4,7 @@ import {
   trimCabinets,
   trimFront,
   frontSpan,
+  fillerAllowance,
   plinthHeight,
   boxCorners,
   boxesOverlap,
@@ -33,7 +34,8 @@ export const TRIM_TYPES = {
 };
 
 export const TRIM_DEFAULTS = {
-  plinth: { height: null, gap: 5, setback: 20 }, // height: null = automatyczna
+  // height: null = automatyczna; allowanceLeft/Right — zapas na docięcie na końcach
+  plinth: { height: null, gap: 5, setback: 20, allowanceLeft: 0, allowanceRight: 0 },
   topBlend: { height: 60, gap: 3 },
   // includeFront — wysunięcie liczone od frontu (front ma grubość blendy górnej / materiału blend)
   countertop: { overhang: 30, includeFront: true, x: null, length: null, depth: null },
@@ -86,6 +88,21 @@ export function rowOf(cabinetId, project) {
     }
   }
   return project.furniture.filter((c) => row.has(c.id)).map((c) => c.id);
+}
+
+// Zapas na docięcie blendy dolnej na końcach: własny + zapas listwy przy ścianie skrajnego korpusu
+// (listwa i blenda są od siebie zależne — wydłużają się razem). Nie liczy się do kolizji.
+export function trimAllowance(trim, project) {
+  const none = { min: 0, max: 0 };
+  if (trim.type !== 'plinth') return none;
+  const cabs = trimCabinets(trim, project);
+  if (!cabs.length) return none;
+  const leftmost = cabs.reduce((a, c) => (frontSpan(c)[0] < frontSpan(a)[0] ? c : a));
+  const rightmost = cabs.reduce((a, c) => (frontSpan(c)[1] > frontSpan(a)[1] ? c : a));
+  return {
+    min: (trim.allowanceLeft ?? 0) + fillerAllowance(leftmost, 'left'),
+    max: (trim.allowanceRight ?? 0) + fillerAllowance(rightmost, 'right'),
+  };
 }
 
 // Bryła blendy (prostopadłościan w układzie przestrzeni) albo null, gdy nie da się jej wyznaczyć.
@@ -216,6 +233,8 @@ export function normalizeTrim(raw = {}, cabinetIds) {
     trim.height = raw.height == null ? null : num(raw.height, null, 1, 2000);
     trim.gap = num(raw.gap, def.gap, 0, 500);
     trim.setback = num(raw.setback, def.setback, -500, 5000);
+    trim.allowanceLeft = num(raw.allowanceLeft, 0, 0, 500);
+    trim.allowanceRight = num(raw.allowanceRight, 0, 0, 500);
   } else if (raw.type === 'topBlend') {
     trim.height = num(raw.height, def.height, 1, 2000);
     trim.gap = num(raw.gap, def.gap, 0, 100);

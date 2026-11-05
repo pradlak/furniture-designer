@@ -31,6 +31,7 @@ import {
   AUTO_FIELDS,
   trimFieldValue,
   countertopOverhang,
+  trimAllowance,
 } from '../model/trims.js';
 import { cabinetMaterials, trimMaterial } from '../model/materials.js';
 
@@ -128,6 +129,10 @@ function sideBlendFields(side) {
         </label>
         <label class="check small" title="Panel na pełną wysokość za listwą, przylegający do ściany">
           <input type="checkbox" data-f="sideBlends.${side}.wallPanel" /> + panel przy ścianie
+        </label>
+        <label class="field small allowance-field" title="Listwa dłuższa o zapas w stronę ściany — do docięcia na miejscu. Blenda dolna wydłuża się razem z nią. Zapas nie powoduje kolizji.">
+          <span>Zapas na docięcie <small>mm</small></span>
+          <input type="number" step="1" min="0" max="500" data-f="sideBlends.${side}.allowance" />
         </label>
       </div>
       <div class="grid-2 panel-opts">
@@ -337,7 +342,13 @@ export function createFurniturePanel(root, store, ui, tabs) {
         </label>`;
     };
     const fields = {
-      plinth: [field('Wysokość', 'height', { max: 2000 }), field('Cofnięcie', 'setback', { min: -500, max: 5000 })],
+      plinth: [
+        field('Wysokość', 'height', { max: 2000 }),
+        field('Cofnięcie', 'setback', { min: -500, max: 5000 }),
+        `<span></span>`,
+        field('Zapas z lewej', 'allowanceLeft', { min: 0, max: 500 }),
+        field('Zapas z prawej', 'allowanceRight', { min: 0, max: 500 }),
+      ],
       topBlend: [field('Wysokość', 'height', { min: 1, max: 2000 }), field('Szczelina do frontu', 'gap', { min: 0, max: 100 })],
       countertop: [
         field('Wysunięcie z przodu', 'overhang', { min: -500, max: 1000 }),
@@ -373,6 +384,7 @@ export function createFurniturePanel(root, store, ui, tabs) {
           ${materialSelect('Materiał', 'materialId', project)}
         </div>
         <p class="trim-size"></p>
+        <p class="allowance-note trim-allowance"></p>
         <ul class="issues"></ul>
       </div>`;
   }
@@ -405,13 +417,25 @@ export function createFurniturePanel(root, store, ui, tabs) {
       if (box && box.height > 0) {
         // Formatka: długość × szerokość × grubość; do cięcia — pomniejszona o obrzeże
         // (blendy: wszystkie krawędzie, blat: przednia; jeśli materiał ma obrzeże).
-        const cut = panelCutSize({ ...box, material: trimMaterial(t, project), edges: defaultEdges(t.type) });
+        const a = trimAllowance(t, project);
+        const cut = panelCutSize({
+          ...box,
+          material: trimMaterial(t, project),
+          edges: defaultEdges(t.type),
+          allowanceMin: a.min,
+          allowanceMax: a.max,
+        });
         size = `Formatka: ${round1(cut.length)} × ${round1(cut.width)} × ${round1(cut.thickness)} mm`;
         if (t.type === 'countertop' && t.depth == null) {
           size += ` · wystaje przed korpus: ${round1(countertopOverhang(t, project))} mm`;
         }
         if (cut.band) size += ` · do cięcia: ${round1(cut.cutLength)} × ${round1(cut.cutWidth)} mm`;
       }
+      const allowance = box ? trimAllowance(t, project) : { min: 0, max: 0 };
+      const allowText = allowance.min + allowance.max
+        ? `⚠ Zapas na docięcie: ${[allowance.min && `z lewej +${allowance.min}`, allowance.max && `z prawej +${allowance.max}`].filter(Boolean).join(', ')} mm — docięcie na miejscu (wliczony w formatkę)`
+        : '';
+      el.querySelector('.trim-allowance').textContent = allowText;
       if (t.type === 'topBlend') {
         const fronts = [...new Set(frontHeightsUnder(t, project).map((f) => round1(f.height)))];
         if (fronts.length) size += ` · front pod blendą: ${fronts.join(' / ')} mm`;
@@ -481,6 +505,7 @@ export function createFurniturePanel(root, store, ui, tabs) {
           <label title="Ile krótkich krawędzi jest oklejonych obrzeżem">kr. ${edgeSelect('w')}</label>
         </div>
         <div class="part-cutsize"></div>
+        <div class="allowance-note part-allowance"></div>
       </div>`;
   }
 
@@ -569,6 +594,9 @@ export function createFurniturePanel(root, store, ui, tabs) {
           sel.value = p.edges[sel.dataset.edge];
           sel.disabled = !s.band;
         });
+        partEl.querySelector('.part-allowance').textContent = s.allowance
+          ? `⚠ Zapas na docięcie +${s.allowance} mm — docięcie na miejscu (wliczony w formatkę)`
+          : '';
         partEl.querySelector('.part-cutsize').textContent =
           p.valid && s.band && (s.edges.l || s.edges.w)
             ? `do cięcia: ${round1(s.cutLength)} × ${round1(s.cutWidth)} mm (obrzeże ${s.band} mm)`
