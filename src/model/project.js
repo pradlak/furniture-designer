@@ -1,9 +1,10 @@
 import { createDefaultSpace, normalizeSpace } from './space.js';
 import { normalizeCabinet } from './furniture.js';
 import { normalizeTrim, createTrim } from './trims.js';
+import { defaultMaterials, normalizeMaterials } from './materials.js';
 
-// Projekt = przestrzeń + meble + blendy wspólne + ustawienia widoku.
-export const PROJECT_VERSION = 4;
+// Projekt = przestrzeń + materiały + meble + blendy wspólne + ustawienia widoku.
+export const PROJECT_VERSION = 5;
 const STORAGE_KEY = 'furnitureDesigner.project';
 
 export function createDefaultView() {
@@ -11,7 +12,14 @@ export function createDefaultView() {
 }
 
 export function createDefaultProject() {
-  return { version: PROJECT_VERSION, space: createDefaultSpace(), furniture: [], trims: [], view: createDefaultView() };
+  return {
+    version: PROJECT_VERSION,
+    space: createDefaultSpace(),
+    materials: defaultMaterials(),
+    furniture: [],
+    trims: [],
+    view: createDefaultView(),
+  };
 }
 
 export function normalizeProject(raw) {
@@ -24,6 +32,7 @@ export function normalizeProject(raw) {
   const project = {
     version: PROJECT_VERSION,
     space: normalizeSpace(raw.space),
+    materials: normalizeMaterials(raw.materials),
     furniture,
     trims: (Array.isArray(raw.trims) ? raw.trims : []).map((t) => normalizeTrim(t, ids)).filter(Boolean),
     view: { showWalls: raw.view?.showWalls !== false },

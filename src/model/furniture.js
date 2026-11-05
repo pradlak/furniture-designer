@@ -1,4 +1,5 @@
 import { LIMITS, isPointInside, slopePlanes } from './space.js';
+import { cabinetMaterials, trimMaterial } from './materials.js';
 
 // Mebel (na razie: prosty korpus) — wymiary w mm, w układzie współrzędnych przestrzeni.
 // Pozycja (x, y, z) to narożnik lewy‑dolny‑tylny całego mebla (z = odległość pleców od tylnej ściany).
@@ -6,9 +7,6 @@ import { LIMITS, isPointInside, slopePlanes } from './space.js';
 // `height` to zawsze wysokość samego korpusu (bez nóżek).
 
 export const BOARD_THICKNESSES = [12, 16, 18, 22, 25, 28, 36];
-export const DEFAULT_THICKNESS = 18;
-export const HDF_THICKNESS = 3;
-export const DEFAULT_CABINET_COLOR = '#d2b48c';
 
 export const LEG_DIAMETER = 40;
 export const LEG_INSET = 50; // odległość osi nóżki od krawędzi korpusu
@@ -16,7 +14,7 @@ export const LEG_HEIGHTS = [50, 80, 100, 120, 150];
 export const LEG_LIMITS = { min: 10, max: 500 };
 
 export const BACK_TYPES = [
-  { key: 'hdf', label: `HDF ${HDF_THICKNESS} mm (nakładane)` },
+  { key: 'hdf', label: 'HDF (nakładane)' },
   { key: 'board', label: 'Z płyty (wpuszczane)' },
   { key: 'none', label: 'Brak' },
 ];
@@ -34,6 +32,31 @@ export const JOINT_TYPES = {
     { key: 'overlay', label: 'Na bokach (leży na bokach)' },
   ],
 };
+
+// Góra korpusu: pełny wieniec albo dwa trawersy (poprzeczki pod blat) o zadanej szerokości.
+export const TOP_TYPES = [
+  { key: 'full', label: 'Pełny wieniec' },
+  { key: 'rails', label: 'Dwa trawersy (pod blat)' },
+];
+export const DEFAULT_RAIL_WIDTH = 120;
+
+// Poprzeczki usztywniające: pionowe listwy z płyty tuż przed plecami, między bokami.
+// Mieszczą się w korpusie — nie zmieniają wymiarów mebla.
+export const STIFFENER_POSITIONS = [
+  { key: 'backTop', label: 'Tył – pod górą' },
+  { key: 'backBottom', label: 'Tył – nad dołem' },
+  { key: 'backAt', label: 'Tył – na wysokości…' },
+];
+export const DEFAULT_STIFFENER_HEIGHT = 100;
+
+export function createStiffener(cabinet) {
+  const used = new Set((cabinet.stiffeners ?? []).map((s) => s.position));
+  const position = ['backTop', 'backBottom'].find((p) => !used.has(p)) ?? 'backAt';
+  return { id: newId(), position, height: DEFAULT_STIFFENER_HEIGHT, y: Math.round(cabinet.height / 2) };
+}
+
+export const stiffenerKey = (s) => `stiff-${s.id}`;
+const stiffenerName = (s) => `Poprzeczka ${{ backTop: 'tylna górna', backBottom: 'tylna dolna', backAt: 'tylna' }[s.position]}`;
 
 // Blendy boczne (osobno dla lewej i prawej strony).
 //  plinth — cokół boczny: płyta pod korpusem w płaszczyźnie boku, zasłania nóżki z boku,
@@ -55,6 +78,8 @@ export const PANEL_DEFS = [
   { key: 'right', name: 'Bok prawy', thicknessAxis: 'x' },
   { key: 'bottom', name: 'Wieniec dolny', thicknessAxis: 'y' },
   { key: 'top', name: 'Wieniec górny', thicknessAxis: 'y' },
+  { key: 'railFront', name: 'Trawers przedni', thicknessAxis: 'y' },
+  { key: 'railBack', name: 'Trawers tylny', thicknessAxis: 'y' },
   { key: 'back', name: 'Plecy', thicknessAxis: 'z' },
   { key: 'blendLeft', name: 'Blenda lewa', thicknessAxis: 'x' },
   { key: 'blendRight', name: 'Blenda prawa', thicknessAxis: 'x' },
@@ -114,11 +139,14 @@ export function createCabinet(project, overrides = {}) {
     width,
     height: Math.max(CABINET_LIMITS.sizeMin, height),
     depth,
-    thickness: DEFAULT_THICKNESS,
+    materialId: project.materials?.find((m) => m.type === 'chipboard')?.id ?? null,
+    blendMaterialId: project.materials?.find((m) => m.type === 'mdf')?.id ?? null,
     backType: 'hdf',
     bottomJoint: 'inset',
     topJoint: 'inset',
-    color: DEFAULT_CABINET_COLOR,
+    topType: 'full',
+    railWidth: DEFAULT_RAIL_WIDTH,
+    stiffeners: [],
     ...defaultAccessories(),
     panelOverrides: {},
     ...overrides,
@@ -163,9 +191,13 @@ export function cabinetContext(cabinet, project) {
   const L = legHeight(cabinet);
   // Grubość warstwy frontu: blenda górna, jeśli obejmuje korpus; inaczej zakładamy front z płyty korpusu.
   const topBlend = trims.find((t) => t.type === 'topBlend' && t.cabinetIds.includes(cabinet.id));
-  const ctx = { plinthBack: null, plinthHeight: null, frontThickness: topBlend?.thickness ?? cabinet.thickness };
+  // (gdy nie ma blendy górnej — grubość materiału blend/frontów korpusu)
+  const frontThickness = topBlend
+    ? trimMaterial(topBlend, project).thickness
+    : cabinetMaterials(cabinet, project).blend.thickness;
+  const ctx = { plinthBack: null, plinthHeight: null, frontThickness };
   if (plinth && L > 0) {
-    ctx.plinthBack = trimFront(plinth, project) - plinth.setback - plinth.thickness - cabinet.z;
+    ctx.plinthBack = trimFront(plinth, project) - plinth.setback - trimMaterial(plinth, project).thickness - cabinet.z;
     ctx.plinthHeight = plinthHeight(plinth, project);
   }
   return ctx;
@@ -217,14 +249,16 @@ export function cabinetPanels(cabinet, project) {
   const { width: W, height: H, depth: D, backType } = cabinet;
   const ctx = cabinetContext(cabinet, project);
   const ov = cabinet.panelOverrides ?? {};
-  const thickAt = (key, axis, fallback = cabinet.thickness) => ov[key]?.[`s${axis}`] ?? fallback;
+  const mats = cabinetMaterials(cabinet, project);
+  const thickAt = (key, axis, fallback = mats.body.thickness) => ov[key]?.[`s${axis}`] ?? fallback;
   const thick = (key, fallback) => thickAt(key, PANEL_DEFS.find((p) => p.key === key).thicknessAxis, fallback);
 
   const L = legHeight(cabinet);
   const tL = thick('left');
   const tR = thick('right');
   const tB = thick('bottom');
-  const tT = thick('top');
+  const rails = cabinet.topType === 'rails';
+  const tT = thick(rails ? 'railFront' : 'top');
 
   // Połączenia wieńców z bokami: zakres boków w pionie i wieńców w poziomie.
   const bottomOverlay = cabinet.bottomJoint === 'overlay';
@@ -235,24 +269,51 @@ export function cabinetPanels(cabinet, project) {
 
   // Domyślne bryły: [x, y, z, sx, sy, sz] względem narożnika korpusu (y = 0 na spodzie korpusu).
   const base = {};
+  let zTop; // zakres głębokości wieńca górnego (do rozmieszczenia trawersów)
+  let zInner; // przednia powierzchnia pleców — tu stoją poprzeczki usztywniające
   const [bx, bw] = span(bottomOverlay);
   const [tx, tw] = span(topOverlay);
   if (backType === 'board') {
     const tK = thick('back');
+    zInner = tK;
     base.left = [0, sideY0, 0, tL, sideH, D];
     base.right = [W - tR, sideY0, 0, tR, sideH, D];
     // Plecy siedzą między wieńcami (w pionie), więc wieńce mają pełną głębokość.
     base.bottom = [bx, 0, 0, bw, tB, D];
     base.top = [tx, H - tT, 0, tw, tT, D];
+    zTop = [0, D];
     base.back = [tL, tB, 0, W - tL - tR, H - tB - tT, tK];
   } else {
-    const b = backType === 'hdf' ? thick('back', HDF_THICKNESS) : 0;
+    const b = backType === 'hdf' ? thick('back', mats.hdf.thickness) : 0;
+    zInner = b;
     base.left = [0, sideY0, b, tL, sideH, D - b];
     base.right = [W - tR, sideY0, b, tR, sideH, D - b];
     base.bottom = [bx, 0, b, bw, tB, D - b];
     base.top = [tx, H - tT, b, tw, tT, D - b];
+    zTop = [b, D];
     if (b) base.back = [0, 0, 0, W, H, b];
   }
+  // Poprzeczki usztywniające — między bokami, tuż przed plecami (grubość w osi Z).
+  const stiffDefs = [];
+  for (const st of cabinet.stiffeners ?? []) {
+    const key = stiffenerKey(st);
+    const t = thickAt(key, 'z');
+    const h = st.height;
+    const y = { backTop: H - tT - h, backBottom: tB, backAt: st.y }[st.position];
+    base[key] = [tL, y, zInner, W - tL - tR, h, t];
+    stiffDefs.push({ key, name: stiffenerName(st), thicknessAxis: 'z', stiffener: st });
+  }
+
+  // Trawersy zamiast pełnego wieńca: przedni przy froncie, tylny przy plecach.
+  if (rails) {
+    const [z0, z1] = zTop;
+    const w = cabinet.railWidth;
+    const tBack = thickAt('railBack', 'y', tT);
+    base.railFront = [tx, H - tT, z1 - w, tw, tT, w];
+    base.railBack = [tx, H - tBack, z0, tw, tBack, w];
+    delete base.top;
+  }
+
   // Korpus stoi na nóżkach.
   for (const k of Object.keys(base)) base[k][1] += L;
 
@@ -270,14 +331,14 @@ export function cabinetPanels(cabinet, project) {
     const type = blends[side]?.type;
     if (type === 'plinth' && L > 0) {
       // Cokół boczny: tej samej wysokości co blenda dolna, sięga do jej tylnej krawędzi.
-      const t = thickAt(key, 'x');
+      const t = thickAt(key, 'x', mats.blend.thickness);
       base[key] = [side === 'left' ? 0 : W - t, 0, 0, t, ctx.plinthHeight ?? L, ctx.plinthBack ?? D];
     } else if (type === 'full') {
-      const t = thickAt(key, 'x');
+      const t = thickAt(key, 'x', mats.blend.thickness);
       base[key] = [side === 'left' ? -t : W, 0, 0, t, fullHeight, D + sidePanelExtension(cabinet, side, project)];
     } else if (type === 'filler') {
       // Listwa: przednia krawędź na linii frontu korpusu, albo wysunięta (do linii frontu / ręcznie).
-      const t = thickAt(key, 'z');
+      const t = thickAt(key, 'z', mats.blend.thickness);
       const w = fillerWidth(side);
       const ext = sidePanelExtension(cabinet, side, project);
       thicknessAxis[key] = 'z';
@@ -286,14 +347,14 @@ export function cabinetPanels(cabinet, project) {
       // Panel przy ścianie — za listwą, od podłogi do góry, na całą głębokość (wysunięty razem z listwą).
       if (blends[side].wallPanel) {
         const pk = wallPanelKey[side];
-        const tp = thickAt(pk, 'x');
+        const tp = thickAt(pk, 'x', mats.blend.thickness);
         base[pk] = [side === 'left' ? -w - tp : W + w, 0, 0, tp, fullHeight, D + ext];
       }
     }
   }
 
   const panels = [];
-  for (const def of PANEL_DEFS) {
+  for (const def of [...PANEL_DEFS, ...stiffDefs]) {
     if (!base[def.key]) continue;
     const axis = thicknessAxis[def.key] ?? def.thicknessAxis;
     const [x, y, z, sx, sy, sz] = base[def.key];
@@ -302,10 +363,16 @@ export function cabinetPanels(cabinet, project) {
     const size = (a, auto) => (a === axis || o.free ? (o[`s${a}`] ?? auto) : auto);
     const overridden = OVERRIDE_KEYS.filter((k) => o[k] != null && (k[0] === 'd' || k[1] === axis || o.free));
     const side = { blendLeft: 'left', blendRight: 'right' }[def.key] ?? null;
+    const group = BLEND_KEYS.includes(def.key) ? 'blend' : def.key === 'back' && backType === 'hdf' ? 'hdf' : 'body';
+    const material = mats[group];
     const panel = {
       key: def.key,
       name: def.name,
-      kind: def.key === 'back' && backType === 'hdf' ? 'hdf' : 'board',
+      kind: group === 'hdf' ? 'hdf' : 'board',
+      group,
+      material,
+      color: material.color,
+      edges: o.edges ?? defaultEdges(def.key),
       thicknessAxis: axis,
       side,
       blendType: side ? blends[side].type : null,
@@ -343,13 +410,19 @@ export function cabinetLegs(cabinet, project) {
 }
 
 // Ścieżka w obiekcie korpusu, której dotyczy zmiana wymiaru powiązanego elementu w danej osi.
-function linkedTarget(panel, axis) {
+function linkedTarget(panel, axis, cabinet) {
+  if (axis === 'y' && panel.key.startsWith('stiff-')) {
+    const i = (cabinet.stiffeners ?? []).findIndex((st) => stiffenerKey(st) === panel.key);
+    return `stiffeners.${i}.height`;
+  }
+  if (axis === 'z' && (panel.key === 'railFront' || panel.key === 'railBack')) return 'railWidth';
   if (axis === 'y' && panel.blendType === 'plinth') return 'legs.height';
   if (axis === 'x' && panel.blendType === 'filler') return `sideBlends.${panel.side}.width`;
   return AXIS_PROP[axis];
 }
 
 const LINKED_LIMITS = {
+  railWidth: [10, CABINET_LIMITS.sizeMax],
   'legs.height': [LEG_LIMITS.min, LEG_LIMITS.max],
   'sideBlends.left.width': [1, CABINET_LIMITS.sizeMax],
   'sideBlends.right.width': [1, CABINET_LIMITS.sizeMax],
@@ -363,9 +436,9 @@ const LINKED_LIMITS = {
 export function resizePanelLinked(cabinet, key, axis, value, project) {
   const panel = cabinetPanels(cabinet, project).find((p) => p.key === key);
   if (!panel) return null;
-  const path = linkedTarget(panel, axis);
+  const path = linkedTarget(panel, axis, cabinet);
   const next = getPath(cabinet, path) + (value - panel[AXIS_PROP[axis]]);
-  const [min, max] = LINKED_LIMITS[path] ?? [CABINET_LIMITS.sizeMin, CABINET_LIMITS.sizeMax];
+  const [min, max] = LINKED_LIMITS[path] ?? (path.startsWith('stiffeners.') ? [1, CABINET_LIMITS.sizeMax] : [CABINET_LIMITS.sizeMin, CABINET_LIMITS.sizeMax]);
   if (next < min || next > max) return null;
   return setPath(cabinet, path, next);
 }
@@ -377,13 +450,42 @@ export function getPath(obj, path) {
 // Niemutująca zmiana zagnieżdżonego pola, np. setPath(c, 'legs.height', 120).
 export function setPath(obj, path, value) {
   const [head, ...rest] = path.split('.');
-  return { ...obj, [head]: rest.length ? setPath(obj[head] ?? {}, rest.join('.'), value) : value };
+  const next = rest.length ? setPath(obj?.[head] ?? {}, rest.join('.'), value) : value;
+  if (Array.isArray(obj)) {
+    const copy = [...obj];
+    copy[Number(head)] = next;
+    return copy;
+  }
+  return { ...obj, [head]: next };
 }
 
-// Wymiary formatki: długość × szerokość × grubość (dwa większe wymiary + najmniejszy).
+// Elementy z materiału blend (pozostałe — z materiału korpusu, plecy HDF — z HDF).
+const BLEND_KEYS = ['blendLeft', 'blendRight', 'wallPanelLeft', 'wallPanelRight'];
+
+// Domyślne obrzeże: ile krawędzi długich (l) i krótkich (w) formatki jest oklejonych.
+// Widoczna przednia krawędź konstrukcji — jedna długa; blendy — wszystkie; plecy i poprzeczki — brak.
+export function defaultEdges(key) {
+  if (['left', 'right', 'bottom', 'top', 'railFront', 'railBack'].includes(key)) return { l: 1, w: 0 };
+  if (BLEND_KEYS.includes(key) || key === 'plinth' || key === 'topBlend') return { l: 2, w: 2 };
+  return { l: 0, w: 0 };
+}
+
+// Wymiary formatki: długość × szerokość × grubość (dwa większe wymiary + najmniejszy)
+// oraz wymiar do cięcia — pomniejszony o obrzeże: taśma na długiej krawędzi zmniejsza szerokość,
+// na krótkiej — długość. Obrzeże ma tylko materiał z ustawioną grubością obrzeża.
 export function panelCutSize(panel) {
   const [thickness, width, length] = [panel.width, panel.height, panel.depth].sort((a, b) => a - b);
-  return { length, width, thickness };
+  const band = panel.material?.edgeBanding ?? 0;
+  const edges = band ? (panel.edges ?? { l: 0, w: 0 }) : { l: 0, w: 0 };
+  return {
+    length,
+    width,
+    thickness,
+    band,
+    edges,
+    cutLength: length - edges.w * band,
+    cutWidth: width - edges.l * band,
+  };
 }
 
 // Prostopadłościan obejmujący wszystkie płyty i nóżki mebla.
@@ -477,8 +579,15 @@ export function normalizeCabinet(raw = {}) {
   const { sizeMin, sizeMax } = CABINET_LIMITS;
   const def = defaultAccessories();
 
+  const stiffeners = (Array.isArray(raw.stiffeners) ? raw.stiffeners : []).map((st) => ({
+    id: typeof st?.id === 'string' && st.id ? st.id : newId(),
+    position: STIFFENER_POSITIONS.some((p) => p.key === st?.position) ? st.position : 'backTop',
+    height: num(st?.height, DEFAULT_STIFFENER_HEIGHT, 1, sizeMax),
+    y: num(st?.y, 0, -sizeMax, sizeMax),
+  }));
+
   const panelOverrides = {};
-  for (const { key } of PANEL_DEFS) {
+  for (const key of [...PANEL_DEFS.map((d) => d.key), ...stiffeners.map(stiffenerKey)]) {
     const src = raw.panelOverrides?.[key];
     if (!src || typeof src !== 'object') continue;
     const o = {};
@@ -486,6 +595,9 @@ export function normalizeCabinet(raw = {}) {
       if (src[k] !== null && Number.isFinite(Number(src[k]))) o[k] = num(src[k], 0, -sizeMax, sizeMax);
     }
     if (src.free === true) o.free = true;
+    if (src.edges && typeof src.edges === 'object') {
+      o.edges = { l: num(src.edges.l, 0, 0, 2), w: num(src.edges.w, 0, 0, 2) };
+    }
     if (Object.keys(o).length) panelOverrides[key] = o;
   }
 
@@ -506,11 +618,14 @@ export function normalizeCabinet(raw = {}) {
     width: num(raw.width, 800, sizeMin, sizeMax),
     height: num(raw.height, 2000, sizeMin, sizeMax),
     depth: num(raw.depth, 560, sizeMin, sizeMax),
-    thickness: num(raw.thickness, DEFAULT_THICKNESS, 1, 100),
     backType: BACK_TYPES.some((b) => b.key === raw.backType) ? raw.backType : 'hdf',
     bottomJoint: raw.bottomJoint === 'overlay' ? 'overlay' : 'inset',
     topJoint: raw.topJoint === 'overlay' ? 'overlay' : 'inset',
-    color: typeof raw.color === 'string' && /^#[0-9a-f]{6}$/i.test(raw.color) ? raw.color : DEFAULT_CABINET_COLOR,
+    topType: raw.topType === 'rails' ? 'rails' : 'full',
+    railWidth: num(raw.railWidth, DEFAULT_RAIL_WIDTH, 10, sizeMax),
+    stiffeners,
+    materialId: typeof raw.materialId === 'string' ? raw.materialId : null,
+    blendMaterialId: typeof raw.blendMaterialId === 'string' ? raw.blendMaterialId : null,
     legs: {
       enabled: raw.legs?.enabled === true,
       height: num(raw.legs?.height, def.legs.height, LEG_LIMITS.min, LEG_LIMITS.max),

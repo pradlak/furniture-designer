@@ -1,5 +1,4 @@
 import {
-  BOARD_THICKNESSES,
   BACK_TYPES,
   CABINET_LIMITS,
   createCabinet,
@@ -9,6 +8,9 @@ import {
   panelCutSize,
   resizePanelLinked,
   JOINT_TYPES,
+  TOP_TYPES,
+  STIFFENER_POSITIONS,
+  createStiffener,
   SIDE_BLEND_TYPES,
   LEG_HEIGHTS,
   LEG_LIMITS,
@@ -18,9 +20,11 @@ import {
   setPath,
   sidePanelExtension,
   plinthHeight,
+  defaultEdges,
 } from '../model/furniture.js';
 import { duplicateCabinet, slideCabinet } from '../model/placement.js';
 import { createTrim, rowOf, trimBox, trimIssues, frontHeightsUnder } from '../model/trims.js';
+import { cabinetMaterials, trimMaterial } from '../model/materials.js';
 
 // Wysokość blendy do wyświetlenia: dla blendy dolnej automatycznej — wyliczona.
 const trimHeightValue = (t, project) => round1(t.type === 'plinth' ? plinthHeight(t, project) : t.height);
@@ -59,6 +63,25 @@ function jointSelect(label, field, options, value) {
 
 // Blenda boczna jednej strony. Widoczne są tylko opcje pasujące do wybranego wariantu
 // (patrz updateStatus): szerokość i panel przy ścianie — dla listwy; wysunięcie — dla panelu i listwy.
+function edgeSelect(key) {
+  return `<select data-edge="${key}">${[0, 1, 2].map((n) => `<option value="${n}">${n}</option>`).join('')}</select>`;
+}
+
+function materialSelect(label, field, project) {
+  return `
+    <label class="field small">
+      <span>${label}</span>
+      <select data-f="${field}">
+        ${project.materials.map((m) => `<option value="${m.id}">${escapeHtml(m.name)} (${m.thickness} mm)</option>`).join('')}
+      </select>
+    </label>`;
+}
+
+function setSummary(cardEl, section, text) {
+  const el = cardEl.querySelector(`[data-section="${section}"] .section-sum`);
+  if (el) el.textContent = text;
+}
+
 function sideBlendFields(side) {
   const label = side === 'left' ? 'Blenda lewa' : 'Blenda prawa';
   return `
@@ -95,7 +118,9 @@ function sideBlendFields(side) {
 // odświeżane są wartości pól i ostrzeżenia.
 export function createFurniturePanel(root, store, ui, tabs) {
   let renderedKey = null;
-  const openParts = new Set(); // korpusy z rozwiniętą listą elementów
+  // Rozwinięte sekcje kart korpusów („id:sekcja”); domyślnie otwarta jest sekcja „Korpus”.
+  const sectionState = new Map();
+  const isOpen = (id, key) => sectionState.get(`${id}:${key}`) ?? key === 'body';
 
   // Zmiany, po których zmienia się lista elementów (np. dochodzi blenda), wymagają przebudowy karty.
   const structureKey = (project) =>
@@ -103,7 +128,9 @@ export function createFurniturePanel(root, store, ui, tabs) {
       .map((c) => cabinetPanels(c, project).map((p) => p.key).join(',') + `@${c.id}`)
       .join('|') +
     '#' +
-    project.trims.map((t) => t.id).join('|');
+    project.trims.map((t) => t.id).join('|') +
+    '#' +
+    project.materials.map((m) => `${m.id}:${m.name}:${m.thickness}`).join('|');
   const updateTrim = (id, fn) =>
     store.set((p) => ({ ...p, trims: p.trims.map((t) => (t.id === id ? fn(t, p) : t)) }));
   const updateFurniture = (fn) => store.set((p) => ({ ...p, furniture: fn(p.furniture, p) }));
@@ -140,10 +167,114 @@ export function createFurniturePanel(root, store, ui, tabs) {
     updateStatus(project);
   }
 
+  // Karta korpusu podzielona na zwijane sekcje; w nagłówku każdej — krótkie podsumowanie
+  // (uzupełniane w updateStatus), żeby nie trzeba było jej rozwijać.
   function renderCabinet(c, project) {
-    const thicknesses = BOARD_THICKNESSES.includes(c.thickness)
-      ? BOARD_THICKNESSES
-      : [...BOARD_THICKNESSES, c.thickness].sort((a, b) => a - b);
+    const section = (key, title, body, extraClass = '') => `
+      <details class="section ${extraClass}" data-section="${key}" ${isOpen(c.id, key) ? 'open' : ''}>
+        <summary><span class="section-title">${title}</span><span class="section-sum"></span></summary>
+        <div class="section-body">${body}</div>
+      </details>`;
+
+    const body = `
+      <div class="grid-3">
+        ${SIZE_FIELDS.map((f) =>
+          numberField(f.label, f.key, c[f.key], { min: CABINET_LIMITS.sizeMin, max: CABINET_LIMITS.sizeMax, small: true }),
+        ).join('')}
+        ${POSITION_FIELDS.map((f) =>
+          numberField(f.label, f.key, c[f.key], { min: -CABINET_LIMITS.sizeMax, max: CABINET_LIMITS.sizeMax, small: true }),
+        ).join('')}
+      </div>
+      <div class="grid-2">
+        ${materialSelect('Materiał korpusu', 'materialId', project)}
+        ${materialSelect('Materiał blend', 'blendMaterialId', project)}
+        <label class="field small">
+          <span>Plecy</span>
+          <select data-f="backType">
+            ${BACK_TYPES.map((b) => `<option value="${b.key}">${b.label}</option>`).join('')}
+          </select>
+        </label>
+        <label class="field small">
+          <span>Góra korpusu</span>
+          <select data-f="topType">
+            ${TOP_TYPES.map((t) => `<option value="${t.key}">${t.label}</option>`).join('')}
+          </select>
+        </label>
+        <label class="field small rail-width">
+          <span>Szerokość trawersów <small>mm</small></span>
+          <input type="number" step="1" min="10" max="${CABINET_LIMITS.sizeMax}" data-f="railWidth" />
+        </label>
+        ${jointSelect('Wieniec / trawersy górne', 'topJoint', JOINT_TYPES.top, c.topJoint)}
+        ${jointSelect('Wieniec dolny', 'bottomJoint', JOINT_TYPES.bottom, c.bottomJoint)}
+      </div>
+      <div class="item-row">
+        <span class="hint">Grubości i kolory — z zakładki „Materiały”.</span>
+        <button type="button" data-action="fit">Dopasuj do wnęki</button>
+      </div>
+      <div class="slide-row" title="Przesuwa korpus aż do ściany, innego mebla lub przeszkody">
+        <span>Dosuń:</span>
+        <button type="button" data-slide="-x" title="W lewo">←</button>
+        <button type="button" data-slide="+x" title="W prawo">→</button>
+        <button type="button" data-slide="-z" title="Do tyłu">↑ tył</button>
+        <button type="button" data-slide="+z" title="Do przodu">↓ przód</button>
+        <button type="button" data-slide="-y" title="W dół — na podłogę albo na mebel poniżej">⤓ dół</button>
+      </div>`;
+
+    const legs = `
+      <div class="grid-2">
+        <label class="check"><input type="checkbox" data-f="legs.enabled" /> Nóżki</label>
+        <label class="field small">
+          <span>Wysokość nóżek <small>mm</small></span>
+          <input type="number" list="leg-heights" step="1" min="${LEG_LIMITS.min}" max="${LEG_LIMITS.max}" data-f="legs.height" />
+        </label>
+      </div>`;
+
+    const stiff = `
+      <p class="hint">Pionowe listwy tuż przed plecami, między bokami — usztywniają korpus
+        (np. do zawieszenia szafki). Mieszczą się w korpusie, nie zmieniają jego wymiarów.</p>
+      ${(c.stiffeners ?? [])
+        .map(
+          (st, i) => `
+        <div class="stiff-row">
+          <label class="field small">
+            <span>Położenie</span>
+            <select data-f="stiffeners.${i}.position">
+              ${STIFFENER_POSITIONS.map((p) => `<option value="${p.key}">${p.label}</option>`).join('')}
+            </select>
+          </label>
+          <label class="field small">
+            <span>Szerokość <small>mm</small></span>
+            <input type="number" step="1" min="1" max="${CABINET_LIMITS.sizeMax}" data-f="stiffeners.${i}.height" />
+          </label>
+          <label class="field small stiff-y">
+            <span>Od dołu korpusu <small>mm</small></span>
+            <input type="number" step="1" min="0" max="${CABINET_LIMITS.sizeMax}" data-f="stiffeners.${i}.y" />
+          </label>
+          <button type="button" class="icon danger" data-remove-stiff="${st.id}" title="Usuń poprzeczkę">✕</button>
+        </div>`,
+        )
+        .join('')}
+      <div class="add-row"><button type="button" data-action="add-stiff">+ poprzeczka</button></div>`;
+
+    const blends = `
+      <div class="grid-2">${['left', 'right'].map((side) => sideBlendFields(side)).join('')}</div>
+      <div class="trim-row">
+        <span class="sub-title">Blenda dolna i górna</span>
+        <div class="cabinet-trims"></div>
+        <button type="button" data-add-trim="plinth" title="Blenda dolna dla tego korpusu i sąsiadów w rzędzie">+ blenda dolna</button>
+        <button type="button" data-add-trim="topBlend" title="Blenda górna dla tego korpusu i sąsiadów w rzędzie">+ blenda górna</button>
+      </div>`;
+
+    const parts = `
+      <p class="hint">Osie: X — szerokość, Y — wysokość, Z — głębokość korpusu.
+        Elementy są powiązane: zmiana wymiaru płyty zmienia korpus, a pozostałe płyty
+        się dopasowują (np. szerokość boku → głębokość korpusu i wieńców).
+        Zmiana grubości przesuwa sąsiednie płyty.
+        „Niezależny” odłącza płytę — jej wymiary dotyczą tylko jej.
+        Wartości ręczne są wyróżnione, ↺ przywraca automatyczne.</p>
+      ${cabinetPanels(c, project).map(renderPart).join('')}
+      <p class="legs-info"></p>`;
+
     return `
       <div class="item cabinet" data-kind="cabinet" data-id="${c.id}">
         <div class="item-head">
@@ -151,73 +282,12 @@ export function createFurniturePanel(root, store, ui, tabs) {
           <button type="button" data-action="duplicate" title="Duplikuj (Ctrl+D)">⧉</button>
           <button type="button" class="danger" data-remove="${c.id}" title="Usuń (Delete)">✕</button>
         </div>
-        <div class="grid-3">
-          ${SIZE_FIELDS.map((f) =>
-            numberField(f.label, f.key, c[f.key], { min: CABINET_LIMITS.sizeMin, max: CABINET_LIMITS.sizeMax, small: true }),
-          ).join('')}
-          ${POSITION_FIELDS.map((f) =>
-            numberField(f.label, f.key, c[f.key], { min: -CABINET_LIMITS.sizeMax, max: CABINET_LIMITS.sizeMax, small: true }),
-          ).join('')}
-        </div>
-        <div class="grid-2">
-          <label class="field small">
-            <span>Grubość płyty</span>
-            <select data-f="thickness" data-type="number">
-              ${thicknesses.map((t) => `<option value="${t}" ${t === c.thickness ? 'selected' : ''}>${t} mm</option>`).join('')}
-            </select>
-          </label>
-          <label class="field small">
-            <span>Plecy</span>
-            <select data-f="backType">
-              ${BACK_TYPES.map((b) => `<option value="${b.key}" ${b.key === c.backType ? 'selected' : ''}>${b.label}</option>`).join('')}
-            </select>
-          </label>
-          ${jointSelect('Wieniec górny', 'topJoint', JOINT_TYPES.top, c.topJoint)}
-          ${jointSelect('Wieniec dolny', 'bottomJoint', JOINT_TYPES.bottom, c.bottomJoint)}
-        </div>
-        <fieldset class="accessories">
-          <legend>Nóżki i blendy</legend>
-          <div class="grid-2">
-            <label class="check"><input type="checkbox" data-f="legs.enabled" /> Nóżki</label>
-            <label class="field small">
-              <span>Wysokość nóżek <small>mm</small></span>
-              <input type="number" list="leg-heights" step="1" min="${LEG_LIMITS.min}" max="${LEG_LIMITS.max}" data-f="legs.height" />
-            </label>
-            ${['left', 'right'].map((side) => sideBlendFields(side)).join('')}
-          </div>
-          <div class="trim-row">
-            <div class="cabinet-trims"></div>
-            <button type="button" data-add-trim="plinth" title="Blenda dolna dla tego korpusu i sąsiadów w rzędzie">+ blenda dolna</button>
-            <button type="button" data-add-trim="topBlend" title="Blenda górna dla tego korpusu i sąsiadów w rzędzie">+ blenda górna</button>
-          </div>
-        </fieldset>
-        <div class="item-row">
-          <label class="color-field">
-            <input type="color" data-f="color" value="${c.color}" />
-            <span>Kolor płyty</span>
-          </label>
-          <button type="button" data-action="fit">Dopasuj do wnęki</button>
-        </div>
-        <div class="slide-row" title="Przesuwa korpus aż do ściany, innego mebla lub przeszkody">
-          <span>Dosuń:</span>
-          <button type="button" data-slide="-x" title="W lewo">←</button>
-          <button type="button" data-slide="+x" title="W prawo">→</button>
-          <button type="button" data-slide="-z" title="Do tyłu">↑ tył</button>
-          <button type="button" data-slide="+z" title="Do przodu">↓ przód</button>
-          <button type="button" data-slide="-y" title="W dół — na podłogę albo na mebel poniżej">⤓ dół</button>
-        </div>
         <ul class="issues"></ul>
-        <details class="parts" ${openParts.has(c.id) ? 'open' : ''}>
-          <summary>Elementy</summary>
-          <p class="hint">Osie: X — szerokość, Y — wysokość, Z — głębokość korpusu.
-            Elementy są powiązane: zmiana wymiaru płyty zmienia korpus, a pozostałe płyty
-            się dopasowują (np. szerokość boku → głębokość korpusu i wieńców).
-            Zmiana grubości przesuwa sąsiednie płyty.
-            „Niezależny” odłącza płytę — jej wymiary dotyczą tylko jej.
-            Wartości ręczne są wyróżnione, ↺ przywraca automatyczne.</p>
-          ${cabinetPanels(c, project).map(renderPart).join('')}
-          <p class="legs-info"></p>
-        </details>
+        ${section('body', 'Korpus', body)}
+        ${section('stiff', 'Wzmocnienia', stiff)}
+        ${section('legs', 'Nóżki', legs)}
+        ${section('blends', 'Blendy', blends)}
+        ${section('parts', 'Elementy', parts, 'parts')}
       </div>`;
   }
 
@@ -236,9 +306,6 @@ export function createFurniturePanel(root, store, ui, tabs) {
       t.type === 'plinth'
         ? [heightField, numberField('Cofnięcie', 'setback', t.setback, { min: -500, max: 5000, small: true })]
         : [heightField, numberField('Szczelina do frontu', 'gap', t.gap, { min: 0, max: 100, small: true })];
-    const thicknesses = BOARD_THICKNESSES.includes(t.thickness)
-      ? BOARD_THICKNESSES
-      : [...BOARD_THICKNESSES, t.thickness].sort((a, b) => a - b);
     return `
       <div class="item trim ${t.type}" data-kind="trim" data-id="${t.id}">
         <div class="item-head">
@@ -259,12 +326,7 @@ export function createFurniturePanel(root, store, ui, tabs) {
         </div>
         <div class="grid-3">
           ${fields.join('')}
-          <label class="field small">
-            <span>Grubość</span>
-            <select data-f="thickness" data-type="number">
-              ${thicknesses.map((v) => `<option value="${v}">${v} mm</option>`).join('')}
-            </select>
-          </label>
+          ${materialSelect('Materiał', 'materialId', project)}
         </div>
         <p class="trim-size"></p>
         <ul class="issues"></ul>
@@ -289,6 +351,11 @@ export function createFurniturePanel(root, store, ui, tabs) {
       const box = trimBox(t, project);
       let size =
         box && box.height > 0 ? `Formatka: ${round1(box.width)} × ${round1(box.height)} × ${round1(box.depth)} mm` : '';
+      if (box && box.height > 0) {
+        // Blendy mają oklejone wszystkie krawędzie (jeśli materiał ma obrzeże).
+        const cut = panelCutSize({ ...box, material: trimMaterial(t, project), edges: defaultEdges(t.type) });
+        if (cut.band) size += ` · do cięcia: ${round1(cut.cutLength)} × ${round1(cut.cutWidth)} mm`;
+      }
       if (t.type === 'topBlend') {
         const fronts = [...new Set(frontHeightsUnder(t, project).map((f) => round1(f.height)))];
         if (fronts.length) size += ` · front pod blendą: ${fronts.join(' / ')} mm`;
@@ -348,6 +415,12 @@ export function createFurniturePanel(root, store, ui, tabs) {
             </label>`,
           ).join('')}
         </div>
+        <div class="part-edges">
+          <span class="part-material"></span>
+          <label title="Ile długich krawędzi jest oklejonych obrzeżem">obrzeże: dł. ${edgeSelect('l')}</label>
+          <label title="Ile krótkich krawędzi jest oklejonych obrzeżem">kr. ${edgeSelect('w')}</label>
+        </div>
+        <div class="part-cutsize"></div>
       </div>`;
   }
 
@@ -371,6 +444,29 @@ export function createFurniturePanel(root, store, ui, tabs) {
       const hasLegs = !!c.legs?.enabled;
       el.querySelectorAll('option[value="plinth"]').forEach((opt) => (opt.disabled = !hasLegs));
       updateCabinetTrims(el.querySelector('.cabinet-trims'), c, project);
+      el.querySelector('.rail-width').hidden = c.topType !== 'rails';
+
+      // Podsumowania w nagłówkach sekcji.
+      const bodyMat = cabinetMaterials(c, project).body;
+      setSummary(el, 'body', `${c.width} × ${c.height} × ${c.depth} mm · ${bodyMat.name}${c.topType === 'rails' ? ' · trawersy' : ''}`);
+      setSummary(el, 'legs', c.legs?.enabled ? `${c.legs.height} mm` : 'brak');
+      const nStiff = c.stiffeners?.length ?? 0;
+      setSummary(el, 'stiff', nStiff ? `${nStiff} ${nStiff === 1 ? 'poprzeczka' : nStiff < 5 ? 'poprzeczki' : 'poprzeczek'}` : 'brak');
+      el.querySelectorAll('.stiff-row').forEach((row, i) => {
+        row.querySelector('.stiff-y').hidden = c.stiffeners?.[i]?.position !== 'backAt';
+      });
+      const blendParts = ['left', 'right']
+        .map((side) => {
+          const sb = c.sideBlends?.[side];
+          const name = { plinth: 'cokół boczny', full: 'panel', filler: sb?.wallPanel ? 'listwa + panel' : 'listwa' }[sb?.type];
+          return name && `${side === 'left' ? 'L' : 'P'}: ${name}`;
+        })
+        .filter(Boolean);
+      const trimNames = project.trims
+        .filter((t) => t.cabinetIds.includes(c.id))
+        .map((t) => (t.type === 'plinth' ? 'dolna' : 'górna'));
+      if (trimNames.length) blendParts.push(trimNames.join(', '));
+      setSummary(el, 'blends', blendParts.join(' · ') || 'brak');
       for (const side of ['left', 'right']) {
         // Pokazujemy tylko opcje pasujące do wariantu: listwa → szerokość i panel przy ścianie;
         // panel na pełną wysokość albo listwa (z panelem lub bez) → wysunięcie do przodu.
@@ -392,7 +488,7 @@ export function createFurniturePanel(root, store, ui, tabs) {
         : '<li class="ok">Mieści się w przestrzeni.</li>';
 
       const panels = cabinetPanels(c, project);
-      el.querySelector('.parts summary').textContent = `Elementy (${panels.length})`;
+      setSummary(el, 'parts', `${panels.length} płyt`);
       const legs = cabinetLegs(c, project);
       el.querySelector('.legs-info').textContent = legs.length
         ? `Nóżki: ${legs.length} szt. × ${legs[0].height} mm (Ø${LEG_DIAMETER} mm)`
@@ -405,6 +501,16 @@ export function createFurniturePanel(root, store, ui, tabs) {
         partEl.querySelector('.part-cut').textContent = p.valid
           ? `${round1(s.length)} × ${round1(s.width)} × ${round1(s.thickness)} mm`
           : 'błędne wymiary';
+        // Materiał, obrzeże i wymiar do cięcia (gotowy wymiar pomniejszony o taśmę).
+        partEl.querySelector('.part-material').textContent = p.material.name;
+        partEl.querySelectorAll('[data-edge]').forEach((sel) => {
+          sel.value = p.edges[sel.dataset.edge];
+          sel.disabled = !s.band;
+        });
+        partEl.querySelector('.part-cutsize').textContent =
+          p.valid && s.band && (s.edges.l || s.edges.w)
+            ? `do cięcia: ${round1(s.cutLength)} × ${round1(s.cutWidth)} mm (obrzeże ${s.band} mm)`
+            : '';
         partEl.querySelector('[data-reset-part]').hidden = p.overridden.length === 0 && !p.free;
         partEl.querySelector('[data-part-free]').checked = p.free;
         partEl.classList.toggle('free', p.free);
@@ -483,6 +589,17 @@ export function createFurniturePanel(root, store, ui, tabs) {
       return;
     }
 
+    // Obrzeże elementu: liczba oklejonych krawędzi długich (l) i krótkich (w).
+    if (input.dataset.edge) {
+      const value = Number(input.value);
+      updateCabinet(id, (c, prj) => {
+        const current = cabinetPanels(c, prj).find((x) => x.key === part).edges;
+        const o = { ...c.panelOverrides?.[part], edges: { ...current, [input.dataset.edge]: value } };
+        return { ...c, panelOverrides: { ...c.panelOverrides, [part]: o } };
+      });
+      return;
+    }
+
     // Pole elementu korpusu.
     if (input.dataset.pf) {
       const value = readNumberInput(input);
@@ -555,9 +672,8 @@ export function createFurniturePanel(root, store, ui, tabs) {
     'toggle',
     (e) => {
       const id = e.target.closest?.('[data-kind="cabinet"]')?.dataset.id;
-      if (!id || !e.target.classList.contains('parts')) return;
-      if (e.target.open) openParts.add(id);
-      else openParts.delete(id);
+      const key = e.target.dataset?.section;
+      if (id && key) sectionState.set(`${id}:${key}`, e.target.open);
     },
     true, // zdarzenie toggle nie „bąbelkuje”, łapiemy je w fazie przechwytywania
   );
@@ -571,9 +687,14 @@ export function createFurniturePanel(root, store, ui, tabs) {
 
   root.addEventListener('click', (e) => {
     selectFrom(e.target);
-    const { action, remove, resetPart, slide, addTrim, removeTrim, resetTrimHeight } = e.target.dataset ?? {};
+    const { action, remove, resetPart, slide, addTrim, removeTrim, resetTrimHeight, removeStiff } =
+      e.target.dataset ?? {};
     const id = e.target.closest('[data-kind="cabinet"]')?.dataset.id;
-    if (resetTrimHeight) {
+    if (action === 'add-stiff' && id) {
+      updateCabinet(id, (c) => ({ ...c, stiffeners: [...(c.stiffeners ?? []), createStiffener(c)] }));
+    } else if (removeStiff && id) {
+      updateCabinet(id, (c) => ({ ...c, stiffeners: c.stiffeners.filter((st) => st.id !== removeStiff) }));
+    } else if (resetTrimHeight) {
       updateTrim(resetTrimHeight, (t) => ({ ...t, height: null }));
     } else if (addTrim) {
       // Z karty korpusu: ten korpus + sąsiedzi w rzędzie; z dołu panelu: zaznaczony korpus i jego rząd

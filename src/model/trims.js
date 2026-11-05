@@ -1,5 +1,5 @@
+import { trimMaterial } from './materials.js';
 import {
-  DEFAULT_THICKNESS,
   legHeight,
   trimCabinets,
   trimFront,
@@ -39,7 +39,7 @@ export function createTrim(type, cabinetIds, project) {
     type,
     name: `${TRIM_TYPES[type].label} ${count + 1}`,
     cabinetIds: [...cabinetIds],
-    thickness: first?.thickness ?? DEFAULT_THICKNESS,
+    materialId: first?.blendMaterialId ?? project.materials?.find((m) => m.type === 'mdf')?.id ?? null,
     ...TRIM_DEFAULTS[type],
   };
 }
@@ -77,22 +77,23 @@ export function trimBox(trim, project) {
   const x = Math.min(...spans.map((s) => s[0]));
   const width = Math.max(...spans.map((s) => s[1])) - x;
   const front = trimFront(trim, project);
+  const thickness = trimMaterial(trim, project).thickness;
 
   if (trim.type === 'plinth') {
     return {
       x,
       y: Math.min(...cabs.map((c) => c.y)),
-      z: front - trim.setback - trim.thickness,
+      z: front - trim.setback - thickness,
       width,
       height: plinthHeight(trim, project),
-      depth: trim.thickness,
+      depth: thickness,
     };
   }
   // blenda górna: tylko na szerokość korpusów (bez listew), przed frontem korpusu
   const left = Math.min(...cabs.map((c) => c.x));
   const right = Math.max(...cabs.map((c) => c.x + c.width));
   const top = Math.max(...cabs.map((c) => c.y + legHeight(c) + c.height));
-  return { x: left, y: top - trim.height, z: front, width: right - left, height: trim.height, depth: trim.thickness };
+  return { x: left, y: top - trim.height, z: front, width: right - left, height: trim.height, depth: thickness };
 }
 
 // Wysokość frontu pod blendą górną (dla każdego objętego korpusu).
@@ -142,7 +143,7 @@ export function normalizeTrim(raw = {}, cabinetIds) {
     type: raw.type,
     name: typeof raw.name === 'string' ? raw.name : TRIM_TYPES[raw.type].label,
     cabinetIds: Array.isArray(raw.cabinetIds) ? raw.cabinetIds.filter((id) => cabinetIds.includes(id)) : [],
-    thickness: num(raw.thickness, DEFAULT_THICKNESS, 1, 100),
+    materialId: typeof raw.materialId === 'string' ? raw.materialId : null,
   };
   if (raw.type === 'plinth') {
     trim.height = raw.height == null ? null : num(raw.height, null, 1, 2000);

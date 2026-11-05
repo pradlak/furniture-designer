@@ -2,10 +2,10 @@ import * as THREE from 'three';
 import { MM, toScene } from './units.js';
 import { cabinetPanels, cabinetIssues, cabinetLegs } from '../model/furniture.js';
 import { trimBox, trimIssues } from '../model/trims.js';
+import { trimMaterial } from '../model/materials.js';
 
 const LEG_COLOR = '#3f3f46';
 
-const HDF_COLOR = '#e9e4da';
 const EDGE_OK = 0x5b4630;
 const EDGE_BAD = 0xdc2626;
 
@@ -27,20 +27,29 @@ export function buildFurniture(project, selectedId = null) {
   const disposables = [];
   group.userData.disposables = disposables;
 
+  // Jeden materiał Three.js na kolor płyty (kolory pochodzą z biblioteki materiałów projektu).
+  const byColor = new Map();
+  const materialFor = (color) => {
+    if (!byColor.has(color)) {
+      const m = boardMaterial(color);
+      byColor.set(color, m);
+      disposables.push(m);
+    }
+    return byColor.get(color);
+  };
+
   for (const cabinet of project.furniture) {
     const hasIssues = cabinetIssues(cabinet, project).length > 0;
-    const boardMat = boardMaterial(cabinet.color);
-    const hdfMat = boardMaterial(HDF_COLOR);
     const edgeColor = cabinet.id === selectedId ? EDGE_SELECTED : hasIssues ? EDGE_BAD : EDGE_OK;
     const edgeMat = new THREE.LineBasicMaterial({ color: edgeColor });
-    disposables.push(boardMat, hdfMat, edgeMat);
+    disposables.push(edgeMat);
 
     const cabinetGroup = new THREE.Group();
     cabinetGroup.name = cabinet.name;
     cabinetGroup.userData.cabinetId = cabinet.id; // do wybierania myszką
     for (const p of cabinetPanels(cabinet, project).filter((p) => p.valid)) {
       const geometry = new THREE.BoxGeometry(p.width * MM, p.height * MM, p.depth * MM);
-      const mesh = new THREE.Mesh(geometry, p.kind === 'hdf' ? hdfMat : boardMat);
+      const mesh = new THREE.Mesh(geometry, materialFor(p.color));
       mesh.position.set(...toScene(p.x + p.width / 2, p.y + p.height / 2, p.z + p.depth / 2, project.space));
       mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geometry), edgeMat));
       cabinetGroup.add(mesh);
@@ -60,14 +69,13 @@ export function buildFurniture(project, selectedId = null) {
     group.add(cabinetGroup);
   }
 
-  // Blendy wspólne (blenda dolna, blenda górna) — w kolorze pierwszego objętego korpusu.
+  // Blendy wspólne (blenda dolna, blenda górna) — w kolorze swojego materiału.
   for (const trim of project.trims ?? []) {
     const box = trimBox(trim, project);
     if (!box || box.height <= 0) continue;
-    const first = project.furniture.find((c) => c.id === trim.cabinetIds[0]);
-    const mat = boardMaterial(first?.color ?? '#d2b48c');
+    const mat = materialFor(trimMaterial(trim, project).color);
     const edgeMat = new THREE.LineBasicMaterial({ color: trimIssues(trim, project).length ? EDGE_BAD : EDGE_OK });
-    disposables.push(mat, edgeMat);
+    disposables.push(edgeMat);
     const geometry = new THREE.BoxGeometry(box.width * MM, box.height * MM, box.depth * MM);
     const mesh = new THREE.Mesh(geometry, mat);
     mesh.position.set(...toScene(box.x + box.width / 2, box.y + box.height / 2, box.z + box.depth / 2, project.space));

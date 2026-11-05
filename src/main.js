@@ -5,6 +5,7 @@ import { Viewer } from './scene/Viewer.js';
 import { attachCabinetInteraction } from './scene/interaction.js';
 import { createSpacePanel } from './ui/spacePanel.js';
 import { createFurniturePanel } from './ui/furniturePanel.js';
+import { createMaterialsPanel } from './ui/materialsPanel.js';
 import { createToolbar } from './ui/toolbar.js';
 import { initTabs } from './ui/tabs.js';
 import { initShortcuts } from './ui/shortcuts.js';
@@ -17,6 +18,7 @@ const viewer = new Viewer(document.getElementById('viewport'));
 const tabs = initTabs(document.getElementById('tabs'));
 const spacePanel = createSpacePanel(document.getElementById('space-panel'), store);
 const furniturePanel = createFurniturePanel(document.getElementById('furniture-panel'), store, ui, tabs);
+const materialsPanel = createMaterialsPanel(document.getElementById('materials-panel'), store);
 const toolbar = createToolbar(document.getElementById('toolbar'), store, viewer);
 attachCabinetInteraction(viewer, store, ui);
 initShortcuts(store, ui);
@@ -32,6 +34,7 @@ store.subscribe((project, meta) => {
   redraw(meta.replace && !meta.undo);
   spacePanel.sync(project, meta);
   furniturePanel.sync(project, meta);
+  materialsPanel.sync(project, meta);
   toolbar.sync(project);
   saveProject(project); // autozapis w przeglądarce
 });
