@@ -298,3 +298,45 @@ button.eye.off { opacity: 0.35; text-decoration: line-through; }
 .allowance-note { font-size: 11px; font-weight: 600; color: #c2410c; margin: 2px 0 0; }
 .allowance-note:empty { display: none; }
 .allowance-field span { color: #c2410c; }
+
+/* --- zakładka „Blendy i blaty” --- */
+.tabs { flex-wrap: wrap; }
+.tabs button { padding: 6px 9px; }
+.item.trim.related { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent); }
+.add-target { font-style: italic; }
+.trims-info { display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--border); padding: 7px 0 2px; }
+.trims-info .cabinet-trims { flex: 1; display: block; font-size: 12px; color: var(--muted); margin: 0; }
+.trims-info button { padding: 2px 8px; font-size: 12px; white-space: nowrap; }
+
+/* --- uchwyt szerokości lewego panelu --- */
+.panel { border-right: 0; }
+.panel-resizer {
+  flex: none;
+  width: 6px;
+  cursor: col-resize;
+  background: var(--border);
+  border-left: 1px solid var(--border);
+  transition: background 0.15s;
+  touch-action: none;
+}
+.panel-resizer:hover,
+.panel-resizer.dragging { background: var(--accent); }
+body.resizing { cursor: col-resize; user-select: none; }
+body.resizing .viewport { pointer-events: none; }
+@media (max-width: 760px) {
+  .panel-resizer { display: none; }
+  .panel { width: 100% !important; }
+}
+
+/* --- blendy boczne w zakładce „Blendy i blaty” --- */
+.item.side-blends { border-left-color: #7c6a55; }
+.item.side-blends.related { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent); }
+.side-blends-name { font-weight: 600; }
+.side-blends-sum { flex: 1; text-align: right; font-size: 11px; color: var(--muted); }
+.item.side-blends .side-blend { grid-column: auto; border-top: 0; padding-top: 0; }
+.side-blend-head { display: flex; align-items: flex-end; gap: 4px; }
+.side-blend-head .field { flex: 1; }
+.side-blend-head .eye { margin-bottom: 12px; }
+.side-blend.is-hidden > :not(.side-blend-head) { opacity: 0.55; }
+.side-blend-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 4px 16px; }
+.side-blend-pair .side-blend + .side-blend { border-top: 1px dashed var(--border); padding-top: 8px; }

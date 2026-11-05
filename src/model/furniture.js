@@ -61,14 +61,14 @@ const stiffenerName = (s) => `Poprzeczka ${{ backTop: 'tylna górna', backBottom
 // Blendy boczne (osobno dla lewej i prawej strony).
 //  plinth — cokół boczny: płyta pod korpusem w płaszczyźnie boku, zasłania nóżki z boku,
 //  full   — panel boczny na pełną wysokość (od podłogi do góry korpusu), przy boku korpusu,
-//  filler — listwa w płaszczyźnie frontu przy boku (wypełnia szczelinę do ściany);
-//           opcjonalnie (wallPanel) z panelem na pełną wysokość po zewnętrznej stronie listwy,
-//           przylegającym do ściany: korpus → listwa → panel → ściana.
+//  filler — blenda boczna: pas w płaszczyźnie frontu przy boku (wypełnia szczelinę do ściany);
+//           opcjonalnie (wallPanel) z panelem na pełną wysokość po zewnętrznej stronie blendy,
+//           przylegającym do ściany: korpus → blenda boczna → panel → ściana.
 export const SIDE_BLEND_TYPES = [
   { key: 'none', label: 'Brak' },
   { key: 'plinth', label: 'Cokół boczny (pod korpusem)' },
   { key: 'full', label: 'Panel na pełną wysokość' },
-  { key: 'filler', label: 'Listwa z przodu (przy ścianie)' },
+  { key: 'filler', label: 'Blenda boczna' },
 ];
 
 // Elementy korpusu. `thicknessAxis` — oś, wzdłuż której mierzymy grubość płyty
@@ -111,7 +111,8 @@ export function defaultAccessories() {
 // extend     — ręczne wysunięcie do przodu, gdy flushFront jest wyłączone.
 function defaultSideBlend() {
   // allowance — zapas na docięcie listwy (w stronę ściany); nie liczy się do kolizji
-  return { type: 'none', width: 50, wallPanel: false, flushFront: false, extend: 0, allowance: 0 };
+  // hidden — blendy tej strony ukryte w widoku 3D
+  return { type: 'none', width: 50, wallPanel: false, flushFront: false, extend: 0, allowance: 0, hidden: false };
 }
 
 // O ile panel boczny danej strony wystaje przed korpus.
@@ -148,6 +149,7 @@ export function createCabinet(project, overrides = {}) {
     topType: 'full',
     railWidth: DEFAULT_RAIL_WIDTH,
     stiffeners: [],
+    backGap: 0, // odstęp pleców od tylnej ściany (np. na rury) — patrz setBackGap
     ...defaultAccessories(),
     panelOverrides: {},
     ...overrides,
@@ -210,6 +212,15 @@ export function cabinetContext(cabinet, project) {
   return ctx;
 }
 
+// Zmiana odstępu od tylnej ściany: front zostaje na miejscu, plecy przesuwają się,
+// więc korpus robi się płytszy (albo głębszy). Blat liczy się od ściany, więc się nie zmienia.
+export function setBackGap(cabinet, gap) {
+  const delta = gap - (cabinet.backGap ?? 0);
+  const depth = cabinet.depth - delta;
+  if (depth < CABINET_LIMITS.sizeMin) return null;
+  return { ...cabinet, backGap: gap, z: cabinet.z + delta, depth };
+}
+
 // Największa wysokość, jaką może mieć bryła o podstawie (x, z, w, d) stojąca na wysokości y0,
 // żeby nie wyjść ponad sufit ani przez skosy.
 export function maxHeightAt(space, x, z, w, d, y0 = 0) {
@@ -237,9 +248,9 @@ export function fitCabinetToSpace(cabinet, project) {
     ...cabinet,
     x: extraL,
     y: 0,
-    z: extraBack,
+    z: extraBack + (cabinet.backGap ?? 0),
     width: Math.max(sizeMin, space.width - extraL - extraR),
-    depth: Math.max(sizeMin, space.depth - extraBack - extraFront),
+    depth: Math.max(sizeMin, space.depth - extraBack - extraFront - (cabinet.backGap ?? 0)),
     height: Math.max(sizeMin, height),
   };
 }
@@ -396,7 +407,8 @@ export function cabinetPanels(cabinet, project) {
       // zapas na docięcie (mm) po stronie mniejszego / większego X — poza wymiarem nominalnym
       allowanceMin: allowance[def.key]?.min ?? 0,
       allowanceMax: allowance[def.key]?.max ?? 0,
-      hidden: !!o.hidden, // ukryta tylko w widoku 3D
+      // ukryta tylko w widoku 3D: sama płyta albo cała strona blend bocznych
+      hidden: !!o.hidden || !!blends[BLEND_SIDE[def.key]]?.hidden,
       overridden,
     };
     panel.valid = panel.width > 0 && panel.height > 0 && panel.depth > 0;
@@ -472,6 +484,9 @@ export function setPath(obj, path, value) {
   }
   return { ...obj, [head]: next };
 }
+
+// Strona korpusu, do której należy element blendy bocznej.
+const BLEND_SIDE = { blendLeft: 'left', wallPanelLeft: 'left', blendRight: 'right', wallPanelRight: 'right' };
 
 // Elementy z materiału blend (pozostałe — z materiału korpusu, plecy HDF — z HDF).
 const BLEND_KEYS = ['blendLeft', 'blendRight', 'wallPanelLeft', 'wallPanelRight'];
@@ -626,6 +641,7 @@ export function normalizeCabinet(raw = {}) {
     flushFront: src.flushFront === true,
     extend: num(src.extend, 0, 0, 500),
     allowance: num(src.allowance, 0, 0, 500),
+    hidden: src.hidden === true,
   });
 
   return {
@@ -644,6 +660,7 @@ export function normalizeCabinet(raw = {}) {
     topType: raw.topType === 'rails' ? 'rails' : 'full',
     railWidth: num(raw.railWidth, DEFAULT_RAIL_WIDTH, 10, sizeMax),
     stiffeners,
+    backGap: num(raw.backGap, 0, 0, sizeMax),
     materialId: typeof raw.materialId === 'string' ? raw.materialId : null,
     blendMaterialId: typeof raw.blendMaterialId === 'string' ? raw.blendMaterialId : null,
     legs: {

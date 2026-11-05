@@ -30,6 +30,17 @@ export function readNumberInput(input) {
   return value;
 }
 
+// Puste pole, które dopuszcza 0 (zapas, odstęp, przesunięcie…), po opuszczeniu oznacza 0 —
+// zapisujemy je tak, jakby użytkownik wpisał 0. Zwraca true, jeśli tak się stało.
+// (Pola, które muszą być większe od zera, wracają do ostatniej poprawnej wartości.)
+export function commitEmptyAsZero(input) {
+  if (input.value.trim() !== '' || input.min === '' || Number(input.min) > 0) return false;
+  input.value = '0';
+  input.classList.remove('invalid');
+  input.dispatchEvent(new input.ownerDocument.defaultView.Event('input', { bubbles: true }));
+  return true;
+}
+
 export function setIfNotFocused(input, value) {
   if (input && document.activeElement !== input) input.value = value;
 }

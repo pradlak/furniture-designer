@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { MM, toScene } from './units.js';
 import { cabinetPanels, cabinetIssues, cabinetLegs } from '../model/furniture.js';
-import { trimBox, trimIssues, trimAllowance } from '../model/trims.js';
+import { trimSegments, trimIssues, trimAllowance } from '../model/trims.js';
 import { trimMaterial } from '../model/materials.js';
 
 const LEG_COLOR = '#3f3f46';
@@ -94,18 +94,21 @@ export function buildFurniture(project, selectedId = null) {
 
   // Blendy wspólne (blenda dolna, blenda górna) — w kolorze swojego materiału.
   for (const trim of (project.trims ?? []).filter(trimVisible)) {
-    const box = trimBox(trim, project);
-    if (!box || box.height <= 0) continue;
+    const segments = trimSegments(trim, project);
+    if (!segments.length) continue;
     const mat = materialFor(trimMaterial(trim, project).color);
     const edgeMat = new THREE.LineBasicMaterial({ color: trimIssues(trim, project).length ? EDGE_BAD : EDGE_OK });
     disposables.push(edgeMat);
-    const geometry = new THREE.BoxGeometry(box.width * MM, box.height * MM, box.depth * MM);
-    const mesh = new THREE.Mesh(geometry, mat);
-    mesh.position.set(...toScene(box.x + box.width / 2, box.y + box.height / 2, box.z + box.depth / 2, project.space));
-    mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geometry), edgeMat));
-    group.add(mesh);
     const a = trimAllowance(trim, project);
-    addAllowance(group, box, a.min, a.max, project.space);
+    segments.forEach((box, i) => {
+      const geometry = new THREE.BoxGeometry(box.width * MM, box.height * MM, box.depth * MM);
+      const mesh = new THREE.Mesh(geometry, mat);
+      mesh.position.set(...toScene(box.x + box.width / 2, box.y + box.height / 2, box.z + box.depth / 2, project.space));
+      mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geometry), edgeMat));
+      group.add(mesh);
+      // zapas: z lewej na pierwszym odcinku, z prawej na ostatnim
+      addAllowance(group, box, i === 0 ? a.min : 0, i === segments.length - 1 ? a.max : 0, project.space);
+    });
   }
   return group;
 }

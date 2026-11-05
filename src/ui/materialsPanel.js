@@ -4,7 +4,7 @@ import {
   EDGE_BANDING_OPTIONS,
   createMaterial,
 } from '../model/materials.js';
-import { escapeHtml, readNumberInput, setIfNotFocused } from './dom.js';
+import { escapeHtml, readNumberInput, setIfNotFocused, commitEmptyAsZero } from './dom.js';
 
 // Zakładka „Materiały”: biblioteka płyt projektu. Zmiana grubości materiału od razu przebudowuje
 // wszystkie korpusy i blendy, które go używają.
@@ -101,7 +101,8 @@ export function createMaterialsPanel(root, store) {
 
   root.addEventListener('change', (e) => {
     const input = e.target;
-    if (input.type !== 'number' || (!input.classList.contains('invalid') && input.value.trim() !== '')) return;
+    if (input.type !== 'number' || commitEmptyAsZero(input)) return;
+    if (!input.classList.contains('invalid') && input.value.trim() !== '') return;
     input.classList.remove('invalid');
     const m = store.get().materials.find((x) => x.id === input.closest('.material')?.dataset.id);
     if (m) input.value = m[input.dataset.f];

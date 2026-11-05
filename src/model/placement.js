@@ -29,7 +29,9 @@ export function snapPosition(project, cabinetId, pos, axes, threshold = 30) {
     const offset = b[axis] - cabinet[axis]; // płyty mogą wystawać poza wymiar nominalny
     const lo = pos[axis] + offset;
     const hi = lo + b[dim];
-    const targets = [0, spaceSize(project.space, axis), ...others.flatMap((o) => [o[axis], o[axis] + o[dim]])];
+    // Przy tylnej ścianie korpus przyciąga się z zachowaniem odstępu (backGap).
+    const wallMin = axis === 'z' ? (cabinet.backGap ?? 0) : 0;
+    const targets = [wallMin, spaceSize(project.space, axis), ...others.flatMap((o) => [o[axis], o[axis] + o[dim]])];
 
     let best = null;
     for (const t of targets) {
@@ -57,7 +59,7 @@ export function slideCabinet(project, cabinetId, direction) {
 
   let delta;
   if (direction[0] === '-') {
-    let stop = 0;
+    let stop = axis === 'z' ? (cabinet.backGap ?? 0) : 0; // do tylnej ściany — z zachowaniem odstępu
     for (const o of others) if (o[axis] + o[dim] <= b[axis] + eps) stop = Math.max(stop, o[axis] + o[dim]);
     delta = stop - b[axis];
   } else {

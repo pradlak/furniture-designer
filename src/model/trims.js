@@ -10,6 +10,7 @@ import {
   boxesOverlap,
   cabinetBounds,
   cabinetContext,
+  cabinetPanels,
   newId,
 } from './furniture.js';
 import { isPointInside } from './space.js';
@@ -79,7 +80,12 @@ export function rowOf(cabinetId, project) {
         if (!row.has(r.id)) return false;
         const [rl, rr] = frontSpan(r);
         const [cl, cr] = frontSpan(c);
-        return (same(rr, cl) || same(cr, rl)) && same(r.z + r.depth, c.z + c.depth) && same(r.y, c.y);
+        // stykają się frontami (z listwami) albo obrysami (np. z panelem bocznym między nimi)
+        const br = cabinetBounds(r, project);
+        const bc = cabinetBounds(c, project);
+        const touch =
+          same(rr, cl) || same(cr, rl) || same(br.x + br.width, bc.x) || same(bc.x + bc.width, br.x);
+        return touch && same(r.z + r.depth, c.z + c.depth) && same(r.y, c.y);
       });
       if (touches) {
         row.add(c.id);
@@ -90,19 +96,29 @@ export function rowOf(cabinetId, project) {
   return project.furniture.filter((c) => row.has(c.id)).map((c) => c.id);
 }
 
-// Zapas na docięcie blendy dolnej na końcach: własny + zapas listwy przy ścianie skrajnego korpusu
-// (listwa i blenda są od siebie zależne — wydłużają się razem). Nie liczy się do kolizji.
+// Zapas na docięcie blendy dolnej na końcach: własny + zapas blendy bocznej skrajnego korpusu
+// (blenda boczna i dolna są od siebie zależne — wydłużają się razem). Nie liczy się do kolizji.
 export function trimAllowance(trim, project) {
-  const none = { min: 0, max: 0 };
+  const parts = trimAllowanceParts(trim, project);
+  const sum = (list) => list.reduce((s, p) => s + p.value, 0);
+  return { min: sum(parts.left), max: sum(parts.right) };
+}
+
+// Skąd bierze się zapas z każdej strony — do opisu w panelu, np.
+// left: [{ source: 'blenda boczna Korpus A', value: 20 }, { source: 'dodatkowy', value: 10 }].
+export function trimAllowanceParts(trim, project) {
+  const none = { left: [], right: [] };
   if (trim.type !== 'plinth') return none;
   const cabs = trimCabinets(trim, project);
   if (!cabs.length) return none;
   const leftmost = cabs.reduce((a, c) => (frontSpan(c)[0] < frontSpan(a)[0] ? c : a));
   const rightmost = cabs.reduce((a, c) => (frontSpan(c)[1] > frontSpan(a)[1] ? c : a));
-  return {
-    min: (trim.allowanceLeft ?? 0) + fillerAllowance(leftmost, 'left'),
-    max: (trim.allowanceRight ?? 0) + fillerAllowance(rightmost, 'right'),
-  };
+  const side = (cabinet, s, own) =>
+    [
+      { source: `blenda boczna ${cabinet.name}`, value: fillerAllowance(cabinet, s) },
+      { source: 'dodatkowy', value: own ?? 0 },
+    ].filter((p) => p.value);
+  return { left: side(leftmost, 'left', trim.allowanceLeft), right: side(rightmost, 'right', trim.allowanceRight) };
 }
 
 // Bryła blendy (prostopadłościan w układzie przestrzeni) albo null, gdy nie da się jej wyznaczyć.
@@ -149,7 +165,8 @@ function countertopBox(trim, project, cabs, front, thickness) {
   const rowLeft = Math.min(...bounds.map((b) => b.x));
   const rowRight = Math.max(...bounds.map((b) => b.x + b.width));
   const top = Math.max(...cabs.map((c) => c.y + legHeight(c) + c.height));
-  const back = Math.min(...cabs.map((c) => c.z));
+  // Blat zaczyna się za odstępem korpusu od ściany — odstęp nie zmienia wymiaru blatu.
+  const back = Math.min(...cabs.map((c) => c.z - (c.backGap ?? 0)));
   const depth = trim.depth ?? front + countertopOverhang(trim, project) - back;
 
   // Co ogranicza blat na boki: inne meble i przeszkody na wysokości blatu i w jego głębokości.
@@ -168,6 +185,26 @@ function countertopBox(trim, project, cabs, front, thickness) {
 
   const x = trim.x ?? left;
   return { x, y: top, z: back, width: trim.length ?? right - x, height: thickness, depth };
+}
+
+// Odcinki blendy: blenda dolna i górna są przerywane przez panele boczne stojące na ich drodze
+// (np. panel na pełną wysokość między dwoma korpusami) — panel zostaje cały, blenda dochodzi do niego
+// z obu stron. Blat leży na panelach, więc się nie dzieli.
+export function trimSegments(trim, project) {
+  const box = trimBox(trim, project);
+  if (!box || box.height <= 0) return [];
+  if (trim.type === 'countertop') return [box];
+  const blockers = trimCabinets(trim, project)
+    .flatMap((c) => cabinetPanels(c, project))
+    .filter((p) => p.valid && p.group === 'blend' && boxesOverlap(box, p));
+  let spans = [[box.x, box.x + box.width]];
+  for (const p of blockers) {
+    const [a, b] = [p.x, p.x + p.width];
+    spans = spans.flatMap(([s, e]) =>
+      b <= s || a >= e ? [[s, e]] : [[s, a], [b, e]].filter(([x0, x1]) => x1 - x0 > 0.01),
+    );
+  }
+  return spans.map(([s, e]) => ({ ...box, x: s, width: e - s }));
 }
 
 // Wysokość frontu pod blendą górną (dla każdego objętego korpusu).
@@ -203,12 +240,15 @@ export function trimIssues(trim, project) {
     if (!boxCorners(box).every((p) => isPointInside(p, project.space))) issues.push('Wychodzi poza przestrzeń.');
     const hit = project.space.obstacles.filter((o) => boxesOverlap(box, o)).map((o) => o.name);
     if (hit.length) issues.push(`Koliduje z: ${hit.join(', ')}.`);
-    if (trim.type === 'countertop') {
-      const hitCabs = project.furniture
-        .filter((c) => !trim.cabinetIds.includes(c.id) && boxesOverlap(box, cabinetBounds(c, project)))
-        .map((c) => c.name);
-      if (hitCabs.length) issues.push(`Nachodzi na: ${hitCabs.join(', ')}.`);
+    // Nachodzenie na płyty korpusów (po podzieleniu blendy na odcinki przy panelach bocznych).
+    const segments = trimSegments(trim, project);
+    const hitPanels = [];
+    for (const c of project.furniture) {
+      for (const p of cabinetPanels(c, project)) {
+        if (p.valid && segments.some((s) => boxesOverlap(s, p))) hitPanels.push(`${p.name} (${c.name})`);
+      }
     }
+    if (hitPanels.length) issues.push(`Nachodzi na: ${hitPanels.join(', ')}.`);
   }
   return issues;
 }

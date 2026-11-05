@@ -9,7 +9,7 @@ import {
   slopeAngle,
   runFromAngle,
 } from '../model/space.js';
-import { escapeHtml, numberField, readNumberInput, setIfNotFocused, round1 } from './dom.js';
+import { escapeHtml, numberField, readNumberInput, setIfNotFocused, round1, commitEmptyAsZero } from './dom.js';
 
 const SPACE_FIELDS = [
   { key: 'width', label: 'Szerokość' },
@@ -218,7 +218,7 @@ export function createSpacePanel(root, store) {
   // Po opuszczeniu pola z błędną wartością przywracamy ostatnią poprawną.
   root.addEventListener('change', (e) => {
     const input = e.target;
-    if (input.type !== 'number') return;
+    if (input.type !== 'number' || commitEmptyAsZero(input)) return;
     if (input.classList.contains('invalid') || input.value.trim() === '') {
       input.value = modelValue(input);
       input.classList.remove('invalid');
