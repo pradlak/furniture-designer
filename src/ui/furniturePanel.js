@@ -9,6 +9,13 @@ import {
   panelCutSize,
   resizePanelLinked,
   JOINT_TYPES,
+  SIDE_BLEND_TYPES,
+  LEG_HEIGHTS,
+  LEG_LIMITS,
+  LEG_DIAMETER,
+  cabinetLegs,
+  getPath,
+  setPath,
 } from '../model/furniture.js';
 import { duplicateCabinet, slideCabinet } from '../model/placement.js';
 import { escapeHtml, numberField, readNumberInput, setIfNotFocused, round1 } from './dom.js';
@@ -44,6 +51,21 @@ function jointSelect(label, field, options, value) {
     </label>`;
 }
 
+function sideBlendFields(side) {
+  const label = side === 'left' ? 'Blenda lewa' : 'Blenda prawa';
+  return `
+    <label class="field small">
+      <span>${label}</span>
+      <select data-f="sideBlends.${side}.type">
+        ${SIDE_BLEND_TYPES.map((t) => `<option value="${t.key}">${t.label}</option>`).join('')}
+      </select>
+    </label>
+    <label class="field small">
+      <span>Szerokość listwy <small>mm</small></span>
+      <input type="number" step="1" min="1" max="${CABINET_LIMITS.sizeMax}" data-f="sideBlends.${side}.width" />
+    </label>`;
+}
+
 // Panel mebli (korpusów). Pełna przebudowa DOM tylko przy zmianach strukturalnych
 // (dodanie/usunięcie korpusu, zmiana rodzaju pleców), w pozostałych przypadkach
 // odświeżane są wartości pól i ostrzeżenia.
@@ -51,7 +73,11 @@ export function createFurniturePanel(root, store, ui, tabs) {
   let renderedKey = null;
   const openParts = new Set(); // korpusy z rozwiniętą listą elementów
 
-  const structureKey = (project) => project.furniture.map((c) => `${c.id}:${c.backType}`).join('|');
+  // Zmiany, po których zmienia się lista elementów (np. dochodzi blenda), wymagają przebudowy karty.
+  const structureKey = (project) =>
+    project.furniture
+      .map((c) => cabinetPanels(c).map((p) => p.key).join(',') + `@${c.id}`)
+      .join('|');
   const updateFurniture = (fn) => store.set((p) => ({ ...p, furniture: fn(p.furniture, p) }));
   const updateCabinet = (id, fn) =>
     updateFurniture((list, p) => list.map((c) => (c.id === id ? fn(c, p) : c)));
@@ -67,6 +93,7 @@ export function createFurniturePanel(root, store, ui, tabs) {
       <div class="add-row">
         <button type="button" data-action="add-cabinet">+ Korpus</button>
       </div>
+      <datalist id="leg-heights">${LEG_HEIGHTS.map((h) => `<option value="${h}"></option>`).join('')}</datalist>
     `;
     renderedKey = structureKey(project);
     updateStatus(project);
@@ -107,6 +134,22 @@ export function createFurniturePanel(root, store, ui, tabs) {
           ${jointSelect('Wieniec górny', 'topJoint', JOINT_TYPES.top, c.topJoint)}
           ${jointSelect('Wieniec dolny', 'bottomJoint', JOINT_TYPES.bottom, c.bottomJoint)}
         </div>
+        <fieldset class="accessories">
+          <legend>Nóżki i blendy</legend>
+          <div class="grid-2">
+            <label class="check"><input type="checkbox" data-f="legs.enabled" /> Nóżki</label>
+            <label class="field small">
+              <span>Wysokość nóżek <small>mm</small></span>
+              <input type="number" list="leg-heights" step="1" min="${LEG_LIMITS.min}" max="${LEG_LIMITS.max}" data-f="legs.height" />
+            </label>
+            <label class="check"><input type="checkbox" data-f="plinth.enabled" /> Blenda dolna</label>
+            <label class="field small">
+              <span>Cofnięcie od frontu <small>mm</small></span>
+              <input type="number" step="1" min="0" max="${CABINET_LIMITS.sizeMax}" data-f="plinth.setback" />
+            </label>
+            ${['left', 'right'].map((side) => sideBlendFields(side)).join('')}
+          </div>
+        </fieldset>
         <div class="item-row">
           <label class="color-field">
             <input type="color" data-f="color" value="${c.color}" />
@@ -132,6 +175,7 @@ export function createFurniturePanel(root, store, ui, tabs) {
             „Niezależny” odłącza płytę — jej wymiary dotyczą tylko jej.
             Wartości ręczne są wyróżnione, ↺ przywraca automatyczne.</p>
           ${cabinetPanels(c).map(renderPart).join('')}
+          <p class="legs-info"></p>
         </details>
       </div>`;
   }
@@ -170,8 +214,18 @@ export function createFurniturePanel(root, store, ui, tabs) {
       if (!el) continue;
 
       el.querySelectorAll('[data-f]').forEach((input) => {
-        if (!input.classList.contains('invalid')) setIfNotFocused(input, c[input.dataset.f]);
+        const value = getPath(c, input.dataset.f);
+        if (input.type === 'checkbox') input.checked = !!value;
+        else if (!input.classList.contains('invalid')) setIfNotFocused(input, value);
       });
+
+      // Blenda dolna i cokół boczny mają sens tylko z nóżkami; szerokość tylko dla listwy.
+      const hasLegs = !!c.legs?.enabled;
+      el.querySelectorAll('[data-f^="plinth."]').forEach((input) => (input.disabled = !hasLegs));
+      el.querySelectorAll('option[value="plinth"]').forEach((opt) => (opt.disabled = !hasLegs));
+      for (const side of ['left', 'right']) {
+        el.querySelector(`[data-f="sideBlends.${side}.width"]`).disabled = c.sideBlends?.[side]?.type !== 'filler';
+      }
 
       const issues = cabinetIssues(c, project);
       el.classList.toggle('has-issues', issues.length > 0);
@@ -181,6 +235,10 @@ export function createFurniturePanel(root, store, ui, tabs) {
 
       const panels = cabinetPanels(c);
       el.querySelector('.parts summary').textContent = `Elementy (${panels.length})`;
+      const legs = cabinetLegs(c);
+      el.querySelector('.legs-info').textContent = legs.length
+        ? `Nóżki: ${legs.length} szt. × ${legs[0].height} mm (Ø${LEG_DIAMETER} mm)`
+        : '';
       for (const p of panels) {
         const partEl = el.querySelector(`[data-part="${p.key}"]`);
         if (!partEl) continue;
@@ -260,13 +318,15 @@ export function createFurniturePanel(root, store, ui, tabs) {
     const field = input.dataset.f;
     if (!field) return;
     let value = input.value;
-    if (input.type === 'number') {
+    if (input.type === 'checkbox') {
+      value = input.checked;
+    } else if (input.type === 'number') {
       value = readNumberInput(input);
       if (value === undefined) return;
     } else if (input.dataset.type === 'number') {
       value = Number(value);
     }
-    updateCabinet(id, (c) => ({ ...c, [field]: value }));
+    updateCabinet(id, (c) => setPath(c, field, value));
   });
 
   // Po opuszczeniu pola z błędną wartością przywracamy ostatnią poprawną.
@@ -284,7 +344,7 @@ export function createFurniturePanel(root, store, ui, tabs) {
       const field = PART_FIELDS.find((f) => f.key === input.dataset.pf);
       if (panel) input.value = partFieldValue(cabinet, panel, field);
     } else {
-      input.value = cabinet[input.dataset.f];
+      input.value = getPath(cabinet, input.dataset.f);
     }
   });
 

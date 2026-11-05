@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { MM, toScene } from './units.js';
-import { cabinetPanels, cabinetIssues } from '../model/furniture.js';
+import { cabinetPanels, cabinetIssues, cabinetLegs } from '../model/furniture.js';
+
+const LEG_COLOR = '#3f3f46';
 
 const HDF_COLOR = '#e9e4da';
 const EDGE_OK = 0x5b4630;
@@ -41,6 +43,18 @@ export function buildFurniture(project, selectedId = null) {
       mesh.position.set(...toScene(p.x + p.width / 2, p.y + p.height / 2, p.z + p.depth / 2, project.space));
       mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geometry), edgeMat));
       cabinetGroup.add(mesh);
+    }
+
+    const legs = cabinetLegs(cabinet);
+    if (legs.length) {
+      const legMat = new THREE.MeshLambertMaterial({ color: LEG_COLOR });
+      disposables.push(legMat);
+      for (const l of legs) {
+        const r = (l.diameter / 2) * MM;
+        const mesh = new THREE.Mesh(new THREE.CylinderGeometry(r, r, l.height * MM, 20), legMat);
+        mesh.position.set(...toScene(l.x, l.y + l.height / 2, l.z, project.space));
+        cabinetGroup.add(mesh);
+      }
     }
     group.add(cabinetGroup);
   }
