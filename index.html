@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Projektant mebli</title>
+  </head>
+  <body>
+    <header id="toolbar" class="toolbar"></header>
+    <main class="layout">
+      <aside class="panel">
+        <nav class="tabs" id="tabs">
+          <button type="button" data-tab="space-panel" class="active">Przestrzeń</button>
+          <button type="button" data-tab="furniture-panel">Meble</button>
+        </nav>
+        <div id="space-panel" class="tab-content"></div>
+        <div id="furniture-panel" class="tab-content" hidden></div>
+      </aside>
+      <section id="viewport" class="viewport"></section>
+    </main>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
