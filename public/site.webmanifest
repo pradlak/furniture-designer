@@ -1,0 +1,11 @@
+{
+  "name": "Projektant mebli",
+  "short_name": "Meble 3D",
+  "description": "Darmowy projektant mebli w przeglądarce — wnęki, korpusy, blendy, blat, lista formatek.",
+  "lang": "pl",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f8f9fa",
+  "theme_color": "#2563eb",
+  "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

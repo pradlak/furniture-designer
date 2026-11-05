@@ -11,6 +11,7 @@ import { createToolbar } from './ui/toolbar.js';
 import { initTabs } from './ui/tabs.js';
 import { initShortcuts } from './ui/shortcuts.js';
 import { initPanelResizer } from './ui/resizer.js';
+import { createWelcome } from './ui/welcome.js';
 
 // Projekt (zapisywany, z historią cofania) i stan interfejsu (zaznaczenie — nie zapisywany).
 const store = createStore(loadProject() ?? createDefaultProject(), { history: true });
@@ -27,7 +28,8 @@ const furniturePanel = createFurniturePanel(document.getElementById('furniture-p
   },
 });
 const materialsPanel = createMaterialsPanel(document.getElementById('materials-panel'), store);
-const toolbar = createToolbar(document.getElementById('toolbar'), store, viewer);
+const welcome = createWelcome(store);
+const toolbar = createToolbar(document.getElementById('toolbar'), store, viewer, { onHelp: () => welcome.open() });
 attachCabinetInteraction(viewer, store, ui);
 initShortcuts(store, ui);
 initPanelResizer(document.getElementById('panel-resizer'), document.querySelector('.panel'));

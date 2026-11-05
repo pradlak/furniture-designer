@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Ikona: szafka z dwoma frontami na nóżkach -->
+  <rect width="64" height="64" rx="12" fill="#2563eb"/>
+  <rect x="14" y="12" width="36" height="36" rx="2" fill="#ffffff"/>
+  <line x1="32" y1="14" x2="32" y2="46" stroke="#2563eb" stroke-width="2.5"/>
+  <rect x="26" y="26" width="2.5" height="8" rx="1" fill="#2563eb"/>
+  <rect x="35.5" y="26" width="2.5" height="8" rx="1" fill="#2563eb"/>
+  <rect x="17" y="48" width="4" height="5" fill="#ffffff"/>
+  <rect x="43" y="48" width="4" height="5" fill="#ffffff"/>
+</svg>

@@ -1,0 +1,6 @@
+# Strona publiczna — wyszukiwarki mogą ją indeksować.
+User-agent: *
+Allow: /
+
+# Po ustaleniu adresu strony dodaj mapę strony, np.:
+# Sitemap: https://twoja-domena.pl/sitemap.xml

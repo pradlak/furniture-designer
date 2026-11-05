@@ -1,4 +1,5 @@
 import { createDefaultProject, normalizeProject } from '../model/project.js';
+import { cutListCsv } from '../model/cutList.js';
 
 const VIEWS = [
   { key: 'perspective', label: '3D' },
@@ -7,7 +8,8 @@ const VIEWS = [
   { key: 'side', label: 'Bok' },
 ];
 
-export function createToolbar(root, store, viewer) {
+// onHelp — otwiera okienko „Jak zacząć”.
+export function createToolbar(root, store, viewer, { onHelp } = {}) {
   root.innerHTML = `
     <div class="brand">Projektant mebli</div>
     <div class="group">
@@ -15,6 +17,7 @@ export function createToolbar(root, store, viewer) {
       <button type="button" data-action="import">Importuj…</button>
       <button type="button" data-action="export">Eksportuj</button>
       <input type="file" accept="application/json,.json" hidden />
+      <button type="button" data-action="cut-list" title="Lista płyt do rozkroju — plik CSV (Excel)">⬇ Formatki (CSV)</button>
     </div>
     <div class="group">
       <button type="button" data-action="undo" title="Cofnij (Ctrl+Z)">↶ Cofnij</button>
@@ -29,6 +32,9 @@ export function createToolbar(root, store, viewer) {
       <label class="check"><input type="checkbox" data-view-flag="showWalls" /> Ściany</label>
       <label class="check"><input type="checkbox" data-view-flag="showCountertops" /> Blaty</label>
       <label class="check"><input type="checkbox" data-view-flag="showBlends" /> Blendy</label>
+    </div>
+    <div class="group help-group">
+      <button type="button" data-action="help" title="Jak zacząć">?</button>
     </div>
   `;
 
@@ -45,6 +51,8 @@ export function createToolbar(root, store, viewer) {
     if (action === 'redo') store.redo();
     if (action === 'export') exportProject(store.get());
     if (action === 'import') fileInput.click();
+    if (action === 'cut-list') downloadCutList(store.get());
+    if (action === 'help') onHelp?.();
   });
 
   for (const box of viewFlags) {
@@ -74,6 +82,24 @@ export function createToolbar(root, store, viewer) {
   };
   sync(store.get());
   return { sync };
+}
+
+function safeName(project, fallback) {
+  return (project.space.name || fallback).replace(/[^p{L}p{N}_-]+/gu, '_');
+}
+
+function downloadCutList(project) {
+  if (!project.furniture.length) {
+    alert('Projekt nie ma jeszcze żadnych mebli — dodaj korpus w zakładce „Meble”.');
+    return;
+  }
+  const blob = new Blob([cutListCsv(project)], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${safeName(project, 'projekt')}_formatki.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 function exportProject(project) {
