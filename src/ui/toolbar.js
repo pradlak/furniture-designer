@@ -68,6 +68,7 @@ export function createToolbar(root, store, viewer, { onHelp } = {}) {
     try {
       const project = normalizeProject(JSON.parse(await file.text()));
       store.set(project, { replace: true });
+      track('import-projektu-json');
     } catch (err) {
       alert(`Nie udało się wczytać projektu: ${err.message}`);
     }
@@ -85,7 +86,17 @@ export function createToolbar(root, store, viewer, { onHelp } = {}) {
 }
 
 function safeName(project, fallback) {
-  return (project.space.name || fallback).replace(/[^p{L}p{N}_-]+/gu, '_');
+  return (project.space.name || fallback).replace(/[^\p{L}\p{N}_-]+/gu, '_');
+}
+
+// Zdarzenie w statystykach Umami (np. ile osób pobrało formatki).
+// Gdy licznik się nie wczytał (adblock, localhost) — po prostu nic nie robi.
+function track(event, data) {
+  try {
+    window.umami?.track(event, data);
+  } catch {
+    /* statystyki nie mogą psuć aplikacji */
+  }
 }
 
 function downloadCutList(project) {
@@ -100,6 +111,7 @@ function downloadCutList(project) {
   a.download = `${safeName(project, 'projekt')}_formatki.csv`;
   a.click();
   URL.revokeObjectURL(url);
+  track('pobranie-formatek-csv', { korpusy: project.furniture.length });
 }
 
 function exportProject(project) {
@@ -107,7 +119,8 @@ function exportProject(project) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `${(project.space.name || 'projekt').replace(/[^\p{L}\p{N}_-]+/gu, '_')}.json`;
+  a.download = `${safeName(project, 'projekt')}.json`;
   a.click();
   URL.revokeObjectURL(url);
+  track('eksport-projektu-json', { korpusy: project.furniture.length });
 }
