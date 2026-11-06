@@ -2,5 +2,4 @@
 User-agent: *
 Allow: /
 
-# Po ustaleniu adresu strony dodaj mapę strony, np.:
-# Sitemap: https://twoja-domena.pl/sitemap.xml
+Sitemap: https://meblesamemu.pl/sitemap.xml
