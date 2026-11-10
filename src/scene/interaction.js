@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { MM } from './units.js';
 import { snapPosition } from '../model/placement.js';
-import { cabinetPanels, legHeight, shelfKey } from '../model/furniture.js';
+import { cabinetPanels, legHeight, shelfKey, setShelfY } from '../model/furniture.js';
 
 const CLICK_TOLERANCE_PX = 4;
 
@@ -43,13 +43,14 @@ export function attachCabinetInteraction(viewer, store, ui) {
   const isShelf = (hit) => hit?.panelKey?.startsWith('shelf-');
 
   // Przeciąganie półki: nowa wysokość (spód półki od dołu korpusu), w granicach wnętrza korpusu.
+  // Pozostałe półki zostają na swoich miejscach (setShelfY „zamraża” równo rozłożone).
   function dragShelf(dy) {
     store.set((prj) => ({
       ...prj,
       furniture: prj.furniture.map((c) => {
         if (c.id !== drag.id) return c;
         const y = Math.round(Math.min(drag.maxY, Math.max(drag.minY, drag.from.y + dy)));
-        return { ...c, shelves: c.shelves.map((s) => (s.id === drag.shelfId ? { ...s, position: 'at', y } : s)) };
+        return setShelfY(c, drag.shelfId, y, prj);
       }),
     }));
   }
@@ -91,15 +92,20 @@ export function attachCabinetInteraction(viewer, store, ui) {
         const base = cabinet.y + legHeight(cabinet);
         const bottom = panels.find((p) => p.key === 'bottom');
         const t = panel.height;
+        const y = panel.y - base;
+        // Półka porusza się między sąsiednimi półkami (nie przechodzi przez nie), a skrajne — do wieńców.
+        const others = panels.filter((p) => p.key.startsWith('shelf-') && p.key !== hit.panelKey).map((p) => [p.y - base, p.y - base + p.height]);
+        const below = others.filter(([, top]) => top <= y + 0.5).map(([, top]) => top);
+        const above = others.filter(([bot]) => bot >= y + t - 0.5).map(([bot]) => bot);
         drag = {
           id: hit.id,
           shelfId: shelf.id,
           plane,
           start,
-          from: { y: panel.y - base },
+          from: { y },
           // od wieńca dolnego do wieńca górnego (górna półka pod skosem jest docinana)
-          minY: bottom ? bottom.y + bottom.height - base : 0,
-          maxY: cabinet.height - 2 * t,
+          minY: Math.max(bottom ? bottom.y + bottom.height - base : 0, ...below),
+          maxY: Math.min(cabinet.height - 2 * t, ...above.map((b) => b - t)),
         };
       } else {
         drag = { id: hit.id, plane, start, from: { x: cabinet.x, y: cabinet.y, z: cabinet.z }, vertical: e.shiftKey };

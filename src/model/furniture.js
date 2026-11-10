@@ -135,6 +135,50 @@ export function createShelf(cabinet) {
 }
 export const shelfKey = (s) => `shelf-${s.id}`;
 
+// Ręczna zmiana wysokości jednej półki: pozostałe półki zostają dokładnie tam, gdzie są
+// (równo rozłożone są „zamrażane” na swoich wysokościach), a zmieniana dostaje wysokość y.
+export function setShelfY(cabinet, shelfId, y, project) {
+  const frozen = new Map(cabinet.shelves.map((s) => [s.id, Math.round(shelfPlacement(cabinet, s, project).y)]));
+  return {
+    ...cabinet,
+    shelves: cabinet.shelves.map((s) =>
+      s.id === shelfId ? { ...s, position: 'at', y } : s.position === 'even' ? { ...s, position: 'at', y: frozen.get(s.id) } : s,
+    ),
+  };
+}
+
+// Wszystkie półki korpusu z powrotem równo rozłożone.
+export const spreadShelvesEvenly = (cabinet) => ({
+  ...cabinet,
+  shelves: cabinet.shelves.map((s) => ({ ...s, position: 'even' })),
+});
+
+// Nowa półka: gdy wszystkie półki są równo rozłożone — też równo (rozkład przelicza się dla wszystkich);
+// gdy są ustawione ręcznie — w środku największego prześwitu (pozostałe się nie ruszają).
+export function addShelf(cabinet, project) {
+  const shelf = createShelf(cabinet);
+  const shelves = cabinet.shelves ?? [];
+  if (shelves.every((s) => s.position === 'even')) return { ...cabinet, shelves: [...shelves, shelf] };
+  const panels = cabinetPanels(cabinet, project);
+  const base = cabinet.y + legHeight(cabinet);
+  const bottom = panels.find((p) => p.key === 'bottom');
+  const tops = panels.filter((p) => ['top', 'topSlope', 'railFront', 'railBack'].includes(p.key));
+  const t = panels.find((p) => p.key.startsWith('shelf-'))?.height ?? 18;
+  // zajęte pasy: wieniec dolny, półki, wieniec górny
+  const bands = [
+    [-Infinity, bottom ? bottom.y + bottom.height - base : 0],
+    ...panels.filter((p) => p.key.startsWith('shelf-')).map((p) => [p.y - base, p.y - base + p.height]),
+    [tops.length ? Math.min(...tops.map((p) => p.y - base)) : cabinet.height, Infinity],
+  ].sort((a, b) => a[0] - b[0]);
+  let best = null;
+  for (let i = 0; i < bands.length - 1; i++) {
+    const [from, to] = [bands[i][1], bands[i + 1][0]];
+    if (to - from > t && (!best || to - from > best[1] - best[0])) best = [from, to];
+  }
+  const y = best ? Math.round((best[0] + best[1] - t) / 2) : shelf.y;
+  return { ...cabinet, shelves: [...shelves, { ...shelf, position: 'at', y }] };
+}
+
 // Położenie (spód półki od dołu korpusu, bez nóżek) i głębokość półki — tak, jak ją rozmieszcza cabinetPanels.
 export function shelfPlacement(cabinet, shelf, project) {
   const panel = cabinetPanels(cabinet, project).find((p) => p.key === shelfKey(shelf));

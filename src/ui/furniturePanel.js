@@ -21,7 +21,9 @@ import {
   slopeTopGap,
   describeCuts,
   stiffenerY,
-  createShelf,
+  addShelf,
+  setShelfY,
+  spreadShelvesEvenly,
   shelfPlacement,
   shelfKey,
   newId,
@@ -314,7 +316,8 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
     // Półki: wysokość i głębokość — wartości wyliczone (równy rozkład / pełna głębokość) albo wpisane.
     const shelvesHtml = `
       <p class="hint">Półki rozkładają się równo — jedna dzieli wnętrze na dwa równe prześwity, dwie na trzy itd.
-        Wpisanie wysokości ustawia półkę ręcznie (↺ wraca do równego rozkładu); głębokość skraca półkę od przodu.</p>
+        Zmiana wysokości jednej półki (wpisanie albo przeciągnięcie w 3D) ustawia półki ręcznie — pozostałe zostają
+        na swoich miejscach; ↺ rozkłada wszystkie półki równo od nowa. Głębokość skraca półkę od przodu.</p>
       ${(c.shelves ?? [])
         .map(
           (s, i) => `
@@ -322,7 +325,7 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
           <span class="shelf-name">Półka ${i + 1}</span>
           <label class="field small">
             <span>Od dołu korpusu <small>mm</small> <small class="auto-tag">równo</small>
-              <button type="button" class="icon tiny" data-reset-shelf-y title="Wróć do równego rozkładu">↺</button>
+              <button type="button" class="icon tiny" data-reset-shelf-y title="Rozłóż wszystkie półki równo od nowa">↺</button>
             </span>
             <input type="number" step="1" min="0" max="${CABINET_LIMITS.sizeMax}" data-shelf-y />
           </label>
@@ -634,8 +637,12 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
       const value = readNumberInput(input);
       if (value === undefined) return;
       const i = Number(shelfRow.dataset.shelf);
-      const patch = input.dataset.shelfY !== undefined ? { position: 'at', y: value } : { depth: value };
-      updateCabinet(id, (c) => ({ ...c, shelves: c.shelves.map((s, j) => (j === i ? { ...s, ...patch } : s)) }));
+      if (input.dataset.shelfY !== undefined) {
+        // wysokość jednej półki — pozostałe zostają na swoich miejscach
+        updateCabinet(id, (c, p) => setShelfY(c, c.shelves[i].id, value, p));
+      } else {
+        updateCabinet(id, (c) => ({ ...c, shelves: c.shelves.map((s, j) => (j === i ? { ...s, depth: value } : s)) }));
+      }
       return;
     }
 
@@ -720,8 +727,8 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
       const isY = input.dataset.shelfY !== undefined;
       if (input.value.trim() === '') {
         input.classList.remove('invalid');
-        const patch = isY ? { position: 'even' } : { depth: null };
-        updateCabinet(gapCabinet, (c) => ({ ...c, shelves: c.shelves.map((s, j) => (j === i ? { ...s, ...patch } : s)) }));
+        if (isY) updateCabinet(gapCabinet, (c) => spreadShelvesEvenly(c));
+        else updateCabinet(gapCabinet, (c) => ({ ...c, shelves: c.shelves.map((s, j) => (j === i ? { ...s, depth: null } : s)) }));
       } else if (input.classList.contains('invalid')) {
         input.classList.remove('invalid');
         const p = store.get();
@@ -802,11 +809,11 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
         };
       });
     } else if (action === 'add-shelf' && id) {
-      updateCabinet(id, (c) => ({ ...c, shelves: [...(c.shelves ?? []), createShelf(c)] }));
+      updateCabinet(id, (c, p) => addShelf(c, p));
     } else if (e.target.dataset.removeShelf && id) {
       updateCabinet(id, (c) => ({ ...c, shelves: c.shelves.filter((s) => s.id !== e.target.dataset.removeShelf) }));
     } else if (e.target.closest('[data-reset-shelf-y]') && id) {
-      patchShelf({ position: 'even' });
+      updateCabinet(id, (c) => spreadShelvesEvenly(c)); // równy rozkład dotyczy wszystkich półek
     } else if (e.target.closest('[data-reset-shelf-depth]') && id) {
       patchShelf({ depth: null });
     } else if (e.target.closest('[data-reset-slope-gap]') && id) {
