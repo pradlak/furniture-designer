@@ -19,6 +19,7 @@ import {
   setPath,
   slopeTopPlane,
   slopeTopGap,
+  ceilingGapFor,
   describeCuts,
   stiffenerY,
   addShelf,
@@ -190,6 +191,18 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
           numberField(f.label, f.key, c[f.key], { min: -CABINET_LIMITS.sizeMax, max: CABINET_LIMITS.sizeMax, small: true }),
         ).join('')}
       </div>
+      <div class="grid-2">
+        <label class="field small" title="Odstęp pleców od tylnej ściany (np. na rury). Front zostaje na miejscu — korpus robi się płytszy, blat się nie zmienia.">
+          <span>Odstęp od tylnej ściany <small>mm</small></span>
+          <input type="number" step="1" min="0" max="${CABINET_LIMITS.sizeMax}" data-f="backGap" />
+        </label>
+        <label class="field small ceiling-gap-field" title="Odstęp korpusu (i blend „do sufitu”) od sufitu — dotyczy korpusów dopasowanych do sufitu. Domyślnie — luz ustawiony w zakładce „Przestrzeń”; wpisana wartość dotyczy tylko tego korpusu.">
+          <span>Luz do sufitu <small>mm</small> <small class="auto-tag">z przestrzeni</small>
+            <button type="button" class="icon tiny" data-reset-ceiling-gap title="Wróć do luzu ustawionego w przestrzeni">↺</button>
+          </span>
+          <input type="number" step="1" min="0" max="500" data-f="ceilingGap" />
+        </label>
+      </div>
       <div class="item-row">
         <span class="hint">Wypełnij całą wnękę jednym korpusem:</span>
         <button type="button" data-action="fit">Dopasuj do wnęki</button>
@@ -228,12 +241,6 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
         </label>
         ${jointSelect('Wieniec / trawersy górne', 'topJoint', JOINT_TYPES.top, c.topJoint)}
         ${jointSelect('Wieniec dolny', 'bottomJoint', JOINT_TYPES.bottom, c.bottomJoint)}
-      </div>
-      <div class="grid-2">
-        <label class="field small" title="Odstęp pleców od tylnej ściany (np. na rury). Front zostaje na miejscu — korpus robi się płytszy, blat się nie zmienia.">
-          <span>Odstęp od tylnej ściany <small>mm</small></span>
-          <input type="number" step="1" min="0" max="${CABINET_LIMITS.sizeMax}" data-f="backGap" />
-        </label>
       </div>
       <p class="hint">Grubości i kolory materiałów — w zakładce „Materiały”.</p>`,
       ) +
@@ -439,9 +446,12 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
         ${section('shelves', 'Półki', shelvesHtml)}
         ${section('stiff', 'Wzmocnienia', stiff)}
         ${section('legs', 'Nóżki', legs)}
-        <div class="trims-info">
-          <span class="cabinet-trims"></span>
-          <button type="button" data-action="show-trims" title="Blendy boczne, dolne, górne i blaty edytujesz w zakładce „Blendy i blaty”">Blendy i blaty →</button>
+        <div class="section section-static">
+          <div class="section-bar">
+            <span class="section-title">Blendy i blaty</span>
+            <span class="section-sum trims-sum"></span>
+            <button type="button" class="section-link" data-action="show-trims" title="Blendy boczne, dolne, górne i blaty edytujesz w zakładce „Blendy i blaty”">Edytuj →</button>
+          </div>
         </div>
         ${section('parts', 'Elementy', parts, 'parts')}
       </div>`;
@@ -501,7 +511,7 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
       // Blendy i blaty — tylko informacja (edycja w zakładce „Blendy i blaty”).
       const covering = project.trims.filter((t) => t.cabinetIds.includes(c.id));
       const side = sideBlendSummary(c);
-      el.querySelector('.cabinet-trims').textContent =
+      el.querySelector('.trims-sum').textContent =
         [side && `Blendy boczne: ${side}`, covering.length && `Obejmują go: ${covering.map((t) => t.name).join(', ')}`]
           .filter(Boolean)
           .join(' · ') || 'Bez blend i blatu';
@@ -511,6 +521,13 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
       // Góra pod skos — tylko gdy przestrzeń ma skos z tyłu lub z przodu.
       const zSlope = project.space.slopes.some((s) => s.side === 'back' || s.side === 'front');
       el.querySelector('.slope-top').hidden = !zSlope;
+      // Luz do sufitu: własny korpusu albo (pusty) — z przestrzeni; pokazujemy wartość, która obowiązuje.
+      const ceilInput = el.querySelector('[data-f="ceilingGap"]');
+      const ceilAuto = c.ceilingGap == null;
+      if (ceilAuto && !ceilInput.classList.contains('invalid')) setIfNotFocused(ceilInput, ceilingGapFor(c, project));
+      ceilInput.classList.toggle('overridden', !ceilAuto);
+      el.querySelector('.ceiling-gap-field .auto-tag').hidden = !ceilAuto;
+      el.querySelector('[data-reset-ceiling-gap]').hidden = ceilAuto;
       // Luz: własny korpusu albo (pusty) — ze skosu; pokazujemy wartość, która obowiązuje.
       const gapInput = el.querySelector('[data-f="slopeTop.gap"]');
       const gapAuto = c.slopeTop?.gap == null;
@@ -788,7 +805,7 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
       });
       return;
     }
-    if (field.startsWith('slopeTop.')) {
+    if (field.startsWith('slopeTop.') || field === 'ceilingGap') {
       // Włączenie / wyłączenie skośnej góry albo zmiana luzu — korpus o wysokości automatycznej
       // dopasowuje się na nowo (z przodu sięga skosu albo zniża się do najniższego miejsca).
       store.set((p) => updateCabinetRefit(p, id, (c) => setPath(c, field, value)));
@@ -819,6 +836,12 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
         const place = shelfPlacement(c, c.shelves[i], p);
         input.value = round1(isY ? place.y : place.depth);
       }
+      return;
+    }
+    // Wyczyszczony luz do sufitu wraca do luzu z przestrzeni.
+    if (input.dataset.f === 'ceilingGap' && input.value.trim() === '' && gapCabinet) {
+      input.classList.remove('invalid');
+      store.set((p) => updateCabinetRefit(p, gapCabinet, (c) => ({ ...c, ceilingGap: null })));
       return;
     }
     if (input.dataset.f === 'slopeTop.gap' && input.value.trim() === '' && gapCabinet) {
@@ -904,6 +927,8 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
       updateCabinet(id, (c) => spreadShelvesEvenly(c)); // równy rozkład dotyczy wszystkich półek
     } else if (e.target.closest('[data-reset-shelf-depth]') && id) {
       patchShelf({ depth: null });
+    } else if (e.target.closest('[data-reset-ceiling-gap]') && id) {
+      store.set((p) => updateCabinetRefit(p, id, (c) => ({ ...c, ceilingGap: null })));
     } else if (e.target.closest('[data-reset-slope-gap]') && id) {
       store.set((p) => updateCabinetRefit(p, id, (c) => setPath(c, 'slopeTop.gap', null)));
     } else if (e.target.closest('[data-collapse-card]') && id) {

@@ -67,6 +67,9 @@ export function createSpacePanel(root, store) {
         ).join('')}
       </div>
       <p class="hint">Wysokość to pełna wysokość pomieszczenia (tam, gdzie nie ma skosu).</p>
+      <div class="grid-3" title="Odstęp mebli od sufitu — korpusy dopasowane do sufitu (np. „Dopasuj do wnęki”) i blendy „do sufitu” kończą się tyle niżej. W karcie korpusu można ustawić wyjątek.">
+        ${numberField('Luz mebli do sufitu', 'ceilingGap', space.ceilingGap ?? 10, { min: 0, max: 500, unit: 'mm' })}
+      </div>
       ${space.slopes.length || space.obstacles.length ? COLLAPSE_ALL_BUTTONS : ''}
 
       <h3>Ściany</h3>

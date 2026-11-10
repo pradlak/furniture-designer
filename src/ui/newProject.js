@@ -1,9 +1,11 @@
 import { SPACE_TEMPLATES, templateIssues, createProjectFromTemplate } from '../model/templates.js';
 import { escapeHtml } from './dom.js';
+import { PICTURES } from './pictures.js';
 
 // Okienko „Nowy projekt”: wybór szablonu przestrzeni (wnęka prostokątna / poddasze ze skosem)
 // z polami wymiarów do poprawienia od razu. Zastępuje bieżący projekt.
-export function createNewProjectDialog(store) {
+// onExamples — otwiera galerię przykładowych projektów (odnośnik w okienku).
+export function createNewProjectDialog(store, { onExamples } = {}) {
   const overlay = document.createElement('div');
   overlay.className = 'welcome-overlay';
   overlay.hidden = true;
@@ -36,6 +38,16 @@ export function createNewProjectDialog(store) {
             </span>
           </label>`,
         ).join('')}
+        <button type="button" class="template template-examples" data-new="examples">
+          <span class="template-head">
+            <span class="template-arrow">→</span>
+            <span class="template-sketch template-picture">${PICTURES.kitchen}</span>
+            <span>
+              <b>Przykładowe projekty</b>
+              <small>Kuchnia, szafa we wnęce, poddasze, regał, komoda — gotowe do obejrzenia i zmian.</small>
+            </span>
+          </span>
+        </button>
       </div>
       <ul class="issues new-project-issues"></ul>
       <p class="warning new-project-replace" hidden>Bieżący projekt zostanie zastąpiony — jeśli chcesz go zachować, najpierw użyj „Eksportuj”.</p>
@@ -57,7 +69,10 @@ export function createNewProjectDialog(store) {
   };
 
   const close = () => (overlay.hidden = true);
-  const open = () => {
+  // templateKey — szablon zaznaczony od razu (np. wybrany na ekranie powitalnym)
+  const open = (templateKey) => {
+    const radio = templateKey && overlay.querySelector(`input[name="space-template"][value="${templateKey}"]`);
+    if (radio) radio.checked = true;
     overlay.querySelector('.new-project-replace').hidden = store.get().furniture.length === 0;
     sync();
     overlay.hidden = false;
@@ -74,8 +89,13 @@ export function createNewProjectDialog(store) {
   });
   overlay.addEventListener('change', sync);
   overlay.addEventListener('click', (e) => {
-    const action = e.target.dataset?.new;
+    // kliknięcie w kartę (obrazek, opis) — akcja karty
+    const action = e.target.closest('[data-new]')?.dataset.new;
     if (e.target === overlay || action === 'cancel') close();
+    if (action === 'examples') {
+      close();
+      onExamples?.();
+    }
     if (action === 'create') {
       const key = selected();
       const values = valuesOf(key);

@@ -1,4 +1,4 @@
-import { LIMITS, isPointInside, slopePlanes, DEFAULT_SLOPE_GAP } from './space.js';
+import { LIMITS, isPointInside, slopePlanes, DEFAULT_SLOPE_GAP, DEFAULT_CEILING_GAP } from './space.js';
 import { cabinetMaterials, trimMaterial } from './materials.js';
 import { boxSolid, clipSolid, isClippedBy, solidBounds, extentAlong, solidsOverlap, vertices, outline2d } from './solid.js';
 
@@ -394,10 +394,15 @@ export function slopeTopPlane(cabinet, project) {
 // Największa wysokość korpusu (bez nóżek) w danym miejscu: pod sufitem i skosami.
 // Skos w głąb (tył / przód) przy włączonej skośnej górze ogranicza tylko najwyższy punkt
 // korpusu (resztę załatwia skośna góra), pozostałe skosy — najniższy.
+// Luz do sufitu, który obowiązuje korpus: własny (wyjątek) albo z przestrzeni.
+export function ceilingGapFor(cabinet, project) {
+  return cabinet.ceilingGap ?? project?.space?.ceilingGap ?? DEFAULT_CEILING_GAP;
+}
+
 export function maxCabinetHeight(cabinet, project, x = cabinet.x, w = cabinet.width) {
   const { space } = project;
   const slanted = cabinet.slopeTop?.enabled !== false;
-  let top = space.height;
+  let top = space.height - ceilingGapFor(cabinet, project);
   for (const pl of slopePlanes(space)) {
     const { normal: [a, b, c], offset, side } = pl;
     const tops = [x, x + w].flatMap((px) => [cabinet.z, cabinet.z + cabinet.depth].map((pz) => (offset - a * px - c * pz) / b));
@@ -457,7 +462,7 @@ export function topBlendPlacement(trim, project) {
   const box = { x: left, y: top - trim.height, z: trimFront(trim, project), width: right - left, height: trim.height, depth: thickness };
   if (!topBlendToCeiling(trim, project)) return { box, clipPlanes: null };
   const planes = ceilingClipPlanes(cabs[0], project);
-  const ceiling = Math.min(project.space.height, ...planes.map(([n, off]) => planeTopOver(n, off, box)));
+  const ceiling = Math.min(project.space.height - ceilingGapFor(cabs[0], project), ...planes.map(([n, off]) => planeTopOver(n, off, box)));
   return { box: { ...box, y: Math.max(box.y, ceiling - trim.height) }, clipPlanes: planes };
 }
 
@@ -512,6 +517,7 @@ export function createCabinet(project, overrides = {}) {
     shelves: [],
     backGap: 0, // odstęp pleców od tylnej ściany (np. na rury) — patrz setBackGap
     slopeTop: defaultSlopeTop(),
+    ceilingGap: null, // luz do sufitu — z przestrzeni (patrz ceilingGapFor)
     ...defaultAccessories(),
     panelOverrides: {},
     ...overrides,
@@ -842,7 +848,8 @@ export function cabinetPanels(cabinet, project) {
   // idą w górę do sufitu, a potem są docinane skosami (z luzem) — patrz ceilingClips niżej.
   const reaches = cabinetReachesTop(cabinet, project);
   const toCeiling = (side) => reaches && blends[side]?.toCeiling !== false;
-  const ceilingTop = project?.space ? project.space.height - cabinet.y : null; // sufit względem korpusu
+  // sufit (z luzem) względem korpusu
+  const ceilingTop = project?.space ? project.space.height - ceilingGapFor(cabinet, project) - cabinet.y : null;
   const ceilingKeys = new Set();
 
   for (const side of ['left', 'right']) {
@@ -1387,6 +1394,8 @@ export function normalizeCabinet(raw = {}) {
     stiffeners,
     shelves,
     backGap: num(raw.backGap, 0, 0, sizeMax),
+    // luz do sufitu: null — z przestrzeni, liczba — wyjątek dla tego korpusu
+    ceilingGap: raw.ceilingGap == null ? null : num(raw.ceilingGap, null, 0, 500),
     slopeTop: {
       enabled: raw.slopeTop?.enabled !== false,
       gap: raw.slopeTop?.gap == null ? null : num(raw.slopeTop.gap, null, 0, 500),

@@ -21,19 +21,31 @@ export const DEFAULT_MAX_HEIGHT = 2000;
 // Najwyższy korpus, jaki mieści się w danym miejscu pod sufitem i skosami (z blendami po bokach),
 // ale nie wyższy niż DEFAULT_MAX_HEIGHT. Pod skosem z tyłu — wysokość z przodu (górę docina skośna góra).
 function fittedHeight(cabinet, project) {
-  const b = cabinetBounds(cabinet, project);
-  const max = Math.floor(maxCabinetHeight(cabinet, project, b.x, b.width));
-  return Math.max(CABINET_LIMITS.sizeMin, Math.min(DEFAULT_MAX_HEIGHT, max));
+  return Math.max(CABINET_LIMITS.sizeMin, Math.min(DEFAULT_MAX_HEIGHT, availableHeight(cabinet, project)));
 }
 
-// Czy korpus ma wysokość „automatyczną” — tak wysoki, jak pozwala miejsce (sufit, skos albo domyślne maksimum).
-// Takie korpusy po zmianie układu znów dopasowują się do skosu nad nimi; pozostałe (np. szafki dolne 720 mm)
-// zachowują swoją wysokość — chyba że przestałyby się mieścić pod skosem.
-const isFittedHeight = (cabinet, project) => cabinet.height >= fittedHeight(cabinet, project) - 1;
+// Największa wysokość, jaka mieści się w danym miejscu (do sufitu / skosu), bez domyślnego maksimum.
+function availableHeight(cabinet, project) {
+  const b = cabinetBounds(cabinet, project);
+  return Math.max(CABINET_LIMITS.sizeMin, Math.floor(maxCabinetHeight(cabinet, project, b.x, b.width)));
+}
+
+// Czy korpus ma wysokość „automatyczną”: 'max' — sięga sufitu / skosu (np. po „Dopasuj do wnęki”),
+// 'cap' — ma domyślną wysokość (2000 mm albo mniej, gdy tyle nie ma miejsca), false — wysokość wpisana
+// ręcznie (np. szafka dolna 720 mm albo szafa 2440 mm). Korpusy automatyczne po zmianie układu znów
+// dopasowują się do miejsca; pozostałe zachowują swoją wysokość — chyba że przestałyby się mieścić.
+function isFittedHeight(cabinet, project) {
+  // najpierw domyślna wysokość: korpus pod skosem ma ją równą pełnej (np. 1000 mm przy ściance kolankowej)
+  // i po zmianie układu ma dalej dostawać domyślną (do 2000 mm), a nie od razu do sufitu
+  if (Math.abs(cabinet.height - fittedHeight(cabinet, project)) <= 1) return 'cap';
+  if (Math.abs(cabinet.height - availableHeight(cabinet, project)) <= 1) return 'max';
+  return false;
+}
 
 function adjustHeight(cabinet, project, fitted) {
-  const height = fittedHeight(cabinet, project);
-  return { ...cabinet, height: fitted ? height : Math.min(cabinet.height, height) };
+  const available = availableHeight(cabinet, project);
+  const height = fitted === 'max' ? available : fitted ? fittedHeight(cabinet, project) : Math.min(cabinet.height, available);
+  return { ...cabinet, height };
 }
 
 // Lewa i prawa krawędź rzędu (z blendami i panelami bocznymi).
@@ -211,11 +223,12 @@ export function updateCabinetRefit(project, cabinetId, fn) {
 // korpusy z wysokością automatyczną dopasowują się do nowego kształtu. Pozostałych nie zmieniamy
 // (żeby chwilowe wartości podczas wpisywania nie zmniejszały ich na stałe).
 export function updateSpaceRefit(project, fn) {
-  const fitted = new Set(project.furniture.filter((c) => isFittedHeight(c, project)).map((c) => c.id));
+  // id → rodzaj wysokości automatycznej ('max' — do sufitu / skosu, 'cap' — domyślna)
+  const fitted = new Map(project.furniture.map((c) => [c.id, isFittedHeight(c, project)]).filter(([, f]) => f));
   const next = { ...project, space: fn(project.space) };
   return {
     ...next,
-    furniture: next.furniture.map((c) => (fitted.has(c.id) ? adjustHeight(c, next, true) : c)),
+    furniture: next.furniture.map((c) => (fitted.has(c.id) ? adjustHeight(c, next, fitted.get(c.id)) : c)),
   };
 }
 

@@ -36,6 +36,7 @@ export function createDefaultSpace() {
     width: 2000,
     height: 2500,
     depth: 600,
+    ceilingGap: DEFAULT_CEILING_GAP,
     walls: { floor: true, back: true, left: true, right: true, ceiling: true },
     colors: { ...DEFAULT_COLORS },
     slopes: [],
@@ -82,6 +83,8 @@ export const OBSTACLE_PRESETS = [
 
 // Domyślny luz mebli do skosu (mm, prostopadle do skosu) — korpusy ze skośną górą kończą się tyle przed skosem.
 export const DEFAULT_SLOPE_GAP = 10;
+// Domyślny luz mebli do sufitu (mm) — korpusy dopasowane do sufitu i blendy „do sufitu” kończą się tyle niżej.
+export const DEFAULT_CEILING_GAP = 10;
 
 // Nowy skos: pierwsza wolna strona, ścianka kolankowa ~40% wysokości, skos na połowę rozpiętości.
 export function createSlope(space, overrides = {}) {
@@ -162,6 +165,7 @@ export function normalizeSpace(raw = {}) {
     width: num(raw.width, def.width, LIMITS.spaceMin, LIMITS.spaceMax),
     height: num(raw.height, def.height, LIMITS.spaceMin, LIMITS.spaceMax),
     depth: num(raw.depth, def.depth, LIMITS.spaceMin, LIMITS.spaceMax),
+    ceilingGap: num(raw.ceilingGap, DEFAULT_CEILING_GAP, 0, 500),
     walls,
     colors,
     slopes: Array.isArray(raw.slopes) ? raw.slopes.map(normalizeSlope) : [],

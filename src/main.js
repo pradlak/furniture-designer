@@ -13,9 +13,13 @@ import { initShortcuts } from './ui/shortcuts.js';
 import { initPanelResizer } from './ui/resizer.js';
 import { createWelcome } from './ui/welcome.js';
 import { createNewProjectDialog } from './ui/newProject.js';
+import { createExamplesDialog } from './ui/examples.js';
 
 // Projekt (zapisywany, z historią cofania) i stan interfejsu (zaznaczenie — nie zapisywany).
-const store = createStore(loadProject() ?? createDefaultProject(), { history: true });
+const savedProject = loadProject();
+const store = createStore(savedProject ?? createDefaultProject(), { history: true });
+// Pierwsze uruchomienie (brak zapisanego projektu): wybór rodzaju przestrzeni jak po „Nowy…”.
+const firstRun = !savedProject;
 const ui = createStore({ selectedId: null });
 
 const viewer = new Viewer(document.getElementById('viewport'));
@@ -29,8 +33,28 @@ const furniturePanel = createFurniturePanel(document.getElementById('furniture-p
   },
 });
 const materialsPanel = createMaterialsPanel(document.getElementById('materials-panel'), store);
-const newProject = createNewProjectDialog(store);
-const welcome = createWelcome(store, { onNew: () => newProject.open() });
+const examples = createExamplesDialog(store);
+const newProject = createNewProjectDialog(store, { onExamples: () => examples.open() });
+let templateOffered = false;
+const offerTemplate = () => {
+  if (!firstRun || templateOffered) return;
+  templateOffered = true;
+  newProject.open();
+};
+const welcome = createWelcome(store, {
+  // karta na ekranie powitalnym — okienko „Nowy projekt” z zaznaczonym szablonem
+  onNew: (templateKey) => {
+    templateOffered = true;
+    newProject.open(templateKey);
+  },
+  onStart: offerTemplate,
+  onExamples: () => {
+    templateOffered = true;
+    examples.open();
+  },
+});
+// Okienko powitalne już kiedyś zamknięte — wybór przestrzeni od razu.
+if (!welcome.isOpen()) offerTemplate();
 const toolbar = createToolbar(document.getElementById('toolbar'), store, viewer, {
   onHelp: () => welcome.open(),
   onNew: () => newProject.open(),
