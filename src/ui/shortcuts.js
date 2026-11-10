@@ -1,10 +1,11 @@
 import { duplicateCabinet } from '../model/placement.js';
+import { removeFronts } from '../model/furniture.js';
 
 // Skróty klawiszowe (nie działają podczas pisania w polach formularza):
 //   Ctrl+Z / Ctrl+Y (Ctrl+Shift+Z) — cofnij / ponów
 //   dla zaznaczonego korpusu:
 //   strzałki ←/→ — X, ↑/↓ — Z (do tyłu / do przodu), PgUp/PgDn — Y; krok 10 mm, z Shift 100 mm
-//   Ctrl+D — duplikuj, Delete — usuń, Esc — odznacz
+//   Ctrl+D — duplikuj, Delete — usuń (zaznaczone fronty — tylko fronty), Esc — odznacz
 export function initShortcuts(store, ui) {
   const moveSelected = (axis, delta) => {
     const id = ui.get().selectedId;
@@ -52,9 +53,24 @@ export function initShortcuts(store, ui) {
       ui.set({ ...ui.get(), selectedId: copy.id }, { reveal: true });
     } else if (key === 'delete') {
       e.preventDefault();
-      store.set((p) => ({ ...p, furniture: p.furniture.filter((c) => c.id !== id) }));
+      const fronts = ui.get().selectedFronts ?? [];
+      if (fronts.length) {
+        // zaznaczone fronty (także z kilku korpusów) — usuwamy tylko je, korpusy zostają
+        const byCabinet = new Map();
+        for (const f of fronts) {
+          const [cabId, key] = f.split(':');
+          byCabinet.set(cabId, [...(byCabinet.get(cabId) ?? []), key]);
+        }
+        store.set((p) => ({
+          ...p,
+          furniture: p.furniture.map((c) => (byCabinet.has(c.id) ? removeFronts(c, byCabinet.get(c.id)) : c)),
+        }));
+        ui.set({ ...ui.get(), selectedFronts: [] });
+      } else {
+        store.set((p) => ({ ...p, furniture: p.furniture.filter((c) => c.id !== id) }));
+      }
     } else if (key === 'escape') {
-      ui.set({ ...ui.get(), selectedId: null });
+      ui.set({ ...ui.get(), selectedId: null, selectedFronts: [] });
     }
   });
 }

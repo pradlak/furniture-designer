@@ -89,24 +89,67 @@ function addMilling(group, p, materialFor, space) {
 
 // Otwieranie frontów w widoku: drzwi obracają się na zawiasach (oś pionowa przy krawędzi z zawiasami,
 // na tylnej powierzchni frontu) o DOOR_OPEN_ANGLE na zewnątrz; szuflady wysuwają się o część głębokości korpusu.
+// Każdy front siedzi w osobnej grupie („zawiasie”) — Viewer płynnie zmienia jej stan (patrz applyFrontOpening).
 const DOOR_OPEN_ANGLE = 95;
 const DRAWER_PULL = 0.6;
-function openedFrontGroup(p, cabinet, parent, space) {
+function frontPivotGroup(p, cabinet, parent, space, open) {
   const pivot = new THREE.Group();
   const inner = new THREE.Group(); // elementy frontu w zwykłych współrzędnych sceny
-  if (p.opening.hinge) {
-    const hingeX = p.opening.hinge === 'left' ? p.x : p.x + p.width;
+  const front = { id: `${cabinet.id}:${p.key}`, hinge: p.opening.hinge ?? null, pull: cabinet.depth * DRAWER_PULL, open };
+  if (front.hinge) {
+    const hingeX = front.hinge === 'left' ? p.x : p.x + p.width;
     const axis = new THREE.Vector3(...toScene(hingeX, 0, p.z, space));
     pivot.position.copy(axis);
     inner.position.copy(axis).negate();
-    // obrót wokół pionu: zawiasy po lewej — wolna krawędź (w prawo) idzie do przodu, więc kąt ujemny
-    pivot.rotation.y = THREE.MathUtils.degToRad(p.opening.hinge === 'left' ? -DOOR_OPEN_ANGLE : DOOR_OPEN_ANGLE);
-  } else {
-    pivot.position.z = cabinet.depth * DRAWER_PULL * MM;
   }
+  pivot.userData.front = front;
+  applyFrontOpening(pivot, open ? 1 : 0);
   pivot.add(inner);
   parent.add(pivot);
   return inner;
+}
+
+// Stan otwarcia frontu: 0 — zamknięty, 1 — otwarty (z łagodnym rozpędzaniem i hamowaniem).
+export function applyFrontOpening(pivot, amount) {
+  const f = pivot.userData.front;
+  const t = amount * amount * (3 - 2 * amount);
+  if (f.hinge) {
+    // obrót wokół pionu: zawiasy po lewej — wolna krawędź (w prawo) idzie do przodu, więc kąt ujemny
+    pivot.rotation.y = THREE.MathUtils.degToRad((f.hinge === 'left' ? -DOOR_OPEN_ANGLE : DOOR_OPEN_ANGLE) * t);
+  } else {
+    pivot.position.z = f.pull * t * MM;
+  }
+}
+
+// Uchwyt na froncie: listwa na dwóch wspornikach (w otworach) albo gałka. Odstaje od lica o HANDLE_STANDOFF.
+const HANDLE_COLOR = 0x9ca3af;
+const HANDLE_STANDOFF = 28; // mm — odstęp listwy od frontu
+const handleMat = new THREE.MeshLambertMaterial({ color: HANDLE_COLOR, emissive: new THREE.Color(HANDLE_COLOR).multiplyScalar(0.25) });
+function addHandle(group, p, space) {
+  const hd = p.handle;
+  if (!hd || p.solid) return;
+  const face = p.z + p.depth;
+  const add = (geometry, x, y, z, rotate) => {
+    const mesh = new THREE.Mesh(geometry, handleMat);
+    mesh.position.set(...toScene(x, y, z, space));
+    if (rotate === 'x') mesh.rotation.x = Math.PI / 2; // oś walca wzdłuż Z (do przodu)
+    if (rotate === 'z') mesh.rotation.z = Math.PI / 2; // oś walca wzdłuż X (poziomo)
+    mesh.userData.panelKey = p.key; // klik w uchwyt = klik we front
+    group.add(mesh);
+  };
+  if (hd.type === 'knob') {
+    const [h] = hd.holes;
+    add(new THREE.CylinderGeometry(4 * MM, 4 * MM, 20 * MM, 12), h.x, h.y, face + 10, 'x');
+    add(new THREE.CylinderGeometry(14 * MM, 12 * MM, 10 * MM, 20), h.x, h.y, face + 24, 'x');
+    return;
+  }
+  // wsporniki w otworach
+  for (const h of hd.holes) add(new THREE.CylinderGeometry(4 * MM, 4 * MM, HANDLE_STANDOFF * MM, 12), h.x, h.y, face + HANDLE_STANDOFF / 2, 'x');
+  // listwa: rozstaw + po 20 mm wystającego końca
+  const [a, b] = hd.holes;
+  const length = hd.spacing + 40;
+  const bar = new THREE.CylinderGeometry(6 * MM, 6 * MM, length * MM, 16);
+  add(bar, (a.x + b.x) / 2, (a.y + b.y) / 2, face + HANDLE_STANDOFF, hd.vertical ? null : 'z');
 }
 
 const LEG_COLOR = '#3f3f46';
@@ -124,6 +167,8 @@ function boardMaterial(color) {
 }
 
 const EDGE_SELECTED = 0x2563eb;
+const PICKED_COLOR = '#f97316'; // zaznaczona płyta (np. front)
+const pickedEdgeMat = new THREE.LineBasicMaterial({ color: PICKED_COLOR });
 
 // Zapas na docięcie: wyraźnie inny (pomarańczowy, półprzezroczysty), żeby było widać, co jest do docięcia.
 const allowanceMat = new THREE.MeshLambertMaterial({ color: 0xf97316, transparent: true, opacity: 0.55, depthWrite: false });
@@ -143,7 +188,9 @@ function addAllowance(group, box, min, max, space) {
 
 // Buduje meble projektu: każda płyta korpusu to osobny prostopadłościan z obrysem krawędzi.
 // Zaznaczony korpus ma niebieskie krawędzie, korpus z problemami — czerwone.
-export function buildFurniture(project, selectedId = null) {
+// selectedFronts — zbiór zaznaczonych frontów („idKorpusu:front-N”, kliknięte w 3D) — wyróżnione na pomarańczowo.
+// isFrontOpen(id) — czy front jest otwarty; domyślnie według przełącznika „otwarte”.
+export function buildFurniture(project, selectedId = null, selectedFronts = new Set(), isFrontOpen = () => project.view?.openFronts === true) {
   const group = new THREE.Group();
   const disposables = [];
   group.userData.disposables = disposables;
@@ -200,16 +247,24 @@ export function buildFurniture(project, selectedId = null) {
         cabinetGroup.add(mesh);
         continue;
       }
-      // Widok „otwarte”: front (z frezami i obrzeżem) w osobnej grupie obróconej na zawiasach
-      // albo wysuniętej (szuflada). Wymiary w modelu się nie zmieniają.
-      const target = view.openFronts && p.opening ? openedFrontGroup(p, cabinet, cabinetGroup, project.space) : cabinetGroup;
+      // Front (z frezami i obrzeżem) w osobnej grupie, którą można obrócić na zawiasach albo wysunąć
+      // (szuflada) — otwarty / zamknięty według isFrontOpen. Wymiary w modelu się nie zmieniają.
+      const target = p.opening
+        ? frontPivotGroup(p, cabinet, cabinetGroup, project.space, isFrontOpen(`${cabinet.id}:${p.key}`))
+        : cabinetGroup;
       const geometry = new THREE.BoxGeometry(p.width * MM, p.height * MM, p.depth * MM);
-      const mesh = new THREE.Mesh(geometry, panelFaceMaterials(p.material, p.thicknessAxis, materialFor));
+      const picked = selectedFronts.has(`${cabinet.id}:${p.key}`);
+      // zaznaczona płyta: kolor przesunięty w stronę pomarańczowego i pomarańczowe krawędzie
+      const material = picked
+        ? { ...p.material, color: `#${new THREE.Color(p.material.color).lerp(new THREE.Color(PICKED_COLOR), 0.45).getHexString()}` }
+        : p.material;
+      const mesh = new THREE.Mesh(geometry, panelFaceMaterials(material, p.thicknessAxis, materialFor));
       mesh.position.set(...toScene(p.x + p.width / 2, p.y + p.height / 2, p.z + p.depth / 2, project.space));
-      mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geometry), edgeMat));
+      mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geometry), picked ? pickedEdgeMat : edgeMat));
       mesh.userData.panelKey = p.key; // np. „shelf-…” — półkę można przeciągać w pionie
       target.add(mesh);
       addMilling(target, p, materialFor, project.space);
+      addHandle(target, p, project.space);
       addAllowance(target, p, p.allowanceMin, p.allowanceMax, project.space);
       if (p.material.edgeBanding) {
         const keys = panelEdgeSet(p, cabinet, project, solids);

@@ -39,13 +39,26 @@ attachCabinetInteraction(viewer, store, ui);
 initShortcuts(store, ui);
 initPanelResizer(document.getElementById('panel-resizer'), document.querySelector('.panel'));
 
-const redraw = (refit = false) => viewer.setProject(store.get(), { refit, selectedId: ui.get().selectedId });
+// Zaznaczone fronty (kliknięte w 3D, z Ctrl — kilka) — wyróżnione: zbiór „idKorpusu:front-N”.
+const selectedFronts = () => new Set(ui.get().selectedFronts ?? []);
+// Otwarcie frontów: pojedynczy front przełączony przeciągnięciem (ui.frontOpen), a domyślnie —
+// według przełącznika „otwarte” na pasku.
+const isFrontOpen = (id) => ui.get().frontOpen?.[id] ?? store.get().view?.openFronts === true;
+const redraw = (refit = false) =>
+  viewer.setProject(store.get(), { refit, selectedId: ui.get().selectedId, selectedFronts: selectedFronts(), isFrontOpen });
 redraw();
 
+let lastOpenFronts = store.get().view?.openFronts === true;
 store.subscribe((project, meta) => {
   // Usunięty korpus nie może pozostać zaznaczony.
   const { selectedId } = ui.get();
   if (selectedId && !project.furniture.some((c) => c.id === selectedId)) ui.set({ ...ui.get(), selectedId: null });
+  // Przełącznik „otwarte” otwiera / zamyka wszystkie fronty — zapominamy pojedyncze przełączenia.
+  const openFronts = project.view?.openFronts === true;
+  if (openFronts !== lastOpenFronts) {
+    lastOpenFronts = openFronts;
+    ui.set({ ...ui.get(), frontOpen: {} });
+  }
 
   redraw(meta.replace && !meta.undo);
   spacePanel.sync(project, meta);

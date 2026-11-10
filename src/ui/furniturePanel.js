@@ -33,6 +33,11 @@ import {
   FRONT_DECORS,
   DECOR_LIMITS,
   describeMilling,
+  HANDLE_TYPES,
+  HANDLE_POSITIONS,
+  HANDLE_SPACINGS,
+  HANDLE_LIMITS,
+  describeHandle,
 } from '../model/furniture.js';
 
 // Inne korpusy o tej samej wysokości i głębokości — do skopiowania półek. Szerokość nie ma znaczenia
@@ -99,7 +104,8 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
   let renderedKey = null;
   // Rozwinięte sekcje kart korpusów („id:sekcja”); domyślnie otwarta jest sekcja „Korpus”.
   const sectionState = new Map();
-  const isOpen = (id, key) => sectionState.get(`${id}:${key}`) ?? key === 'body';
+  // podsekcje („sub:…”, np. „Front” / „Uchwyt”) są domyślnie rozwinięte
+  const isOpen = (id, key) => sectionState.get(`${id}:${key}`) ?? (key === 'body' || key.startsWith('sub:'));
   // Całe karty zwinięte do nagłówka (id korpusów).
   const collapsed = new Set();
   const applyCollapsed = (el) => {
@@ -147,6 +153,7 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
       </div>
 
       <datalist id="leg-heights">${LEG_HEIGHTS.map((h) => `<option value="${h}"></option>`).join('')}</datalist>
+      <datalist id="handle-spacings">${HANDLE_SPACINGS.map((s) => `<option value="${s}"></option>`).join('')}</datalist>
     `;
     renderedKey = structureKey(project);
     root.querySelectorAll('[data-kind="cabinet"]').forEach(applyCollapsed);
@@ -156,13 +163,25 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
   // Karta korpusu podzielona na zwijane sekcje; w nagłówku każdej — krótkie podsumowanie
   // (uzupełniane w updateStatus), żeby nie trzeba było jej rozwijać.
   function renderCabinet(c, project) {
-    const section = (key, title, body, extraClass = '') => `
+    // headExtra — przyciski na pasku sekcji (np. oko przy „Fronty”)
+    const section = (key, title, body, extraClass = '', headExtra = '') => `
       <details class="section ${extraClass}" data-section="${key}" ${isOpen(c.id, key) ? 'open' : ''}>
-        <summary><span class="section-title">${title}</span><span class="section-sum"></span></summary>
+        <summary><span class="section-title">${title}</span><span class="section-sum"></span>${headExtra}</summary>
         <div class="section-body">${body}</div>
       </details>`;
 
-    const body = `
+    // Zwijana podsekcja w sekcji (ramka z tytułem); key — do zapamiętania stanu, extraClass — np. do ukrywania.
+    const sub = (key, title, html, extraClass = '') => `
+      <details class="subsection ${extraClass}" data-section="sub:${key}" ${isOpen(c.id, `sub:${key}`) ? 'open' : ''}>
+        <summary class="subsection-title">${title}</summary>
+        <div class="subsection-body">${html}</div>
+      </details>`;
+
+    const body =
+      sub(
+        'size',
+        'Wymiary i położenie',
+        `
       <div class="grid-3">
         ${SIZE_FIELDS.map((f) =>
           numberField(f.label, f.key, c[f.key], { min: CABINET_LIMITS.sizeMin, max: CABINET_LIMITS.sizeMax, small: true }),
@@ -171,6 +190,23 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
           numberField(f.label, f.key, c[f.key], { min: -CABINET_LIMITS.sizeMax, max: CABINET_LIMITS.sizeMax, small: true }),
         ).join('')}
       </div>
+      <div class="item-row">
+        <span class="hint">Wypełnij całą wnękę jednym korpusem:</span>
+        <button type="button" data-action="fit">Dopasuj do wnęki</button>
+      </div>
+      <div class="slide-row" title="Przesuwa korpus aż do ściany, innego mebla lub przeszkody">
+        <span>Dosuń:</span>
+        <button type="button" data-slide="-x" title="W lewo">←</button>
+        <button type="button" data-slide="+x" title="W prawo">→</button>
+        <button type="button" data-slide="-z" title="Do tyłu">↑ tył</button>
+        <button type="button" data-slide="+z" title="Do przodu">↓ przód</button>
+        <button type="button" data-slide="-y" title="W dół — na podłogę albo na mebel poniżej">⤓ dół</button>
+      </div>`,
+      ) +
+      sub(
+        'build',
+        'Konstrukcja i materiały',
+        `
       <div class="grid-2">
         ${materialSelect('Materiał korpusu', 'materialId', project)}
         ${materialSelect('Materiał blend', 'blendMaterialId', project)}
@@ -199,7 +235,12 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
           <input type="number" step="1" min="0" max="${CABINET_LIMITS.sizeMax}" data-f="backGap" />
         </label>
       </div>
-      <div class="slope-top">
+      <p class="hint">Grubości i kolory materiałów — w zakładce „Materiały”.</p>`,
+      ) +
+      sub(
+        'slope',
+        'Skos',
+        `
         <div class="grid-2">
           <label class="check" title="Korpus pod skosem dostaje skośną górę: boki i plecy docięte równolegle do skosu, wieniec górny pod kątem">
             <input type="checkbox" data-f="slopeTop.enabled" /> Góra pod skos
@@ -211,20 +252,9 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
             <input type="number" step="1" min="0" max="500" data-f="slopeTop.gap" />
           </label>
         </div>
-        <p class="hint slope-top-info"></p>
-      </div>
-      <div class="item-row">
-        <span class="hint">Grubości i kolory — z zakładki „Materiały”.</span>
-        <button type="button" data-action="fit">Dopasuj do wnęki</button>
-      </div>
-      <div class="slide-row" title="Przesuwa korpus aż do ściany, innego mebla lub przeszkody">
-        <span>Dosuń:</span>
-        <button type="button" data-slide="-x" title="W lewo">←</button>
-        <button type="button" data-slide="+x" title="W prawo">→</button>
-        <button type="button" data-slide="-z" title="Do tyłu">↑ tył</button>
-        <button type="button" data-slide="+z" title="Do przodu">↓ przód</button>
-        <button type="button" data-slide="-y" title="W dół — na podłogę albo na mebel poniżej">⤓ dół</button>
-      </div>`;
+        <p class="hint slope-top-info"></p>`,
+        'slope-top',
+      );
 
     const legs = `
       <div class="grid-2">
@@ -266,7 +296,11 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
       <div class="add-row"><button type="button" data-action="add-stiff">+ poprzeczka</button></div>`;
 
     // Fronty nakładane: drzwi pojedyncze / podwójne albo szuflady (równe fronty).
+    // Dwie części: „Front” (płyta) i „Uchwyt” (frez uchwytowy albo uchwyt przykręcany).
     const frontsHtml = `
+      <details class="subsection" data-section="sub:front" ${isOpen(c.id, 'sub:front') ? 'open' : ''}>
+      <summary class="subsection-title">Front</summary>
+      <div class="subsection-body">
       <div class="grid-2">
         <label class="field small">
           <span>Rodzaj</span>
@@ -290,12 +324,6 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
           <input type="number" step="0.5" min="0" max="${FRONT_LIMITS.gapMax}" data-f="fronts.gap" />
         </label>
         <span class="front-opt">${materialSelect('Materiał frontów', 'frontMaterialId', project)}</span>
-        <label class="field small front-opt" title="Uchwyt wyfrezowany w krawędzi frontu — zamiast uchwytu przykręcanego. Krawędź otwierania: w drzwiach po stronie przeciwnej do zawiasów (w podwójnych — na środku), w szufladach — górna.">
-          <span>Frez uchwytowy</span>
-          <select data-f="fronts.groove">
-            ${HANDLE_GROOVES.map((g) => `<option value="${g.key}">${g.label}</option>`).join('')}
-          </select>
-        </label>
         <label class="field small front-opt" title="Ozdobne frezowanie lica frontu (zwykle MDF lakierowany)">
           <span>Frez dekoracyjny</span>
           <select data-f="fronts.decor">
@@ -311,6 +339,47 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
           <input type="number" step="1" min="${DECOR_LIMITS.min}" max="${DECOR_LIMITS.max}" data-f="fronts.decorSpacing" />
         </label>
       </div>
+      </div>
+      </details>
+      <details class="subsection front-opt" data-section="sub:handle" ${isOpen(c.id, 'sub:handle') ? 'open' : ''}>
+      <summary class="subsection-title">Uchwyt</summary>
+      <div class="subsection-body">
+      <div class="grid-2">
+        <label class="field small" title="Uchwyt wyfrezowany w krawędzi frontu — zamiast uchwytu przykręcanego. Krawędź otwierania: w drzwiach po stronie przeciwnej do zawiasów (w podwójnych — na środku), w szufladach — górna.">
+          <span>Frez uchwytowy</span>
+          <select data-f="fronts.groove">
+            ${HANDLE_GROOVES.map((g) => `<option value="${g.key}">${g.label}</option>`).join('')}
+          </select>
+        </label>
+      </div>
+      <div class="grid-2 front-handle-box">
+        <label class="field small" title="Uchwyt przykręcany. W drzwiach — pionowo przy krawędzi otwierania, w szufladach — poziomo na środku szerokości.">
+          <span>Uchwyt</span>
+          <select data-f="fronts.handle.type">
+            ${HANDLE_TYPES.map((t) => `<option value="${t.key}">${t.label}</option>`).join('')}
+          </select>
+        </label>
+        <label class="field small handle-spacing" title="Odległość między otworami (osiami śrub) — z opisu uchwytu, np. 128 mm. Wybierz z listy albo wpisz własną.">
+          <span>Rozstaw otworów <small>mm</small></span>
+          <input type="number" list="handle-spacings" step="1" min="${HANDLE_LIMITS.spacingMin}" max="${HANDLE_LIMITS.spacingMax}" data-f="fronts.handle.spacing" />
+        </label>
+        <label class="field small handle-opt" title="Średnica otworu pod śrubę uchwytu (zwykle 5 mm pod M4)">
+          <span>Średnica otworu <small>mm</small></span>
+          <input type="number" step="0.5" min="${HANDLE_LIMITS.holeMin}" max="${HANDLE_LIMITS.holeMax}" data-f="fronts.handle.hole" />
+        </label>
+        <label class="field small handle-opt" title="Położenie uchwytu na wysokości frontu">
+          <span>Położenie</span>
+          <select data-f="fronts.handle.position">
+            ${HANDLE_POSITIONS.map((p) => `<option value="${p.key}">${p.label}</option>`).join('')}
+          </select>
+        </label>
+        <label class="field small handle-opt" title="Odległość osi otworów od krawędzi: w drzwiach — od krawędzi otwierania; przy położeniu „góra” / „dół” — także od górnej / dolnej krawędzi">
+          <span>Od krawędzi <small>mm</small></span>
+          <input type="number" step="1" min="${HANDLE_LIMITS.offsetMin}" max="${HANDLE_LIMITS.offsetMax}" data-f="fronts.handle.edgeOffset" />
+        </label>
+      </div>
+      </div>
+      </details>
       <p class="hint front-info"></p>`;
 
     // Półki: wysokość i głębokość — wartości wyliczone (równy rozkład / pełna głębokość) albo wpisane.
@@ -366,7 +435,7 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
         <div class="card-sum" data-collapse-card title="Kliknij, aby rozwinąć"></div>
         <ul class="issues"></ul>
         ${section('body', 'Korpus', body)}
-        ${section('fronts', 'Fronty', frontsHtml)}
+        ${section('fronts', 'Fronty', frontsHtml, '', '<button type="button" class="icon eye section-eye" data-toggle-fronts-hidden>👁</button>')}
         ${section('shelves', 'Półki', shelvesHtml)}
         ${section('stiff', 'Wzmocnienia', stiff)}
         ${section('legs', 'Nóżki', legs)}
@@ -470,12 +539,26 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
       el.querySelector('.front-drawers').hidden = fr.type !== 'drawers';
       el.querySelector('.front-hinge').hidden = fr.type !== 'door';
       el.querySelectorAll('.front-opt').forEach((x) => (x.hidden = fr.type === 'none'));
+      // Uchwyt: przy frezie uchwytowym niepotrzebny; rozstaw — tylko dla uchwytu listwowego.
+      const handleType = fr.handle?.type ?? 'none';
+      const groove = fr.groove && fr.groove !== 'none';
+      el.querySelector('.front-handle-box').hidden = fr.type === 'none' || groove;
+      el.querySelector('.handle-spacing').hidden = handleType !== 'bar';
+      el.querySelectorAll('.handle-opt').forEach((x) => (x.hidden = handleType === 'none'));
       el.querySelector('.front-decor-margin').hidden = fr.type === 'none' || fr.decor !== 'frame';
       el.querySelector('.front-decor-spacing').hidden = fr.type === 'none' || fr.decor !== 'lines';
       const frontPanels = cabinetPanels(c, project).filter((p) => p.key.startsWith('front-') && p.valid);
       const sizes = [...new Set(frontPanels.map((p) => `${round1(p.width)} × ${round1(p.height)}`))];
       const frontLabel = FRONT_TYPES.find((t) => t.key === fr.type)?.label.toLowerCase();
-      setSummary(el, 'fronts', fr.type === 'none' ? 'brak' : `${frontLabel} · ${frontPanels.length} × ${sizes.join(' / ')} mm`);
+      setSummary(
+        el,
+        'fronts',
+        fr.type === 'none' ? 'brak' : `${frontLabel} · ${frontPanels.length} × ${sizes.join(' / ')} mm${fr.hidden ? ' · ukryte' : ''}`,
+      );
+      // Oko na pasku „Fronty”: ukrywa / pokazuje fronty tego korpusu w widoku 3D (tylko gdy są fronty).
+      const frontsEye = el.querySelector('[data-toggle-fronts-hidden]');
+      frontsEye.hidden = fr.type === 'none';
+      setEye(frontsEye, fr.hidden, 'fronty tego korpusu');
       el.querySelector('.front-info').textContent =
         fr.type === 'none'
           ? 'Fronty nakładane (przed korpusem). Wybierz drzwi albo szuflady.'
@@ -573,7 +656,7 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
             : '';
         // Płyta docięta pod skos: ścięte rogi i krawędzie cięte pod kątem.
         partEl.querySelector('.part-shape').textContent = p.valid
-          ? [describeCuts(s), describeMilling(p)].filter(Boolean).join('; ')
+          ? [describeCuts(s), describeMilling(p), describeHandle(p)].filter(Boolean).join('; ')
           : '';
         partEl.querySelector('[data-reset-part]').hidden = p.overridden.length === 0 && !p.free;
         partEl.querySelector('[data-part-free]').checked = p.free;
@@ -773,7 +856,8 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
   // Kliknięcie lub fokus w karcie korpusu zaznacza go (także w widoku 3D).
   const selectFrom = (target) => {
     const id = target.closest?.('[data-kind="cabinet"]')?.dataset.id;
-    if (id && ui.get().selectedId !== id) ui.set({ ...ui.get(), selectedId: id });
+    // wybór innego korpusu w panelu czyści zaznaczenie frontów (żeby Delete nie usunął ich niechcący)
+    if (id && ui.get().selectedId !== id) ui.set({ ...ui.get(), selectedId: id, selectedFronts: [] });
   };
   root.addEventListener('focusin', (e) => selectFrom(e.target));
 
@@ -786,7 +870,11 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
     const shelfIndex = Number(e.target.closest('[data-shelf]')?.dataset.shelf);
     const patchShelf = (patch) =>
       updateCabinet(id, (c) => ({ ...c, shelves: c.shelves.map((s, j) => (j === shelfIndex ? { ...s, ...patch } : s)) }));
-    if (action === 'copy-shelves' && id) {
+    if (e.target.closest('[data-toggle-fronts-hidden]') && id) {
+      // przycisk na pasku sekcji — bez zwijania / rozwijania sekcji
+      e.preventDefault();
+      updateCabinet(id, (c) => ({ ...c, fronts: { ...c.fronts, hidden: !c.fronts?.hidden } }));
+    } else if (action === 'copy-shelves' && id) {
       // Półki z nowymi identyfikatorami (każdy korpus ma własne płyty), w tym ręczne ustawienia płyt półek.
       store.set((p) => {
         const source = p.furniture.find((c) => c.id === id);

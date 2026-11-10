@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { MM } from './units.js';
 import { snapPosition } from '../model/placement.js';
 import { cabinetPanels, legHeight, shelfKey, setShelfY } from '../model/furniture.js';
+import { createContextMenu } from '../ui/contextMenu.js';
 
 const CLICK_TOLERANCE_PX = 4;
 
@@ -10,6 +11,10 @@ const CLICK_TOLERANCE_PX = 4;
 //  - przeciąganie korpusu przesuwa go po podłodze (X/Z),
 //    z Shift — w pionie (Y), z Alt — bez przyciągania do ścian i innych mebli,
 //  - przeciąganie półki w górę / w dół zmienia jej wysokość w korpusie,
+//  - przeciągnięcie frontu otwiera go albo zamyka (płynnie); klik w front — zaznacza sam front,
+//    Ctrl + klik — zaznaczanie kilku frontów, prawy klik w front — menu akcji dla zaznaczonych
+//    (otwórz / zamknij, ukryj),
+//    a korpus z frontem przesuwa się z Shift (w pionie) albo chwytając za inną płytę,
 //  - przeciąganie poza korpusem obraca widok jak dotąd.
 export function attachCabinetInteraction(viewer, store, ui) {
   const el = viewer.renderer.domElement;
@@ -41,6 +46,56 @@ export function attachCabinetInteraction(viewer, store, ui) {
   }
 
   const isShelf = (hit) => hit?.panelKey?.startsWith('shelf-');
+  const isFront = (hit) => hit?.panelKey?.startsWith('front-');
+
+  // Otwarcie frontu („idKorpusu:front-N”): przełączone ręcznie albo według „otwarte” na pasku.
+  const isFrontOpen = (frontId) => ui.get().frontOpen?.[frontId] ?? store.get().view?.openFronts === true;
+  const setFrontsOpen = (frontIds, open) => {
+    const { frontOpen = {} } = ui.get();
+    ui.set({ ...ui.get(), frontOpen: { ...frontOpen, ...Object.fromEntries(frontIds.map((f) => [f, open])) } });
+  };
+  const toggleFront = (frontId) => setFrontsOpen([frontId], !isFrontOpen(frontId));
+
+  // Płyta frontu „idKorpusu:front-N” (albo null, gdy już nie istnieje).
+  const frontPanel = (frontId, project) => {
+    const [cabinetId, key] = frontId.split(':');
+    const cabinet = project.furniture.find((c) => c.id === cabinetId);
+    return cabinet ? cabinetPanels(cabinet, project).find((p) => p.key === key) ?? null : null;
+  };
+
+  // Menu akcji dla zaznaczonych frontów (jednego albo kilku, z Ctrl): otwórz / zamknij (wysuń / wsuń), ukryj.
+  // Gdy część jest otwarta, a część zamknięta — obie akcje.
+  const menu = createContextMenu(viewer.container);
+  function showFrontMenu(frontIds, clientX, clientY) {
+    const project = store.get();
+    const fronts = frontIds.map((id) => ({ id, panel: frontPanel(id, project) })).filter((f) => f.panel);
+    if (!fronts.length) return;
+    const ids = fronts.map((f) => f.id);
+    const openCount = ids.filter(isFrontOpen).length;
+    const drawers = fronts.every((f) => f.panel.opening?.drawer);
+    const many = fronts.length > 1;
+    const all = many ? ' wszystkie' : '';
+    const items = [];
+    if (openCount < ids.length) items.push({ icon: '⇤', label: `${drawers ? 'Wysuń' : 'Otwórz'}${all}`, run: () => setFrontsOpen(ids, true) });
+    if (openCount > 0) items.push({ icon: '⇥', label: `${drawers ? 'Wsuń' : 'Zamknij'}${all}`, run: () => setFrontsOpen(ids, false) });
+    items.push({
+      icon: '👁',
+      label: `Ukryj${all}`,
+      run: () =>
+        store.set((p) => ({
+          ...p,
+          furniture: p.furniture.map((c) => {
+            const keys = ids.filter((id) => id.startsWith(`${c.id}:`)).map((id) => id.split(':')[1]);
+            if (!keys.length) return c;
+            const overrides = { ...c.panelOverrides };
+            for (const k of keys) overrides[k] = { ...overrides[k], hidden: true };
+            return { ...c, panelOverrides: overrides };
+          }),
+        })),
+    });
+    const title = many ? `Zaznaczone fronty: ${fronts.length}` : fronts[0].panel.name;
+    menu.show(clientX, clientY, title, items);
+  }
 
   // Przeciąganie półki: nowa wysokość (spód półki od dołu korpusu), w granicach wnętrza korpusu.
   // Pozostałe półki zostają na swoich miejscach (setShelfY „zamraża” równo rozłożone).
@@ -65,18 +120,54 @@ export function attachCabinetInteraction(viewer, store, ui) {
     return new THREE.Plane().setFromNormalAndCoplanarPoint(n.normalize().negate(), point);
   }
 
+  // Prawy przycisk: krótkie kliknięcie na froncie — menu akcji; przeciągnięcie — przesuwanie widoku
+  // (OrbitControls), wtedy menu się nie pokazuje.
+  let rightDown = null;
+  el.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    const moved = rightDown && Math.hypot(e.clientX - rightDown.x, e.clientY - rightDown.y) > CLICK_TOLERANCE_PX;
+    rightDown = null;
+    if (moved) return;
+    setRay(e);
+    const hit = pickCabinet();
+    if (!isFront(hit)) return;
+    // Prawy klik na jednym z zaznaczonych frontów — menu dla wszystkich zaznaczonych;
+    // na innym froncie — zaznaczamy tylko ten.
+    const frontId = `${hit.id}:${hit.panelKey}`;
+    let selected = ui.get().selectedFronts ?? [];
+    if (!selected.includes(frontId)) {
+      selected = [frontId];
+      ui.set({ ...ui.get(), selectedId: hit.id, selectedFronts: selected }, { reveal: true });
+    }
+    showFrontMenu(selected, e.clientX, e.clientY);
+  });
+
   // Faza przechwytywania: działa przed OrbitControls, więc możemy je wyłączyć,
   // zanim zaczną obracać widok.
   el.addEventListener(
     'pointerdown',
     (e) => {
+      if (e.button === 2) rightDown = { x: e.clientX, y: e.clientY };
       if (e.button !== 0) return;
       down = { x: e.clientX, y: e.clientY };
       setRay(e);
       const hit = pickCabinet();
       if (!hit) return;
 
-      ui.set({ ...ui.get(), selectedId: hit.id }, { reveal: true });
+      // Kliknięty front jest zaznaczony osobno (Delete usuwa wtedy tylko fronty); z Ctrl — dodawany do
+      // zaznaczenia albo z niego usuwany (bez przeciągania).
+      const selectedPart = isFront(hit) ? hit.panelKey : null;
+      const frontId = selectedPart ? `${hit.id}:${selectedPart}` : null;
+      if (frontId && (e.ctrlKey || e.metaKey)) {
+        const current = ui.get().selectedFronts ?? [];
+        const next = current.includes(frontId) ? current.filter((f) => f !== frontId) : [...current, frontId];
+        ui.set({ ...ui.get(), selectedId: hit.id, selectedFronts: next }, { reveal: true });
+        drag = { select: true }; // tylko zaznaczenie — bez obracania widoku i przesuwania
+        viewer.controls.enabled = false;
+        el.setPointerCapture(e.pointerId);
+        return;
+      }
+      ui.set({ ...ui.get(), selectedId: hit.id, selectedFronts: frontId ? [frontId] : [] }, { reveal: true });
       const project = store.get();
       const cabinet = project.furniture.find((c) => c.id === hit.id);
       const shelfHit = isShelf(hit);
@@ -84,7 +175,10 @@ export function attachCabinetInteraction(viewer, store, ui) {
       const start = raycaster.ray.intersectPlane(plane, new THREE.Vector3());
       if (!cabinet || !start) return;
 
-      if (shelfHit) {
+      if (frontId && !e.shiftKey) {
+        // Front: przeciągnięcie otwiera albo zamyka go (zamiast przesuwać korpus); samo kliknięcie — tylko zaznacza.
+        drag = { frontId, x: e.clientX, y: e.clientY, toggled: false };
+      } else if (shelfHit) {
         // Półka: przeciąganie w górę / w dół zmienia jej wysokość (od tej chwili — ustawioną ręcznie).
         const shelf = cabinet.shelves.find((s) => shelfKey(s) === hit.panelKey);
         const panels = cabinetPanels(cabinet, project);
@@ -120,7 +214,16 @@ export function attachCabinetInteraction(viewer, store, ui) {
     setRay(e);
     if (!drag) {
       const hover = pickCabinet();
-      el.style.cursor = isShelf(hover) ? 'ns-resize' : hover ? 'grab' : '';
+      el.style.cursor = isShelf(hover) ? 'ns-resize' : isFront(hover) ? 'pointer' : hover ? 'grab' : '';
+      return;
+    }
+    if (drag.select) return; // Ctrl + klik na froncie — tylko zaznaczanie
+    if (drag.frontId) {
+      // pierwszy wyraźny ruch przełącza front (raz na jedno przeciągnięcie)
+      if (!drag.toggled && Math.hypot(e.clientX - drag.x, e.clientY - drag.y) > CLICK_TOLERANCE_PX * 2) {
+        drag.toggled = true;
+        toggleFront(drag.frontId);
+      }
       return;
     }
     el.style.cursor = drag.shelfId ? 'ns-resize' : 'grabbing';
@@ -147,12 +250,12 @@ export function attachCabinetInteraction(viewer, store, ui) {
   el.addEventListener('pointerup', (e) => {
     const moved = down && Math.hypot(e.clientX - down.x, e.clientY - down.y) > CLICK_TOLERANCE_PX;
     if (drag) {
-      el.style.cursor = drag.shelfId ? 'ns-resize' : 'grab';
+      el.style.cursor = drag.shelfId ? 'ns-resize' : drag.frontId ? 'pointer' : 'grab';
       drag = null;
       viewer.controls.enabled = true;
       el.releasePointerCapture(e.pointerId);
     } else if (down && !moved && e.button === 0) {
-      ui.set({ ...ui.get(), selectedId: null }); // klik w puste miejsce
+      ui.set({ ...ui.get(), selectedId: null, selectedFronts: [] }); // klik w puste miejsce
     }
     down = null;
   });

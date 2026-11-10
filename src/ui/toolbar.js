@@ -60,7 +60,12 @@ export function createToolbar(root, store, viewer, { onHelp, onNew } = {}) {
 
   for (const box of viewFlags) {
     box.addEventListener('change', () => {
-      store.set((p) => ({ ...p, view: { ...p.view, [box.dataset.viewFlag]: box.checked } }));
+      const flag = box.dataset.viewFlag;
+      store.set((p) => {
+        const next = { ...p, view: { ...p.view, [flag]: box.checked } };
+        // „Pokaż: Fronty” to główny włącznik — kasuje ukrycia pojedynczych frontów i frontów korpusów.
+        return flag === 'showFronts' ? { ...next, furniture: next.furniture.map(showAllFronts) } : next;
+      });
     });
   }
 
@@ -91,6 +96,18 @@ export function createToolbar(root, store, viewer, { onHelp, onNew } = {}) {
   };
   sync(store.get());
   return { sync };
+}
+
+// Korpus bez ukrytych frontów: zdejmuje ukrycie frontów korpusu i ukrycie pojedynczych płyt frontów.
+function showAllFronts(cabinet) {
+  const overrides = Object.fromEntries(
+    Object.entries(cabinet.panelOverrides ?? {}).map(([key, o]) => {
+      if (!key.startsWith('front-') || !o?.hidden) return [key, o];
+      const { hidden: _removed, ...rest } = o;
+      return [key, rest];
+    }),
+  );
+  return { ...cabinet, fronts: { ...cabinet.fronts, hidden: false }, panelOverrides: overrides };
 }
 
 function safeName(project, fallback) {

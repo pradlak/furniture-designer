@@ -1,4 +1,4 @@
-import { cabinetPanels, cabinetLegs, panelCutSize, describeCuts, describeMilling, hingesFor } from './furniture.js';
+import { cabinetPanels, cabinetLegs, panelCutSize, describeCuts, describeMilling, describeHandle, hingesFor } from './furniture.js';
 import { projectSolids, panelEdgeSet, trimEdgeSet, edgeCounts, TRIM_THICKNESS_AXIS, EDGE_LABELS } from './edges.js';
 import { trimSegments, trimAllowance, TRIM_TYPES } from './trims.js';
 import { trimMaterial } from './materials.js';
@@ -36,7 +36,8 @@ export function buildCutList(project) {
   for (const c of project.furniture) {
     for (const p of cabinetPanels(c, project).filter((x) => x.valid)) {
       const set = panelEdgeSet(p, c, project, solids);
-      add(p.name, c.name, p.material, panelCutSize({ ...p, edges: edgeCounts(p, p.thicknessAxis, set) }), set, describeMilling(p));
+      const work = [describeMilling(p), describeHandle(p)].filter(Boolean).join('; '); // frezy i otwory frontu
+      add(p.name, c.name, p.material, panelCutSize({ ...p, edges: edgeCounts(p, p.thicknessAxis, set) }), set, work);
     }
   }
 
@@ -75,21 +76,25 @@ export function buildAccessories(project) {
   const legs = new Map();
   let hinges = 0;
   let slides = 0;
-  let handles = 0;
+  const handles = new Map(); // nazwa uchwytu (z rozstawem) → ilość
   for (const c of project.furniture) {
     for (const l of cabinetLegs(c, project)) legs.set(l.height, (legs.get(l.height) ?? 0) + 1);
     const fronts = cabinetPanels(c, project).filter((p) => p.valid && p.key.startsWith('front-'));
     const type = c.fronts?.type;
     if (type === 'door' || type === 'doubleDoor') hinges += fronts.reduce((s, p) => s + hingesFor(p.height), 0);
     if (type === 'drawers') slides += fronts.length;
-    // front z frezem uchwytowym nie potrzebuje uchwytu
-    handles += fronts.filter((p) => !p.milling?.groove).length;
+    // uchwyty: według rodzaju i rozstawu (front z frezem uchwytowym nie ma uchwytu)
+    for (const p of fronts) {
+      if (!p.handle) continue;
+      const name = p.handle.type === 'knob' ? 'Gałka meblowa' : `Uchwyt meblowy, rozstaw ${p.handle.spacing} mm`;
+      handles.set(name, (handles.get(name) ?? 0) + 1);
+    }
   }
   return [
     ...[...legs.entries()].map(([height, qty]) => ({ name: `Nóżka meblowa ${height} mm`, qty })),
     ...(hinges ? [{ name: 'Zawias puszkowy (do frontów nakładanych)', qty: hinges }] : []),
     ...(slides ? [{ name: 'Prowadnice do szuflad (komplet na szufladę)', qty: slides }] : []),
-    ...(handles ? [{ name: 'Uchwyt', qty: handles }] : []),
+    ...[...handles.entries()].map(([name, qty]) => ({ name, qty })),
   ];
 }
 
@@ -116,7 +121,7 @@ export function cutListCsv(project) {
     'Grubość obrzeża',
     'Oklejone krawędzie',
     'Zapas na docięcie',
-    'Cięcia skośne / frezy',
+    'Obróbka (cięcia skośne, frezy, otwory)',
   ];
   const lines = [header.join(';')];
   buildCutList(project).forEach((r, i) => {
@@ -149,5 +154,6 @@ export function cutListCsv(project) {
   }
   lines.push('', 'Wymiary w mm. Długość i szerokość — gotowy element (z obrzeżem); „do cięcia” — pomniejszone o obrzeże.');
   lines.push('Płyty pod skos: wymiar to prostokąt, z którego wycina się formatkę; „ścięty róg A × B” — odcinany trójkąt, A wzdłuż długości, B wzdłuż szerokości.');
+  lines.push('Otwory pod uchwyty: współrzędne (poziomo; pionowo) środków otworów w mm od lewego dolnego narożnika frontu, patrząc na front od przodu.');
   return '﻿' + lines.join('\r\n');
 }

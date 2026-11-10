@@ -90,6 +90,25 @@ export const FRONT_DECORS = [
 ];
 export const DECOR_LIMITS = { min: 10, max: 500 };
 
+// Uchwyty: listwowy (dwa otwory w rozstawie) albo gałka (jeden otwór). W drzwiach — pionowo przy
+// krawędzi otwierania, w szufladach — poziomo na środku szerokości. Położenie na wysokości frontu:
+// góra / środek / dół; edgeOffset — odległość osi otworów od krawędzi (otwierania w drzwiach,
+// górnej / dolnej przy położeniu „góra” / „dół”).
+export const HANDLE_TYPES = [
+  { key: 'none', label: 'Brak' },
+  { key: 'bar', label: 'Uchwyt listwowy (2 otwory)' },
+  { key: 'knob', label: 'Gałka (1 otwór)' },
+];
+export const HANDLE_POSITIONS = [
+  { key: 'top', label: 'Góra' },
+  { key: 'center', label: 'Środek' },
+  { key: 'bottom', label: 'Dół' },
+];
+// Standardowe rozstawy otworów uchwytów meblowych (mm).
+export const HANDLE_SPACINGS = [32, 64, 96, 128, 160, 192, 224, 256, 288, 320, 352, 416, 448, 480, 512, 640, 800];
+export const HANDLE_LIMITS = { spacingMin: 16, spacingMax: 2000, holeMin: 2, holeMax: 20, offsetMin: 10, offsetMax: 1000 };
+export const defaultHandle = () => ({ type: 'bar', spacing: 128, hole: 5, position: 'center', edgeOffset: 40 });
+
 export const defaultFronts = () => ({
   type: 'none',
   drawers: 3,
@@ -99,7 +118,48 @@ export const defaultFronts = () => ({
   decor: 'none',
   decorMargin: 60, // ramka: odległość frezu od krawędzi frontu
   decorSpacing: 100, // rowki: odstęp między rowkami
+  handle: defaultHandle(),
 });
+
+// Uchwyt na froncie (panel — płyta frontu w układzie przestrzeni): otwory { x, y } na licu frontu,
+// kierunek (vertical / horizontal) i czy mieści się na froncie (z zapasem 10 mm od krawędzi).
+function placeHandle(panel, spec) {
+  const { x, y, width: w, height: h } = panel;
+  const hinge = panel.opening?.hinge; // drzwi: zawiasy po lewej → uchwyt przy prawej krawędzi
+  const vertical = !!hinge;
+  const off = spec.edgeOffset;
+  const half = spec.type === 'bar' ? spec.spacing / 2 : 0;
+  // środek uchwytu
+  let cx;
+  let cy;
+  if (vertical) {
+    cx = hinge === 'left' ? x + w - off : x + off;
+    cy = { top: y + h - off - half, center: y + h / 2, bottom: y + off + half }[spec.position];
+  } else {
+    cx = x + w / 2;
+    cy = { top: y + h - off, center: y + h / 2, bottom: y + off }[spec.position];
+  }
+  const holes =
+    spec.type === 'knob'
+      ? [{ x: cx, y: cy }]
+      : vertical
+        ? [{ x: cx, y: cy - half }, { x: cx, y: cy + half }]
+        : [{ x: cx - half, y: cy }, { x: cx + half, y: cy }];
+  const margin = 10;
+  const fits = holes.every((p) => p.x >= x + margin && p.x <= x + w - margin && p.y >= y + margin && p.y <= y + h - margin);
+  return { type: spec.type, spacing: spec.spacing, hole: spec.hole, vertical, holes, fits };
+}
+
+// Opis otworów pod uchwyt do listy formatek: współrzędne od lewego dolnego narożnika frontu (patrząc od przodu),
+// np. „otwory pod uchwyt (rozstaw 128 mm): 2 × Ø5 mm — (623; 935), (623; 1063) mm od lewego dolnego narożnika”.
+export function describeHandle(panel) {
+  const hd = panel.handle;
+  if (!hd) return '';
+  const r = (v) => Math.round(v * 10) / 10;
+  const pts = hd.holes.map((p) => `(${r(p.x - panel.x)}; ${r(p.y - panel.y)})`).join(', ');
+  const what = hd.type === 'knob' ? 'otwór pod gałkę' : `otwory pod uchwyt (rozstaw ${hd.spacing} mm)`;
+  return `${what}: ${hd.holes.length} × Ø${hd.hole} mm — ${pts} mm od lewego dolnego narożnika`;
+}
 
 // Krawędź frontu (jak w obrzeżu: xMin / xMax / yMin / yMax), na której jest frez uchwytowy.
 function grooveEdge(groove, frontKind) {
@@ -124,6 +184,27 @@ export function describeMilling(panel) {
     .join('; ');
 }
 export const frontKey = (i) => `front-${i}`;
+
+// Usunięcie jednego frontu (zaznaczonego w widoku 3D): drzwi pojedyncze — korpus bez frontu;
+// jedno skrzydło drzwi podwójnych — zostają drzwi pojedyncze z zawiasami po stronie pozostałego skrzydła;
+// szuflada — o jedną szufladę mniej (ostatnia — korpus bez frontu).
+export function removeFront(cabinet, key) {
+  const fr = cabinet.fronts ?? defaultFronts();
+  const index = Number(String(key).split('-')[1]);
+  if (fr.type === 'drawers' && (fr.drawers ?? 1) > 1) return { ...cabinet, fronts: { ...fr, drawers: fr.drawers - 1 } };
+  if (fr.type === 'doubleDoor') return { ...cabinet, fronts: { ...fr, type: 'door', hingeSide: index === 0 ? 'right' : 'left' } };
+  return { ...cabinet, fronts: { ...fr, type: 'none' } };
+}
+
+// Usunięcie kilku frontów jednego korpusu naraz (np. zaznaczonych z Ctrl): szuflady — o tyle mniej,
+// jedno skrzydło drzwi podwójnych — jak removeFront, wszystkie fronty — korpus bez frontu.
+export function removeFronts(cabinet, keys) {
+  const fr = cabinet.fronts ?? defaultFronts();
+  const n = new Set(keys).size;
+  if (fr.type === 'drawers' && (fr.drawers ?? 1) > n) return { ...cabinet, fronts: { ...fr, drawers: fr.drawers - n } };
+  if (fr.type === 'doubleDoor' && n === 1) return removeFront(cabinet, keys[0]);
+  return { ...cabinet, fronts: { ...fr, type: 'none' } };
+}
 
 // Liczba zawiasów puszkowych na drzwi o danej wysokości (typowe zalecenia producentów).
 export const hingesFor = (height) => (height <= 900 ? 2 : height <= 1600 ? 3 : height <= 2000 ? 4 : 5);
@@ -825,7 +906,10 @@ export function cabinetPanels(cabinet, project) {
       const hasMilling = milling.groove || milling.decor !== 'none';
       // jak się otwiera (do widoku „otwarte”): drzwi — obrót na zawiasach po lewej / prawej, szuflada — wysunięcie
       const opening = kind === 'drawer' ? { drawer: true } : { hinge: kind === 'doorRightHinge' ? 'right' : 'left' };
-      frontDefs.push({ key, name, thicknessAxis: 'z', milling: hasMilling ? milling : null, opening });
+      // uchwyt — tylko gdy front nie ma frezu uchwytowego
+      const hs = fr.handle ?? defaultHandle();
+      const handleSpec = hs.type !== 'none' && !milling.groove ? hs : null;
+      frontDefs.push({ key, name, thicknessAxis: 'z', milling: hasMilling ? milling : null, opening, handleSpec });
     };
     if (fr.type === 'door') {
       const kind = fr.hingeSide === 'right' ? 'doorRightHinge' : 'doorLeftHinge';
@@ -894,8 +978,8 @@ export function cabinetPanels(cabinet, project) {
       // zapas na docięcie (mm) po stronie mniejszego / większego X — poza wymiarem nominalnym
       allowanceMin: allowance[def.key]?.min ?? 0,
       allowanceMax: allowance[def.key]?.max ?? 0,
-      // ukryta tylko w widoku 3D: sama płyta albo cała strona blend bocznych
-      hidden: !!o.hidden || !!blends[BLEND_SIDE[def.key]]?.hidden,
+      // ukryta tylko w widoku 3D: sama płyta, cała strona blend bocznych albo wszystkie fronty korpusu
+      hidden: !!o.hidden || !!blends[BLEND_SIDE[def.key]]?.hidden || (def.key.startsWith('front-') && fr.hidden === true),
       overridden,
       // frezy frontu (uchwytowy, dekoracyjny) — patrz describeMilling
       milling: def.milling ?? null,
@@ -903,6 +987,8 @@ export function cabinetPanels(cabinet, project) {
       opening: def.opening ?? null,
     };
     panel.valid = panel.width > 0 && panel.height > 0 && panel.depth > 0;
+    // uchwyt frontu (otwory na licu) — liczony z gotowego położenia płyty
+    if (def.handleSpec && panel.valid) panel.handle = placeHandle(panel, def.handleSpec);
 
     // Płaszczyzny, które docinają płytę: skośna góra korpusu i (dla blend do sufitu) skosy przestrzeni.
     const clips = [];
@@ -1180,6 +1266,10 @@ export function cabinetIssues(cabinet, project) {
     for (let j = i + 1; j < valid.length; j++)
       if (panelsOverlap(valid[i], valid[j])) overlapping.push(`${valid[i].name} i ${valid[j].name}`);
   if (overlapping.length) issues.push(`Elementy nachodzą na siebie: ${overlapping.join('; ')}.`);
+  const noRoomHandles = valid.filter((p) => p.handle && !p.handle.fits).map((p) => p.name);
+  if (noRoomHandles.length) {
+    issues.push(`Uchwyt nie mieści się na froncie (za duży rozstaw albo odległość od krawędzi): ${noRoomHandles.join(', ')}.`);
+  }
 
   const bounds = cabinetBounds(cabinet, project);
   // Sprawdzamy narożniki płyt (płyty docięte pod skos mają skośne krawędzie) i nóżek.
@@ -1319,6 +1409,18 @@ export function normalizeCabinet(raw = {}) {
       decor: FRONT_DECORS.some((d) => d.key === raw.fronts?.decor) ? raw.fronts.decor : 'none',
       decorMargin: num(raw.fronts?.decorMargin, 60, DECOR_LIMITS.min, DECOR_LIMITS.max),
       decorSpacing: num(raw.fronts?.decorSpacing, 100, DECOR_LIMITS.min, DECOR_LIMITS.max),
+      hidden: raw.fronts?.hidden === true, // fronty tego korpusu ukryte w widoku 3D
+      handle: (() => {
+        const h = raw.fronts?.handle ?? {};
+        const d = defaultHandle();
+        return {
+          type: HANDLE_TYPES.some((t) => t.key === h.type) ? h.type : d.type,
+          spacing: num(h.spacing, d.spacing, HANDLE_LIMITS.spacingMin, HANDLE_LIMITS.spacingMax),
+          hole: num(h.hole, d.hole, HANDLE_LIMITS.holeMin, HANDLE_LIMITS.holeMax),
+          position: HANDLE_POSITIONS.some((p) => p.key === h.position) ? h.position : d.position,
+          edgeOffset: num(h.edgeOffset, d.edgeOffset, HANDLE_LIMITS.offsetMin, HANDLE_LIMITS.offsetMax),
+        };
+      })(),
     },
     legs: {
       enabled: raw.legs?.enabled === true,

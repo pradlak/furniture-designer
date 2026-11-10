@@ -319,11 +319,74 @@ button.eye.off { opacity: 0.35; text-decoration: line-through; }
 .part.is-hidden > :not(.part-head),
 .item.is-hidden .item-head input[type='text'] { opacity: 0.55; }
 
+/* --- menu akcji w widoku 3D (np. po kliknięciu frontu) --- */
+.context-menu {
+  position: absolute;
+  z-index: 20;
+  min-width: 150px;
+  padding: 4px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.18);
+  display: flex;
+  flex-direction: column;
+}
+.context-menu-title { font-size: 11px; color: var(--muted); padding: 4px 8px 6px; border-bottom: 1px solid var(--border); margin-bottom: 4px; }
+.context-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  border-radius: 5px;
+  padding: 6px 8px;
+  text-align: left;
+  background: none;
+}
+.context-menu button:hover,
+.context-menu button:focus-visible { background: color-mix(in srgb, var(--accent) 10%, #fff); color: var(--accent); outline: none; }
+.context-menu-icon { width: 16px; text-align: center; }
+
 /* --- płyty docięte pod skos --- */
 .part-shape { font-size: 11px; font-weight: 600; color: #7c3aed; }
 .part-shape:empty { display: none; }
 .slope-top-info { margin-top: 0; }
 .check.inactive { opacity: 0.5; cursor: default; }
+/* podsekcje w sekcji karty (np. „Front” i „Uchwyt” w „Fronty”) — osobne ramki z tytułem */
+.subsection {
+  border: 1px solid var(--border);
+  border-left: 3px solid color-mix(in srgb, var(--accent) 45%, var(--border));
+  border-radius: 6px;
+  padding: 6px 10px 2px;
+  margin-bottom: 10px;
+  background: #fbfcfd;
+}
+.subsection-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: color-mix(in srgb, var(--accent) 70%, var(--text));
+  margin-bottom: 6px;
+}
+/* zwijana podsekcja: tytuł ze strzałką ▾ / ▸ */
+details.subsection > summary.subsection-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  list-style: none;
+  padding: 2px 0;
+}
+details.subsection > summary.subsection-title::-webkit-details-marker { display: none; }
+details.subsection > summary.subsection-title::before { content: '▾'; font-size: 12px; width: 10px; }
+details.subsection:not([open]) > summary.subsection-title::before { content: '▸'; }
+details.subsection:not([open]) { padding-bottom: 4px; }
+details.subsection:not([open]) > summary.subsection-title { margin-bottom: 0; }
+details.subsection > summary.subsection-title:hover { color: var(--accent); }
+
+/* oko na pasku sekcji (np. „Fronty”) — po prawej stronie paska */
+.section > summary .section-eye { margin-left: auto; align-self: center; flex: none; background: #fff; }
 
 /* --- zapas na docięcie --- */
 .allowance-note { font-size: 11px; font-weight: 600; color: #c2410c; margin: 2px 0 0; }
