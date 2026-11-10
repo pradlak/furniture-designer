@@ -12,6 +12,12 @@ import {
   cabinetContext,
   cabinetPanels,
   newId,
+  cabinetReachesTop,
+  ceilingClipPlanes,
+  clipBox,
+  sliceX,
+  panelVertices,
+  panelsOverlap,
 } from './furniture.js';
 import { isPointInside } from './space.js';
 
@@ -37,7 +43,8 @@ export const TRIM_TYPES = {
 export const TRIM_DEFAULTS = {
   // height: null = automatyczna; allowanceLeft/Right — zapas na docięcie na końcach
   plinth: { height: null, gap: 5, setback: 20, allowanceLeft: 0, allowanceRight: 0 },
-  topBlend: { height: 60, gap: 3 },
+  // toCeiling — górą do sufitu / skosu (gdy objęte korpusy sięgają sufitu lub skosu); dolna krawędź bez zmian
+  topBlend: { height: 60, gap: 3, toCeiling: true },
   // includeFront — wysunięcie liczone od frontu (front ma grubość blendy górnej / materiału blend)
   countertop: { overhang: 30, includeFront: true, x: null, length: null, depth: null },
 };
@@ -148,7 +155,32 @@ export function trimBox(trim, project) {
   const left = Math.min(...cabs.map((c) => c.x));
   const right = Math.max(...cabs.map((c) => c.x + c.width));
   const top = Math.max(...cabs.map((c) => c.y + legHeight(c) + c.height));
-  return { x: left, y: top - trim.height, z: front, width: right - left, height: trim.height, depth: thickness };
+  const box = { x: left, y: top - trim.height, z: front, width: right - left, height: trim.height, depth: thickness };
+  // „Do sufitu / skosu”: blenda zachowuje swoją wysokość, ale podnosi się tak, żeby górą dochodziła
+  // do sufitu albo skosu (przy przedniej powierzchni); górna krawędź jest docięta pod kąt skosu.
+  if (topBlendToCeiling(trim, project)) {
+    const planes = ceilingClipPlanes(cabs[0], project);
+    const ceiling = Math.min(project.space.height, ...planes.map(([n, off]) => planeTopOver(n, off, box)));
+    return clipBox({ ...box, y: Math.max(box.y, ceiling - trim.height) }, planes, 'z');
+  }
+  return box;
+}
+
+// Najwyższe miejsce pod płaszczyzną (normal · p <= off) nad paskiem blendy: skos w głąb (tył / przód)
+// sięga najwyżej przy jednej z powierzchni blendy (resztę docina cięcie pod kątem), skos z boku —
+// ogranicza najniższy punkt na długości blendy.
+function planeTopOver([a, b, c], off, box) {
+  const at = (x, z) => (off - a * x - c * z) / b;
+  const xs = [box.x, box.x + box.width];
+  const zs = [box.z, box.z + box.depth];
+  const alongDepth = Math.abs(a) < 1e-9;
+  return alongDepth ? Math.max(...zs.map((z) => at(box.x, z))) : Math.min(...xs.map((x) => Math.max(...zs.map((z) => at(x, z)))));
+}
+
+// Czy blenda górna idzie do sufitu / skosu: opcja włączona i wszystkie objęte korpusy sięgają sufitu lub skosu.
+export function topBlendToCeiling(trim, project) {
+  const cabs = trimCabinets(trim, project);
+  return trim.type === 'topBlend' && trim.toCeiling !== false && cabs.length > 0 && cabs.every((c) => cabinetReachesTop(c, project));
 }
 
 // O ile blat wystaje przed korpus: wysunięcie + (opcjonalnie) grubość frontu,
@@ -205,12 +237,17 @@ export function trimSegments(trim, project) {
       b <= s || a >= e ? [[s, e]] : [[s, a], [b, e]].filter(([x0, x1]) => x1 - x0 > 0.01),
     );
   }
-  return spans.map(([s, e]) => ({ ...box, x: s, width: e - s }));
+  return spans.map(([s, e]) => sliceX(box, s, e)).filter((seg) => seg.width > 0.01);
 }
 
-// Wysokość frontu pod blendą górną (dla każdego objętego korpusu).
+// Wysokość frontu pod blendą górną (dla każdego objętego korpusu): od dołu korpusu do spodu blendy
+// minus szczelina. Zwykle = korpus − blenda − szczelina; gdy blenda podnosi się do skosu — więcej.
 export function frontHeightsUnder(trim, project) {
-  return trimCabinets(trim, project).map((c) => ({ cabinet: c, height: c.height - trim.height - trim.gap }));
+  const box = trimBox(trim, project);
+  return trimCabinets(trim, project).map((c) => {
+    const bottom = box ? box.y : c.y + legHeight(c) + c.height - trim.height;
+    return { cabinet: c, height: bottom - trim.gap - (c.y + legHeight(c)) };
+  });
 }
 
 export function trimIssues(trim, project) {
@@ -238,7 +275,8 @@ export function trimIssues(trim, project) {
 
   const box = trimBox(trim, project);
   if (box && box.height > 0) {
-    if (!boxCorners(box).every((p) => isPointInside(p, project.space))) issues.push('Wychodzi poza przestrzeń.');
+    // Narożniki (blenda docięta pod skos ma skośną górę — sprawdzamy jej wierzchołki).
+    if (!panelVertices(box).every((p) => isPointInside(p, project.space))) issues.push('Wychodzi poza przestrzeń.');
     const hit = project.space.obstacles.filter((o) => boxesOverlap(box, o)).map((o) => o.name);
     if (hit.length) issues.push(`Koliduje z: ${hit.join(', ')}.`);
     // Nachodzenie na płyty korpusów (po podzieleniu blendy na odcinki przy panelach bocznych).
@@ -246,7 +284,7 @@ export function trimIssues(trim, project) {
     const hitPanels = [];
     for (const c of project.furniture) {
       for (const p of cabinetPanels(c, project)) {
-        if (p.valid && segments.some((s) => boxesOverlap(s, p))) hitPanels.push(`${p.name} (${c.name})`);
+        if (p.valid && segments.some((s) => panelsOverlap(s, p))) hitPanels.push(`${p.name} (${c.name})`);
       }
     }
     if (hitPanels.length) issues.push(`Nachodzi na: ${hitPanels.join(', ')}.`);
@@ -279,6 +317,7 @@ export function normalizeTrim(raw = {}, cabinetIds) {
   } else if (raw.type === 'topBlend') {
     trim.height = num(raw.height, def.height, 1, 2000);
     trim.gap = num(raw.gap, def.gap, 0, 100);
+    trim.toCeiling = raw.toCeiling !== false;
   } else {
     const opt = (v, min, max) => (v == null ? null : num(v, null, min, max));
     trim.overhang = num(raw.overhang, def.overhang, -500, 1000);

@@ -1,4 +1,4 @@
-import { SIDE_BLEND_TYPES, CABINET_LIMITS, sidePanelExtension, sideBlendWidth, getPath } from '../model/furniture.js';
+import { SIDE_BLEND_TYPES, CABINET_LIMITS, sidePanelExtension, sideBlendWidth, getPath, cabinetReachesTop } from '../model/furniture.js';
 import { escapeHtml, setIfNotFocused, round1 } from './dom.js';
 import { setEye } from './widgets.js';
 import { COLLAPSE_BUTTON } from './collapsible.js';
@@ -74,6 +74,9 @@ function sideFields(side) {
         <label class="check small" title="Wysunięcie o grubość blendy górnej (albo frontu), żeby licowało z frontem">
           <input type="checkbox" data-f="sideBlends.${side}.flushFront" /> wysuń do linii frontu
         </label>
+        <label class="check small to-ceiling" title="Blenda i panele górą do sufitu albo skosu (docięte pod kąt skosu, z luzem do skosu). Działa, gdy korpus sam sięga sufitu lub skosu; odznaczone — wysokość korpusu.">
+          <input type="checkbox" data-f="sideBlends.${side}.toCeiling" /> do sufitu / skosu
+        </label>
         <label class="field small">
           <span>Wysunięcie <small>mm</small></span>
           <input type="number" step="1" min="0" max="500" data-f="sideBlends.${side}.extend" />
@@ -106,6 +109,7 @@ export function updateSideBlendCard(el, cabinet, project) {
   // Cokół boczny ma sens tylko z nóżkami.
   el.querySelectorAll('option[value="plinth"]').forEach((opt) => (opt.disabled = !cabinet.legs?.enabled));
 
+  const reachesTop = cabinetReachesTop(cabinet, project);
   for (const side of ['left', 'right']) {
     const sb = cabinet.sideBlends?.[side];
     const box = el.querySelector(`.side-blend[data-side="${side}"]`);
@@ -117,6 +121,13 @@ export function updateSideBlendCard(el, cabinet, project) {
     updatePanelDepth(box.querySelector('.wall-panel-depth'), isFiller && sb?.wallPanel, sb?.wallPanelDepth, fullDepth);
     updatePanelDepth(box.querySelector('.full-panel-depth'), sb?.type === 'full', sb?.fullPanelDepth, fullDepth);
     box.querySelector('.panel-opts').hidden = !canExtend;
+    // „Do sufitu / skosu” ma sens tylko przy korpusie sięgającym sufitu lub skosu.
+    const toCeiling = box.querySelector('.to-ceiling');
+    toCeiling.querySelector('input').disabled = !reachesTop;
+    toCeiling.classList.toggle('inactive', !reachesTop);
+    toCeiling.title = reachesTop
+      ? 'Blenda i panele górą do sufitu albo skosu (docięte pod kąt skosu, z luzem do skosu); odznaczone — wysokość korpusu.'
+      : 'Korpus nie sięga sufitu ani skosu — blenda ma wysokość korpusu.';
     const extend = box.querySelector(`[data-f="sideBlends.${side}.extend"]`);
     extend.disabled = !!sb?.flushFront;
     if (canExtend && sb.flushFront) extend.value = sidePanelExtension(cabinet, side, project); // wartość wyliczona

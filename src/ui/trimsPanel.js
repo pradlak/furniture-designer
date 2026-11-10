@@ -18,13 +18,20 @@ import { escapeHtml, numberField, readNumberInput, setIfNotFocused, round1, comm
 import { setEye, materialSelect } from './widgets.js';
 import { renderSideBlendCard, updateSideBlendCard } from './sideBlends.js';
 import { createCardCollapse, COLLAPSE_BUTTON, COLLAPSE_ALL_BUTTONS } from './collapsible.js';
-import { setPath, setSideBlendField } from '../model/furniture.js';
+import { setPath, setSideBlendField, cabinetReachesTop, describeCuts } from '../model/furniture.js';
 import { updateCabinetKeepingRow } from '../model/layout.js';
 
 // Zakładka „Blendy i blaty”: elementy, które mogą obejmować kilka korpusów — blendy dolne,
 // blendy górne i blaty. To jedyne miejsce ich edycji (karta korpusu tylko pokazuje, co go obejmuje).
 
+// Kolejność w panelu: od góry mebla — blendy górne, dolne, blaty.
 const GROUPS = [
+  {
+    type: 'topBlend',
+    title: 'Blendy górne',
+    add: '+ Blenda górna',
+    hint: 'W płaszczyźnie frontu przy górnej krawędzi korpusu; front pod nią = korpus − blenda − szczelina.',
+  },
   {
     type: 'plinth',
     title: 'Blendy dolne',
@@ -32,12 +39,6 @@ const GROUPS = [
     hint:
       'Zasłania nóżki: wysokość = nóżki − 5 mm (bez nóżek 80 mm), cofnięta od frontu, dochodzi do paneli bocznych. ' +
       'Zapas na docięcie = zapas blendy bocznej skrajnego korpusu + dodatkowy zapas blendy dolnej.',
-  },
-  {
-    type: 'topBlend',
-    title: 'Blendy górne',
-    add: '+ Blenda górna',
-    hint: 'W płaszczyźnie frontu przy górnej krawędzi korpusu; front pod nią = korpus − blenda − szczelina.',
   },
   {
     type: 'countertop',
@@ -123,6 +124,9 @@ export function createTrimsPanel(root, store, ui) {
       topBlend: [
         field('Wysokość', 'height', { min: 1, max: 2000 }),
         field('Szczelina do frontu', 'gap', { min: 0, max: 100 }),
+        `<label class="check small to-ceiling">
+          <input type="checkbox" data-f="toCeiling" /> do sufitu / skosu
+        </label>`,
       ],
       countertop: [
         field('Wysunięcie z przodu', 'overhang', { min: -500, max: 1000 }),
@@ -234,7 +238,19 @@ export function createTrimsPanel(root, store, ui) {
       if (t.type === 'topBlend') {
         const fronts = [...new Set(frontHeightsUnder(t, project).map((f) => round1(f.height)))];
         if (fronts.length) size += ` · front pod blendą: ${fronts.join(' / ')} mm`;
+        // „Do sufitu / skosu” — tylko gdy objęte korpusy sięgają sufitu lub skosu.
+        const cabs = project.furniture.filter((c) => t.cabinetIds.includes(c.id));
+        const possible = cabs.length > 0 && cabs.every((c) => cabinetReachesTop(c, project));
+        const label = el.querySelector('.to-ceiling');
+        label.querySelector('input').disabled = !possible;
+        label.classList.toggle('inactive', !possible);
+        label.title = possible
+          ? 'Dolna krawędź zostaje (wysokość liczona od góry korpusu), a górą blenda dochodzi do sufitu albo skosu — docięta pod kąt skosu, z luzem do skosu. Odznaczone — blenda kończy się na górze korpusów.'
+          : 'Objęte korpusy nie sięgają sufitu ani skosu — blenda kończy się na górze korpusów.';
       }
+      // Blenda docięta pod skos: ścięte rogi / krawędzie cięte pod kątem.
+      const shapes = [...new Set(segments.map((seg) => describeCuts(panelCutSize({ ...seg, material: trimMaterial(t, project) }))).filter(Boolean))];
+      if (shapes.length) size += ` · ${shapes.join('; ')}`;
       el.querySelector('.trim-size').textContent = size;
       // Zapas z rozbiciem na źródła, np. „z prawej +40 mm (blenda boczna Korpus B: 20 + dodatkowy: 20)”.
       const parts = trimAllowanceParts(t, project);

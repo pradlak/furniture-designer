@@ -294,6 +294,12 @@ button.eye.off { opacity: 0.35; text-decoration: line-through; }
 .part.is-hidden > :not(.part-head),
 .item.is-hidden .item-head input[type='text'] { opacity: 0.55; }
 
+/* --- płyty docięte pod skos --- */
+.part-shape { font-size: 11px; font-weight: 600; color: #7c3aed; }
+.part-shape:empty { display: none; }
+.slope-top-info { margin-top: 0; }
+.check.inactive { opacity: 0.5; cursor: default; }
+
 /* --- zapas na docięcie --- */
 .allowance-note { font-size: 11px; font-weight: 600; color: #c2410c; margin: 2px 0 0; }
 .allowance-note:empty { display: none; }
@@ -389,6 +395,24 @@ body.resizing .viewport { pointer-events: none; }
 .welcome li { margin: 6px 0; }
 .welcome-note { font-size: 13px; color: var(--muted); }
 .welcome-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+/* --- okienko „Nowy projekt” (szablony przestrzeni) --- */
+.templates { display: grid; gap: 10px; margin: 12px 0 4px; }
+.template {
+  display: block;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+}
+.template.selected { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent); }
+.template-head { display: flex; align-items: flex-start; gap: 10px; }
+.template-head input { margin-top: 4px; }
+.template-head small { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
+.template-sketch { flex: none; width: 48px; height: 40px; color: var(--muted); }
+.template.selected .template-sketch { color: var(--accent); }
+.template-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 0 8px; margin-top: 8px; }
+.template:not(.selected) .template-fields { opacity: 0.6; }
+
 button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 button.primary:hover { color: #fff; filter: brightness(1.1); }
 

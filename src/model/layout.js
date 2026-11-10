@@ -1,4 +1,4 @@
-import { CABINET_LIMITS, cabinetBounds, createCabinet, maxHeightAt } from './furniture.js';
+import { CABINET_LIMITS, cabinetBounds, createCabinet, maxCabinetHeight } from './furniture.js';
 import { rowOf } from './trims.js';
 
 // Automatyczny układ korpusów w rzędzie — żeby projektowanie było jak najprostsze:
@@ -14,6 +14,27 @@ export const MIN_FREE_FOR_NEW = 200;
 const EPS = 0.5;
 
 const byId = (project, id) => project.furniture.find((c) => c.id === id);
+
+// Domyślna (największa) wysokość nowego korpusu — jak w createCabinet.
+export const DEFAULT_MAX_HEIGHT = 2000;
+
+// Najwyższy korpus, jaki mieści się w danym miejscu pod sufitem i skosami (z blendami po bokach),
+// ale nie wyższy niż DEFAULT_MAX_HEIGHT. Pod skosem z tyłu — wysokość z przodu (górę docina skośna góra).
+function fittedHeight(cabinet, project) {
+  const b = cabinetBounds(cabinet, project);
+  const max = Math.floor(maxCabinetHeight(cabinet, project, b.x, b.width));
+  return Math.max(CABINET_LIMITS.sizeMin, Math.min(DEFAULT_MAX_HEIGHT, max));
+}
+
+// Czy korpus ma wysokość „automatyczną” — tak wysoki, jak pozwala miejsce (sufit, skos albo domyślne maksimum).
+// Takie korpusy po zmianie układu znów dopasowują się do skosu nad nimi; pozostałe (np. szafki dolne 720 mm)
+// zachowują swoją wysokość — chyba że przestałyby się mieścić pod skosem.
+const isFittedHeight = (cabinet, project) => cabinet.height >= fittedHeight(cabinet, project) - 1;
+
+function adjustHeight(cabinet, project, fitted) {
+  const height = fittedHeight(cabinet, project);
+  return { ...cabinet, height: fitted ? height : Math.min(cabinet.height, height) };
+}
 
 // Lewa i prawa krawędź rzędu (z blendami i panelami bocznymi).
 function rowExtent(project, ids) {
@@ -57,9 +78,11 @@ function rowCollides(project, ids) {
 
 // Rozkłada korpusy rzędu (od lewej) w przedziale [left, right]: szerokości proporcjonalne do `shares`,
 // blendy i panele boczne zachowują swoje wymiary. Zwraca nowy projekt albo null, gdy korpusy
-// byłyby za wąskie.
-export function distributeRow(project, ids, [left, right], shares) {
+// byłyby za wąskie. Korpusy z wysokością automatyczną dopasowują się do skosu w nowym miejscu
+// (`fitted` — opcjonalnie: id → czy wysokość automatyczna; domyślnie sprawdzane przed zmianą).
+export function distributeRow(project, ids, [left, right], shares, fitted = {}) {
   const cabs = ids.map((id) => byId(project, id)).sort((a, b) => a.x - b.x);
+  const isFitted = Object.fromEntries(cabs.map((c) => [c.id, fitted[c.id] ?? isFittedHeight(c, project)]));
   const extras = cabs.map((c) => {
     const b = cabinetBounds(c, project);
     return [c.x - b.x, b.x + b.width - (c.x + c.width)];
@@ -79,7 +102,12 @@ export function distributeRow(project, ids, [left, right], shares) {
     placed.set(c.id, { ...c, x, width: widths[i] });
     cursor = x + widths[i] + extras[i][1];
   });
-  return { ...project, furniture: project.furniture.map((c) => placed.get(c.id) ?? c) };
+  const moved = { ...project, furniture: project.furniture.map((c) => placed.get(c.id) ?? c) };
+  // Wysokości liczymy dopiero po rozstawieniu (blendy automatyczne zależą od sąsiadów).
+  return {
+    ...moved,
+    furniture: moved.furniture.map((c) => (placed.has(c.id) ? adjustHeight(c, moved, isFitted[c.id]) : c)),
+  };
 }
 
 // Najbardziej wysunięty w prawo korpus (po krawędzi z blendami).
@@ -97,9 +125,8 @@ export function addCabinetToLayout(project) {
 
   // Pierwszy korpus — na całą szerokość wnęki.
   if (!project.furniture.length) {
-    const c = createCabinet(project);
-    const height = Math.min(2000, Math.floor(maxHeightAt(space, 0, c.z, space.width, c.depth)));
-    const cabinet = { ...c, x: 0, width: space.width, height: Math.max(CABINET_LIMITS.sizeMin, height) };
+    const c = { ...createCabinet(project), x: 0, width: space.width };
+    const cabinet = { ...c, height: fittedHeight(c, project) };
     return { project: { ...project, furniture: [cabinet] }, cabinet };
   }
 
@@ -131,9 +158,15 @@ export function addCabinetToLayout(project) {
 
   // Jest wolne miejsce z prawej — nowy korpus je wypełnia.
   const free = space.width - (lastBounds.x + lastBounds.width);
+  const lastFitted = isFittedHeight(last, project);
   if (free >= MIN_FREE_FOR_NEW) {
-    const cabinet = { ...template, x: lastBounds.x + lastBounds.width, width: free };
-    return { project: withTrims({ ...project, furniture: [...project.furniture, cabinet] }, cabinet), cabinet };
+    const placedCab = { ...template, x: lastBounds.x + lastBounds.width, width: free };
+    const next = { ...project, furniture: [...project.furniture, placedCab] };
+    const cabinet = adjustHeight(placedCab, next, lastFitted); // dopasowanie do skosu w nowym miejscu
+    return {
+      project: withTrims({ ...project, furniture: [...project.furniture, cabinet] }, cabinet),
+      cabinet,
+    };
   }
 
   // Brak miejsca — dzielimy rząd na nowo. Nowy korpus staje na prawym końcu i przejmuje
@@ -153,11 +186,37 @@ export function addCabinetToLayout(project) {
     ...project,
     furniture: [...project.furniture.map((c) => (c.id === last.id ? lastWithout : c)), cabinet],
   };
-  next = distributeRow(withTrims(next, cabinet), [...row, cabinet.id], extent, shares);
+  // Które korpusy mają wysokość automatyczną — sprawdzamy przed zmianą; nowy jak sąsiad.
+  const fitted = Object.fromEntries(row.map((id) => [id, isFittedHeight(byId(project, id), project)]));
+  fitted[cabinet.id] = lastFitted;
+  next = distributeRow(withTrims(next, cabinet), [...row, cabinet.id], extent, shares, fitted);
   if (next) return { project: next, cabinet: byId(next, cabinet.id) };
 
   // Korpusy byłyby za wąskie — zwykły korpus w lewym narożniku (użytkownik ustawi go sam).
   return { project: { ...project, furniture: [...project.furniture, base] }, cabinet: base };
+}
+
+// Zmiana korpusu, po której korpus z wysokością automatyczną dopasowuje się na nowo do miejsca
+// (np. włączenie / wyłączenie skośnej góry albo zmiana luzu do skosu).
+export function updateCabinetRefit(project, cabinetId, fn) {
+  const before = byId(project, cabinetId);
+  const fitted = isFittedHeight(before, project);
+  const changed = fn(before);
+  const next = { ...project, furniture: project.furniture.map((c) => (c.id === cabinetId ? changed : c)) };
+  const refit = adjustHeight(changed, next, fitted);
+  return { ...next, furniture: next.furniture.map((c) => (c.id === cabinetId ? refit : c)) };
+}
+
+// Zmiana przestrzeni (np. skosu: luz, ścianka kolankowa, długość, strona; dodanie / usunięcie skosu):
+// korpusy z wysokością automatyczną dopasowują się do nowego kształtu. Pozostałych nie zmieniamy
+// (żeby chwilowe wartości podczas wpisywania nie zmniejszały ich na stałe).
+export function updateSpaceRefit(project, fn) {
+  const fitted = new Set(project.furniture.filter((c) => isFittedHeight(c, project)).map((c) => c.id));
+  const next = { ...project, space: fn(project.space) };
+  return {
+    ...next,
+    furniture: next.furniture.map((c) => (fitted.has(c.id) ? adjustHeight(c, next, true) : c)),
+  };
 }
 
 // Zmiana korpusu, która może zmienić jego szerokość z blendami (blenda / panel boczny).
@@ -170,5 +229,6 @@ export function updateCabinetKeepingRow(project, cabinetId, fn) {
   const next = { ...project, furniture: project.furniture.map((c) => (c.id === cabinetId ? fn(c) : c)) };
   if (!wasFull && !rowCollides(next, row)) return next;
   const shares = Object.fromEntries(row.map((id) => [id, byId(project, id).width]));
-  return distributeRow(next, row, extent, shares) ?? next;
+  const fitted = Object.fromEntries(row.map((id) => [id, isFittedHeight(byId(project, id), project)]));
+  return distributeRow(next, row, extent, shares, fitted) ?? next;
 }

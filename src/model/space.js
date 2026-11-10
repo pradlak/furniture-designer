@@ -80,6 +80,9 @@ export const OBSTACLE_PRESETS = [
 
 // --- skosy ---
 
+// Domyślny luz mebli do skosu (mm, prostopadle do skosu) — korpusy ze skośną górą kończą się tyle przed skosem.
+export const DEFAULT_SLOPE_GAP = 10;
+
 // Nowy skos: pierwsza wolna strona, ścianka kolankowa ~40% wysokości, skos na połowę rozpiętości.
 export function createSlope(space, overrides = {}) {
   const used = new Set(space.slopes.map((s) => s.side));
@@ -90,6 +93,7 @@ export function createSlope(space, overrides = {}) {
     side,
     kneeHeight: roundTo(space.height * 0.4, 10),
     run: roundTo(span / 2, 10),
+    gap: DEFAULT_SLOPE_GAP,
     ...overrides,
   };
 }
@@ -123,7 +127,7 @@ export function slopePlanes(space) {
       back: { normal: [0, 1, -k], offset: s.kneeHeight },
       front: { normal: [0, 1, k], offset: s.kneeHeight + k * space.depth },
     }[s.side];
-    if (plane) planes.push({ ...plane, side: s.side });
+    if (plane) planes.push({ ...plane, side: s.side, gap: s.gap ?? DEFAULT_SLOPE_GAP });
   }
   return planes;
 }
@@ -171,6 +175,7 @@ function normalizeSlope(raw = {}) {
     side: SLOPE_SIDES.some((s) => s.key === raw.side) ? raw.side : 'left',
     kneeHeight: num(raw.kneeHeight, 1000, 0, LIMITS.spaceMax),
     run: num(raw.run, 1000, 1, LIMITS.spaceMax),
+    gap: num(raw.gap, DEFAULT_SLOPE_GAP, 0, 500),
   };
 }
 

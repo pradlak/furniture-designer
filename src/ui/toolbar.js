@@ -8,12 +8,12 @@ const VIEWS = [
   { key: 'side', label: 'Bok' },
 ];
 
-// onHelp — otwiera okienko „Jak zacząć”.
-export function createToolbar(root, store, viewer, { onHelp } = {}) {
+// onHelp — otwiera okienko „Jak zacząć”; onNew — okienko „Nowy projekt” (wybór szablonu przestrzeni).
+export function createToolbar(root, store, viewer, { onHelp, onNew } = {}) {
   root.innerHTML = `
     <div class="brand">Projektant mebli</div>
     <div class="group">
-      <button type="button" data-action="new">Nowy</button>
+      <button type="button" data-action="new" title="Nowy projekt — wnęka prostokątna albo poddasze ze skosem">Nowy…</button>
       <button type="button" data-action="import">Importuj…</button>
       <button type="button" data-action="export">Eksportuj</button>
       <input type="file" accept="application/json,.json" hidden />
@@ -44,8 +44,9 @@ export function createToolbar(root, store, viewer, { onHelp } = {}) {
   root.addEventListener('click', (e) => {
     const { action, view } = e.target.dataset ?? {};
     if (view) viewer.setView(view);
-    if (action === 'new' && confirm('Utworzyć nowy projekt? Bieżące zmiany zostaną utracone.')) {
-      store.set(createDefaultProject(), { replace: true });
+    if (action === 'new') {
+      if (onNew) onNew();
+      else if (confirm('Utworzyć nowy projekt? Bieżące zmiany zostaną utracone.')) store.set(createDefaultProject(), { replace: true });
     }
     if (action === 'undo') store.undo();
     if (action === 'redo') store.redo();

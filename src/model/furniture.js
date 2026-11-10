@@ -1,5 +1,6 @@
-import { LIMITS, isPointInside, slopePlanes } from './space.js';
+import { LIMITS, isPointInside, slopePlanes, DEFAULT_SLOPE_GAP } from './space.js';
 import { cabinetMaterials, trimMaterial } from './materials.js';
+import { boxSolid, clipSolid, isClippedBy, solidBounds, extentAlong, solidsOverlap, vertices, outline2d } from './solid.js';
 
 // Mebel (na razie: prosty korpus) — wymiary w mm, w układzie współrzędnych przestrzeni.
 // Pozycja (x, y, z) to narożnik lewy‑dolny‑tylny całego mebla (z = odległość pleców od tylnej ściany).
@@ -42,7 +43,10 @@ export const DEFAULT_RAIL_WIDTH = 120;
 
 // Poprzeczki usztywniające: pionowe listwy z płyty tuż przed plecami, między bokami.
 // Mieszczą się w korpusie — nie zmieniają wymiarów mebla.
+// „Równo rozłożone” (even) — domyślne: wszystkie takie poprzeczki dzielą wnętrze na równe części
+// i rozstawiają się na nowo po dodaniu / usunięciu poprzeczki albo zmianie wysokości korpusu.
 export const STIFFENER_POSITIONS = [
+  { key: 'even', label: 'Tył – równo rozłożone' },
   { key: 'backTop', label: 'Tył – pod górą' },
   { key: 'backBottom', label: 'Tył – nad dołem' },
   { key: 'backAt', label: 'Tył – na wysokości…' },
@@ -50,13 +54,18 @@ export const STIFFENER_POSITIONS = [
 export const DEFAULT_STIFFENER_HEIGHT = 100;
 
 export function createStiffener(cabinet) {
-  const used = new Set((cabinet.stiffeners ?? []).map((s) => s.position));
-  const position = ['backTop', 'backBottom'].find((p) => !used.has(p)) ?? 'backAt';
-  return { id: newId(), position, height: DEFAULT_STIFFENER_HEIGHT, y: Math.round(cabinet.height / 2) };
+  return { id: newId(), position: 'even', height: DEFAULT_STIFFENER_HEIGHT, y: Math.round(cabinet.height / 2) };
 }
 
 export const stiffenerKey = (s) => `stiff-${s.id}`;
-const stiffenerName = (s) => `Poprzeczka ${{ backTop: 'tylna górna', backBottom: 'tylna dolna', backAt: 'tylna' }[s.position]}`;
+
+// Wysokość spodu poprzeczki od dołu korpusu (bez nóżek) — tak, jak ją rozmieszcza cabinetPanels.
+export function stiffenerY(cabinet, st, project) {
+  const panel = cabinetPanels(cabinet, project).find((p) => p.key === stiffenerKey(st));
+  return panel ? panel.y - cabinet.y - legHeight(cabinet) : (st.y ?? 0);
+}
+const stiffenerName = (s) =>
+  `Poprzeczka ${{ backTop: 'tylna górna', backBottom: 'tylna dolna', backAt: 'tylna', even: 'tylna' }[s.position]}`;
 
 // Blendy boczne (osobno dla lewej i prawej strony).
 //  plinth — cokół boczny: płyta pod korpusem w płaszczyźnie boku, zasłania nóżki z boku,
@@ -78,6 +87,7 @@ export const PANEL_DEFS = [
   { key: 'right', name: 'Bok prawy', thicknessAxis: 'x' },
   { key: 'bottom', name: 'Wieniec dolny', thicknessAxis: 'y' },
   { key: 'top', name: 'Wieniec górny', thicknessAxis: 'y' },
+  { key: 'topSlope', name: 'Wieniec górny skośny', thicknessAxis: 'y' },
   { key: 'railFront', name: 'Trawers przedni', thicknessAxis: 'y' },
   { key: 'railBack', name: 'Trawers tylny', thicknessAxis: 'y' },
   { key: 'back', name: 'Plecy', thicknessAxis: 'z' },
@@ -126,6 +136,9 @@ function defaultSideBlend() {
     extend: 0,
     allowance: 0,
     hidden: false,
+    // toCeiling — blenda / panel górą do sufitu albo skosu (docięta pod kąt skosu), gdy korpus
+    // sam sięga sufitu lub skosu; wyłączone — wysokość korpusu.
+    toCeiling: true,
   };
 }
 
@@ -136,6 +149,92 @@ export function sidePanelExtension(cabinet, side, project) {
   return sb.flushFront ? cabinetContext(cabinet, project).frontThickness : (sb.extend ?? 0);
 }
 
+// Góra korpusu pod skos (skos przy tylnej albo przedniej ścianie): korpus stojący pod skosem
+// dostaje skośną górę — boki, plecy i blendy są docięte równolegle do skosu, a wieniec górny
+// leży pod kątem. `gap` — luz montażowy między korpusem a skosem (mm, prostopadle do skosu);
+// null = luz ustawiony przy skosie (Przestrzeń → skos), liczba = wyjątek dla tego korpusu.
+export const SLOPE_TOP_GAP = DEFAULT_SLOPE_GAP;
+export const defaultSlopeTop = () => ({ enabled: true, gap: null });
+const gapFor = (cabinet, plane) => cabinet.slopeTop?.gap ?? plane.gap ?? SLOPE_TOP_GAP;
+
+// Luz do skosu, który obowiązuje korpus (do wyświetlenia): własny albo ze skosu w głąb.
+export function slopeTopGap(cabinet, project) {
+  const plane = slopePlanes(project.space).find((pl) => pl.side === 'back' || pl.side === 'front');
+  return plane ? gapFor(cabinet, plane) : (cabinet.slopeTop?.gap ?? SLOPE_TOP_GAP);
+}
+
+// Płaszczyzna, pod którą dopasowujemy górę korpusu: normal · p <= outer (normal jednostkowy),
+// albo null, gdy korpus nie sięga skosu (albo skośna góra jest wyłączona).
+// Na razie tylko skosy biegnące w głąb (przy tylnej / przedniej ścianie).
+export function slopeTopPlane(cabinet, project) {
+  if (!project?.space || cabinet.slopeTop?.enabled === false) return null;
+  const top = cabinet.y + legHeight(cabinet) + cabinet.height;
+  for (const pl of slopePlanes(project.space)) {
+    if (pl.side !== 'back' && pl.side !== 'front') continue;
+    const l = Math.hypot(...pl.normal);
+    const normal = pl.normal.map((v) => v / l);
+    const outer = pl.offset / l - gapFor(cabinet, pl);
+    const cuts = [cabinet.z, cabinet.z + cabinet.depth].some((z) => normal[1] * top + normal[2] * z > outer + 0.01);
+    if (cuts) return { normal, outer, side: pl.side };
+  }
+  return null;
+}
+
+// Największa wysokość korpusu (bez nóżek) w danym miejscu: pod sufitem i skosami.
+// Skos w głąb (tył / przód) przy włączonej skośnej górze ogranicza tylko najwyższy punkt
+// korpusu (resztę załatwia skośna góra), pozostałe skosy — najniższy.
+export function maxCabinetHeight(cabinet, project, x = cabinet.x, w = cabinet.width) {
+  const { space } = project;
+  const slanted = cabinet.slopeTop?.enabled !== false;
+  let top = space.height;
+  for (const pl of slopePlanes(space)) {
+    const { normal: [a, b, c], offset, side } = pl;
+    const tops = [x, x + w].flatMap((px) => [cabinet.z, cabinet.z + cabinet.depth].map((pz) => (offset - a * px - c * pz) / b));
+    if (slanted && (side === 'back' || side === 'front')) {
+      top = Math.min(top, Math.max(...tops) - (gapFor(cabinet, pl) * Math.hypot(a, b, c)) / b);
+    } else top = Math.min(top, Math.min(...tops));
+  }
+  return top - cabinet.y - legHeight(cabinet);
+}
+
+// Czy korpus sięga sufitu albo skosu (wtedy jego blendy mogą iść „do sufitu / skosu”).
+export function cabinetReachesTop(cabinet, project) {
+  return !!project?.space && cabinet.height >= maxCabinetHeight(cabinet, project) - 1;
+}
+
+// Skosy przestrzeni jako płaszczyzny docinające (z luzem korpusu): [normal jednostkowy, offset],
+// część bryły z normal · p > offset jest odcinana.
+export function ceilingClipPlanes(cabinet, project) {
+  return slopePlanes(project.space).map((pl) => {
+    const l = Math.hypot(...pl.normal);
+    return [pl.normal.map((v) => v / l), pl.offset / l - gapFor(cabinet, pl)];
+  });
+}
+
+// Prostopadłościan przycięty płaszczyznami (np. blenda do skosu): zwraca obrys z bryłą
+// (solid, frame — układ płyty z grubością w osi thicknessAxis) albo sam prostopadłościan, gdy nic nie odcięto.
+export function clipBox(box, planes, thicknessAxis) {
+  let solid = boxSolid(box);
+  let clipped = false;
+  for (const [n, off] of planes) {
+    if (!solid.length || !isClippedBy(solid, n, off)) continue;
+    solid = clipSolid(solid, n, off);
+    clipped = true;
+  }
+  if (!clipped) return box;
+  if (!solid.length) return { ...box, height: 0 };
+  const [a, b] = FACE_AXES_OF[thicknessAxis];
+  const V = { x: [1, 0, 0], y: [0, 1, 0], z: [0, 0, 1] };
+  return { ...box, ...solidBounds(solid), solid, frame: { u: V[a], v: V[b], w: V[thicknessAxis] } };
+}
+
+// Wycinek bryły (albo prostopadłościanu) w przedziale X [x0, x1] — np. odcinek blendy między panelami.
+export function sliceX(box, x0, x1) {
+  if (!box.solid) return { ...box, x: x0, width: x1 - x0 };
+  const solid = clipSolid(clipSolid(box.solid, [-1, 0, 0], -x0), [1, 0, 0], x1);
+  return solid.length ? { ...box, ...solidBounds(solid), solid } : { ...box, x: x0, width: 0 };
+}
+
 export function createCabinet(project, overrides = {}) {
   const { space, furniture } = project;
   const width = Math.min(800, space.width);
@@ -144,7 +243,8 @@ export function createCabinet(project, overrides = {}) {
   // Stawiamy obok ostatniego mebla, jeśli się zmieści; inaczej w lewym narożniku.
   const rightmost = Math.max(0, ...furniture.map((c) => c.x + c.width));
   const x = rightmost + width <= space.width ? rightmost : 0;
-  const height = Math.min(2000, Math.floor(maxHeightAt(space, x, 0, width, depth)));
+  const draft = { x, y: 0, z: 0, width, depth, legs: { enabled: false }, slopeTop: defaultSlopeTop() };
+  const height = Math.min(2000, Math.floor(maxCabinetHeight(draft, project)));
 
   return {
     id: newId(),
@@ -164,6 +264,7 @@ export function createCabinet(project, overrides = {}) {
     railWidth: DEFAULT_RAIL_WIDTH,
     stiffeners: [],
     backGap: 0, // odstęp pleców od tylnej ściany (np. na rury) — patrz setBackGap
+    slopeTop: defaultSlopeTop(),
     ...defaultAccessories(),
     panelOverrides: {},
     ...overrides,
@@ -325,17 +426,18 @@ export function fitCabinetToSpace(cabinet, project) {
   const extraR = b.x + b.width - (cabinet.x + cabinet.width);
   const extraBack = cabinet.z - b.z;
   const extraFront = b.z + b.depth - (cabinet.z + cabinet.depth);
-  const height = Math.floor(maxHeightAt(space, 0, 0, space.width, space.depth)) - legHeight(cabinet);
   const { sizeMin } = CABINET_LIMITS;
-  return {
+  const fitted = {
     ...cabinet,
     x: extraL,
     y: 0,
     z: extraBack + (cabinet.backGap ?? 0),
     width: Math.max(sizeMin, space.width - extraL - extraR),
     depth: Math.max(sizeMin, space.depth - extraBack - extraFront - (cabinet.backGap ?? 0)),
-    height: Math.max(sizeMin, height),
   };
+  // Wysokość pod sufitem i skosami (z nóżkami; przy skośnej górze — w najwyższym miejscu).
+  const height = Math.floor(maxCabinetHeight(fitted, project, 0, space.width));
+  return { ...fitted, height: Math.max(sizeMin, height) };
 }
 
 // Rozkład mebla na płyty. Każda płyta: prostopadłościan w układzie przestrzeni.
@@ -358,7 +460,9 @@ export function cabinetPanels(cabinet, project) {
   const tL = thick('left');
   const tR = thick('right');
   const tB = thick('bottom');
-  const rails = cabinet.topType === 'rails';
+  // Skośna góra pod skos (patrz slopeTopPlane) — wtedy zawsze pełny wieniec (bez trawersów).
+  const slant = slopeTopPlane(cabinet, project);
+  const rails = cabinet.topType === 'rails' && !slant;
   const tT = thick(rails ? 'railFront' : 'top');
 
   // Połączenia wieńców z bokami: zakres boków w pionie i wieńców w poziomie.
@@ -394,13 +498,27 @@ export function cabinetPanels(cabinet, project) {
     zTop = [b, D];
     if (b) base.back = [0, 0, 0, W, H, b];
   }
+  // Płaszczyzny skosu w układzie przestrzeni: zewnętrzna (góra korpusu) i wewnętrzna
+  // (spód skośnego wieńca). Wysokość płaszczyzny (bez nóżek, względem korpusu) w danym z korpusu.
+  const inner = slant ? slant.outer - tT : null;
+  const planeTopAt = (offset, zLocal) =>
+    (offset - slant.normal[2] * (cabinet.z + zLocal)) / slant.normal[1] - cabinet.y - L;
+
   // Poprzeczki usztywniające — między bokami, tuż przed plecami (grubość w osi Z).
   const stiffDefs = [];
+  // Poprzeczki „równo rozłożone” dzielą wnętrze korpusu (od wieńca dolnego do górnego) na równe części:
+  // jedna — na środku, dwie — na 1/3 i 2/3 wysokości itd. (środek poprzeczki na linii podziału).
+  const evenIds = (cabinet.stiffeners ?? []).filter((s) => s.position === 'even').map((s) => s.id);
   for (const st of cabinet.stiffeners ?? []) {
     const key = stiffenerKey(st);
     const t = thickAt(key, 'z');
     const h = st.height;
-    const y = { backTop: H - tT - h, backBottom: tB, backAt: st.y }[st.position];
+    // Pod skośną górą „tylna górna” siedzi tuż pod skośnym wieńcem.
+    const topLimit = slant ? Math.min(H - tT, planeTopAt(inner, zInner), planeTopAt(inner, zInner + t)) : H - tT;
+    const k = evenIds.indexOf(st.id);
+    // (zaokrąglone do pełnego milimetra)
+    const even = k >= 0 ? Math.round(tB + ((topLimit - tB) * (k + 1)) / (evenIds.length + 1) - h / 2) : null;
+    const y = { backTop: topLimit - h, backBottom: tB, backAt: st.y, even }[st.position];
     base[key] = [tL, y, zInner, W - tL - tR, h, t];
     stiffDefs.push({ key, name: stiffenerName(st), thicknessAxis: 'z', stiffener: st });
   }
@@ -414,6 +532,9 @@ export function cabinetPanels(cabinet, project) {
     base.railBack = [tx, H - tBack, z0, tw, tBack, w];
     delete base.top;
   }
+  // Skośny wieniec: między bokami, na całej głębokości wieńca — bryła przycinana niżej
+  // do pasa między płaszczyzną zewnętrzną i wewnętrzną.
+  if (slant) base.topSlope = [tx, 0, zTop[0], tw, H, zTop[1] - zTop[0]];
 
   // Korpus stoi na nóżkach.
   for (const k of Object.keys(base)) base[k][1] += L;
@@ -427,6 +548,12 @@ export function cabinetPanels(cabinet, project) {
   const fillerWidth = (side) => sideBlendWidth(cabinet, side, project);
   // Panele boczne sięgają od podłogi do góry korpusu.
   const fullHeight = L + H;
+  // Blendy „do sufitu / skosu”: gdy korpus sam sięga sufitu lub skosu, blenda i panele boczne
+  // idą w górę do sufitu, a potem są docinane skosami (z luzem) — patrz ceilingClips niżej.
+  const reaches = cabinetReachesTop(cabinet, project);
+  const toCeiling = (side) => reaches && blends[side]?.toCeiling !== false;
+  const ceilingTop = project?.space ? project.space.height - cabinet.y : null; // sufit względem korpusu
+  const ceilingKeys = new Set();
 
   for (const side of ['left', 'right']) {
     const key = blendKey[side];
@@ -440,14 +567,16 @@ export function cabinetPanels(cabinet, project) {
       // Może być skrócony od tyłu — przednia krawędź zostaje na linii frontu.
       const fullDepth = D + sidePanelExtension(cabinet, side, project);
       const pd = Math.min(blends[side].fullPanelDepth ?? fullDepth, fullDepth);
-      base[key] = [side === 'left' ? -t : W, 0, fullDepth - pd, t, fullHeight, pd];
+      base[key] = [side === 'left' ? -t : W, 0, fullDepth - pd, t, toCeiling(side) ? ceilingTop : fullHeight, pd];
+      if (toCeiling(side)) ceilingKeys.add(key);
     } else if (type === 'filler') {
       // Listwa: przednia krawędź na linii frontu korpusu, albo wysunięta (do linii frontu / ręcznie).
       const t = thickAt(key, 'z', mats.blend.thickness);
       const w = fillerWidth(side);
       const ext = sidePanelExtension(cabinet, side, project);
       thicknessAxis[key] = 'z';
-      base[key] = [side === 'left' ? -w : W, L, D + ext - t, w, H, t];
+      base[key] = [side === 'left' ? -w : W, L, D + ext - t, w, toCeiling(side) ? ceilingTop - L : H, t];
+      if (toCeiling(side)) ceilingKeys.add(key);
       const a = fillerAllowance(cabinet, side);
       if (a) allowance[key] = side === 'left' ? { min: a, max: 0 } : { min: 0, max: a };
 
@@ -458,17 +587,31 @@ export function cabinetPanels(cabinet, project) {
         // Skrócony od tyłu — przednia krawędź zostaje na linii frontu (D + ext).
         const fullDepth = D + ext;
         const pd = Math.min(blends[side].wallPanelDepth ?? fullDepth, fullDepth);
-        base[pk] = [side === 'left' ? -w - tp : W + w, 0, fullDepth - pd, tp, fullHeight, pd];
+        base[pk] = [side === 'left' ? -w - tp : W + w, 0, fullDepth - pd, tp, toCeiling(side) ? ceilingTop : fullHeight, pd];
+        if (toCeiling(side)) ceilingKeys.add(pk);
       }
     }
   }
+
+  // Którą płaszczyzną skosu przycinamy płytę: wieniec płaski, plecy wpuszczane, poprzeczki
+  // i boki pod wieńcem nakładanym — wewnętrzną (są pod skośnym wieńcem); reszta — zewnętrzną.
+  const clipOffset = (key) => {
+    if (key === 'top' || key === 'bottom' || key.startsWith('stiff-')) return inner;
+    if (key === 'left' || key === 'right') return topOverlay ? inner : slant.outer;
+    if (key === 'back') return backType === 'board' ? inner : slant.outer;
+    return slant.outer;
+  };
+  const AXIS_VEC = { x: [1, 0, 0], y: [0, 1, 0], z: [0, 0, 1] };
+  // Skosy przestrzeni (z luzem) — docinają blendy idące do sufitu: [normal, offset].
+  const ceilingClips = ceilingKeys.size ? ceilingClipPlanes(cabinet, project) : [];
 
   const panels = [];
   for (const def of [...PANEL_DEFS, ...stiffDefs]) {
     if (!base[def.key]) continue;
     const axis = thicknessAxis[def.key] ?? def.thicknessAxis;
     const [x, y, z, sx, sy, sz] = base[def.key];
-    const o = ov[def.key] ?? {};
+    // Skośny wieniec ma kształt wyliczany ze skosu — ręczne wymiary go nie dotyczą.
+    const o = def.key === 'topSlope' ? { hidden: ov.topSlope?.hidden } : (ov[def.key] ?? {});
     // Ręczny wymiar obowiązuje zawsze dla grubości; dla pozostałych osi — tylko w elemencie niezależnym.
     const size = (a, auto) => (a === axis || o.free ? (o[`s${a}`] ?? auto) : auto);
     const overridden = OVERRIDE_KEYS.filter((k) => o[k] != null && (k[0] === 'd' || k[1] === axis || o.free));
@@ -500,10 +643,96 @@ export function cabinetPanels(cabinet, project) {
       overridden,
     };
     panel.valid = panel.width > 0 && panel.height > 0 && panel.depth > 0;
+
+    // Płaszczyzny, które docinają płytę: skośna góra korpusu i (dla blend do sufitu) skosy przestrzeni.
+    const clips = [];
+    if (slant && def.key !== 'topSlope') clips.push([slant.normal, clipOffset(def.key)]);
+    if (ceilingKeys.has(def.key)) clips.push(...ceilingClips);
+
+    if (panel.valid && (clips.length || (slant && def.key === 'topSlope'))) {
+      let solid = boxSolid(panel);
+      let frame = null;
+      let clipped = false;
+      if (def.key === 'topSlope') {
+        // Pas między płaszczyznami: góra na skosie, spód o grubość wieńca niżej.
+        const n = slant.normal;
+        solid = clipSolid(clipSolid(solid, n, slant.outer), n.map((v) => -v), -inner);
+        frame = { u: [1, 0, 0], v: [0, n[2], -n[1]], w: n };
+        clipped = true;
+      } else {
+        for (const [n, off] of clips) {
+          if (!solid.length || !isClippedBy(solid, n, off)) continue;
+          solid = clipSolid(solid, n, off);
+          clipped = true;
+        }
+      }
+      // płyta w całości pod skosem — zostaje prostopadłościanem
+      if (clipped) {
+        // Wieniec płaski lub skośny może zniknąć (cały korpus pod skosem / poniżej) — wtedy go pomijamy.
+        if (!solid.length && (def.key === 'top' || def.key === 'topSlope')) continue;
+        if (solid.length) {
+          Object.assign(panel, solidBounds(solid));
+          const [a, b] = FACE_AXES_OF[axis];
+          panel.solid = solid;
+          panel.frame = frame ?? { u: AXIS_VEC[a], v: AXIS_VEC[b], w: AXIS_VEC[axis] };
+        } else panel.valid = false;
+      }
+    }
     panels.push(panel);
   }
   return panels;
 }
+
+const FACE_AXES_OF = { x: ['y', 'z'], y: ['x', 'z'], z: ['x', 'y'] };
+
+// Bryła płyty (skośnie docięta albo prostopadłościan).
+export const panelSolid = (p) => p.solid ?? boxSolid(p);
+export const panelVertices = (p) => (p.solid ? vertices(p.solid) : boxCorners(p));
+
+// Prawdziwe nachodzenie płyt (z uwzględnieniem skośnych cięć).
+export function panelsOverlap(a, b) {
+  if (!a.solid && !b.solid) return boxesOverlap(a, b);
+  return boxesOverlap(a, b) && solidsOverlap(panelSolid(a), panelSolid(b));
+}
+
+// Skośne cięcia płyty — do opisu formatki: przy każdym ściętym rogu długość cięcia
+// wzdłuż długości i szerokości formatki oraz kąt, np. { alongLength: 470, alongWidth: 560, angle: 40 }.
+export function panelShapeCuts(panel) {
+  if (!panel.solid) return [];
+  const { u, v } = panel.frame;
+  const lengthFirst = extentAlong(panel.solid, u) >= extentAlong(panel.solid, v);
+  const hull = outline2d(panel.solid, u, v);
+  const cuts = [];
+  for (let i = 0; i < hull.length; i++) {
+    const [p, q] = [hull[i], hull[(i + 1) % hull.length]];
+    const du = Math.abs(q[0] - p[0]);
+    const dv = Math.abs(q[1] - p[1]);
+    if (du < 1 || dv < 1) continue; // krawędź prosta (albo pomijalnie mały skos)
+    const [alongLength, alongWidth] = lengthFirst ? [du, dv] : [dv, du];
+    cuts.push({ alongLength, alongWidth, angle: (Math.atan2(Math.min(du, dv), Math.max(du, dv)) * 180) / Math.PI });
+  }
+  return cuts;
+}
+
+// Krawędzie cięte skośnie w poprzek grubości (np. końce skośnego wieńca, górna krawędź pleców
+// z płyty pod skośnym wieńcem): kąt cięcia względem prostopadłego. Pomijamy cienkie płyty (HDF).
+export function panelBevels(panel) {
+  if (!panel.solid) return [];
+  const { u, v, w } = panel.frame;
+  const angles = [];
+  for (const axis of [u, v]) {
+    for (const [a, b] of pairs(outline2d(panel.solid, axis, w))) {
+      const da = Math.abs(b[0] - a[0]);
+      const dw = Math.abs(b[1] - a[1]);
+      if (da < 3 || dw < 3) continue;
+      const angle = Math.round((Math.atan2(da, dw) * 180) / Math.PI * 10) / 10;
+      if (!angles.includes(angle)) angles.push(angle);
+    }
+  }
+  return angles;
+}
+
+const pairs = (pts) => pts.map((p, i) => [p, pts[(i + 1) % pts.length]]);
 
 // Nóżki: 4 w narożnikach (oś LEG_INSET mm od krawędzi), przy szerokich korpusach dodatkowa para
 // pośrodku. Przednie nóżki stoją za blendą dolną.
@@ -587,10 +816,15 @@ const BLEND_KEYS = ['blendLeft', 'blendRight', 'wallPanelLeft', 'wallPanelRight'
 // oraz wymiar do cięcia — pomniejszony o obrzeże: taśma na długiej krawędzi zmniejsza szerokość,
 // na krótkiej — długość. Obrzeże ma tylko materiał z ustawioną grubością obrzeża.
 // `panel.edges` = { l, w } — liczba oklejonych krawędzi długich i krótkich (patrz model/edges.js).
+// Płyta docięta skośnie (panel.solid): wymiary formatki to prostokąt, z którego się ją wycina
+// (mierzony w układzie płyty — np. skośny wieniec ma długość wzdłuż skosu), plus `cuts` — ścięte rogi.
 export function panelCutSize(panel) {
   // Zapas na docięcie wydłuża formatkę w osi X.
   const extra = (panel.allowanceMin ?? 0) + (panel.allowanceMax ?? 0);
-  const [thickness, width, length] = [panel.width + extra, panel.height, panel.depth].sort((a, b) => a - b);
+  const sizes = panel.solid
+    ? ['u', 'v', 'w'].map((k) => extentAlong(panel.solid, panel.frame[k]) + (panel.frame[k][0] === 1 ? extra : 0))
+    : [panel.width + extra, panel.height, panel.depth];
+  const [thickness, width, length] = sizes.sort((a, b) => a - b);
   const band = panel.material?.edgeBanding ?? 0;
   const edges = band ? (panel.edges ?? { l: 0, w: 0 }) : { l: 0, w: 0 };
   return {
@@ -602,7 +836,18 @@ export function panelCutSize(panel) {
     allowance: extra,
     cutLength: length - edges.w * band,
     cutWidth: width - edges.l * band,
+    cuts: panelShapeCuts(panel),
+    bevels: panelBevels(panel),
   };
+}
+
+// Opis skośnych cięć formatki, np. „ścięty róg 470 × 560 mm (dł. × szer.), kąt 40°; krawędź cięta pod kątem 41°”.
+export function describeCuts({ cuts = [], bevels = [] }) {
+  const r = (v) => Math.round(v * 10) / 10;
+  return [
+    ...cuts.map((c) => `ścięty róg ${r(c.alongLength)} × ${r(c.alongWidth)} mm (dł. × szer.), kąt ${r(c.angle)}°`),
+    ...bevels.map((a) => `krawędź cięta pod kątem ${a}°`),
+  ].join('; ');
 }
 
 // Prostopadłościan obejmujący wszystkie płyty i nóżki mebla.
@@ -655,11 +900,16 @@ export function cabinetIssues(cabinet, project) {
   const overlapping = [];
   for (let i = 0; i < valid.length; i++)
     for (let j = i + 1; j < valid.length; j++)
-      if (boxesOverlap(valid[i], valid[j])) overlapping.push(`${valid[i].name} i ${valid[j].name}`);
+      if (panelsOverlap(valid[i], valid[j])) overlapping.push(`${valid[i].name} i ${valid[j].name}`);
   if (overlapping.length) issues.push(`Elementy nachodzą na siebie: ${overlapping.join('; ')}.`);
 
   const bounds = cabinetBounds(cabinet, project);
-  if (!boxCorners(bounds).every((p) => isPointInside(p, space))) {
+  // Sprawdzamy narożniki płyt (płyty docięte pod skos mają skośne krawędzie) i nóżek.
+  const legBoxes = cabinetLegs(cabinet, project).map((l) => ({
+    x: l.x - l.diameter / 2, y: l.y, z: l.z - l.diameter / 2, width: l.diameter, height: l.height, depth: l.diameter,
+  }));
+  const corners = [...valid.flatMap(panelVertices), ...legBoxes.flatMap(boxCorners)];
+  if (!corners.every((p) => isPointInside(p, space))) {
     issues.push(
       slopePlanes(space).length
         ? 'Wychodzi poza przestrzeń (sprawdź też skosy).'
@@ -740,6 +990,7 @@ export function normalizeCabinet(raw = {}) {
     extend: num(src.extend, 0, 0, 500),
     allowance: num(src.allowance, 0, 0, 500),
     hidden: src.hidden === true,
+    toCeiling: src.toCeiling !== false,
   });
 
   return {
@@ -759,6 +1010,10 @@ export function normalizeCabinet(raw = {}) {
     railWidth: num(raw.railWidth, DEFAULT_RAIL_WIDTH, 10, sizeMax),
     stiffeners,
     backGap: num(raw.backGap, 0, 0, sizeMax),
+    slopeTop: {
+      enabled: raw.slopeTop?.enabled !== false,
+      gap: raw.slopeTop?.gap == null ? null : num(raw.slopeTop.gap, null, 0, 500),
+    },
     materialId: typeof raw.materialId === 'string' ? raw.materialId : null,
     blendMaterialId: typeof raw.blendMaterialId === 'string' ? raw.blendMaterialId : null,
     legs: {

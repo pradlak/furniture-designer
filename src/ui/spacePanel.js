@@ -11,6 +11,7 @@ import {
 } from '../model/space.js';
 import { escapeHtml, numberField, readNumberInput, setIfNotFocused, round1, commitEmptyAsZero } from './dom.js';
 import { createCardCollapse, COLLAPSE_BUTTON, COLLAPSE_ALL_BUTTONS } from './collapsible.js';
+import { updateSpaceRefit } from '../model/layout.js';
 
 const SPACE_FIELDS = [
   { key: 'width', label: 'Szerokość' },
@@ -44,7 +45,8 @@ export function createSpacePanel(root, store) {
   const structureKey = ({ space }) =>
     [...space.slopes.map((s) => s.id), '#', ...space.obstacles.map((o) => o.id)].join('|');
 
-  const updateSpace = (fn) => store.set((p) => ({ ...p, space: fn(p.space) }));
+  // Po każdej zmianie przestrzeni (wymiary, skosy) korpusy z wysokością automatyczną dopasowują się same.
+  const updateSpace = (fn) => store.set((p) => updateSpaceRefit(p, fn));
   const updateItem = (kind, id, patch) =>
     updateSpace((s) => ({
       ...s,
@@ -133,6 +135,9 @@ export function createSpacePanel(root, store) {
           ${numberField('Długość skosu', 'run', s.run, { min: 1, max: LIMITS.spaceMax, small: true })}
           ${numberField('Kąt [°]', 'angle', angle == null ? '' : round1(angle), { min: 1, max: 89, step: 0.1, small: true })}
         </div>
+        <div class="grid-3 slope-gap" title="Odstęp mebli od skosu (prostopadle do skosu) — na nierówności ściany. Dotyczy korpusów ze skośną górą; w karcie korpusu można ustawić wyjątek.">
+          ${numberField('Luz mebli do skosu [mm]', 'gap', s.gap, { min: 0, max: 500, small: true })}
+        </div>
         <p class="warning" hidden>Ścianka kolankowa jest nie niższa niż pomieszczenie — skos nie działa.</p>
       </div>`;
   }
@@ -172,7 +177,11 @@ export function createSpacePanel(root, store) {
       const angle = slopeAngle(s, space);
       el.querySelector('.warning').hidden = angle != null;
       el.querySelector('.card-sum').textContent =
-        `ścianka ${s.kneeHeight} mm · długość ${s.run} mm` + (angle == null ? ' · ⚠ skos nie działa' : ` · ${round1(angle)}°`);
+        `ścianka ${s.kneeHeight} mm · długość ${s.run} mm` +
+        (angle == null ? ' · ⚠ skos nie działa' : ` · ${round1(angle)}°`) +
+        (s.side === 'back' || s.side === 'front' ? ` · luz ${s.gap} mm` : '');
+      // Luz dotyczy skośnej góry korpusów — na razie tylko skosy z tyłu i z przodu.
+      el.querySelector('.slope-gap').hidden = !(s.side === 'back' || s.side === 'front');
       el.classList.toggle('has-issues', angle == null);
       setIfNotFocused(el.querySelector('[data-f="angle"]'), angle == null ? '' : round1(angle));
       setIfNotFocused(el.querySelector('[data-f="run"]'), s.run);

@@ -1,4 +1,4 @@
-import { cabinetPanels, cabinetLegs, panelCutSize } from './furniture.js';
+import { cabinetPanels, cabinetLegs, panelCutSize, describeCuts } from './furniture.js';
 import { projectSolids, panelEdgeSet, trimEdgeSet, edgeCounts, TRIM_THICKNESS_AXIS, EDGE_LABELS } from './edges.js';
 import { trimSegments, trimAllowance, TRIM_TYPES } from './trims.js';
 import { trimMaterial } from './materials.js';
@@ -27,6 +27,7 @@ export function buildCutList(project) {
       band: cut.band,
       allowance: round(cut.allowance ?? 0),
       edgeNames: cut.band ? edgeSet.map((k) => EDGE_LABELS[k]).join(', ') : '',
+      shape: describeCuts(cut), // skośne cięcia (płyty pod skos), np. „ścięty róg 470 × 560 mm …”
     });
   };
 
@@ -52,7 +53,7 @@ export function buildCutList(project) {
   // Łączenie jednakowych formatek (nazwy i meble zbieramy w jedną kolumnę).
   const merged = new Map();
   for (const r of rows) {
-    const key = [r.material, r.thickness, r.length, r.width, r.edgesL, r.edgesW, r.band, r.allowance, r.edgeNames].join('|');
+    const key = [r.material, r.thickness, r.length, r.width, r.edgesL, r.edgesW, r.band, r.allowance, r.edgeNames, r.shape].join('|');
     const m = merged.get(key);
     if (m) {
       m.qty += 1;
@@ -99,6 +100,7 @@ export function cutListCsv(project) {
     'Grubość obrzeża',
     'Oklejone krawędzie',
     'Zapas na docięcie',
+    'Cięcia skośne',
   ];
   const lines = [header.join(';')];
   buildCutList(project).forEach((r, i) => {
@@ -119,6 +121,7 @@ export function cutListCsv(project) {
         r.band ? num(r.band) : '',
         r.edgeNames,
         r.allowance ? `${num(r.allowance)} (wliczony)` : '',
+        r.shape.replace(/(\d)\.(\d)/g, '$1,$2'),
       ]
         .map(cell)
         .join(';'),
@@ -129,5 +132,6 @@ export function cutListCsv(project) {
     lines.push('', 'Akcesoria;Ilość', ...accessories.map((a) => `${cell(a.name)};${a.qty}`));
   }
   lines.push('', 'Wymiary w mm. Długość i szerokość — gotowy element (z obrzeżem); „do cięcia” — pomniejszone o obrzeże.');
+  lines.push('Płyty pod skos: wymiar to prostokąt, z którego wycina się formatkę; „ścięty róg A × B” — odcinany trójkąt, A wzdłuż długości, B wzdłuż szerokości.');
   return '﻿' + lines.join('\r\n');
 }

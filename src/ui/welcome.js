@@ -3,7 +3,8 @@ import { createExampleProject } from '../model/example.js';
 const STORAGE_KEY = 'furnitureDesigner.welcomeSeen';
 
 // Okienko „Jak zacząć”: pokazywane przy pierwszej wizycie (i na żądanie — przycisk „?” na pasku).
-export function createWelcome(store) {
+// onNew — otwiera okienko „Nowy projekt” (wybór szablonu przestrzeni).
+export function createWelcome(store, { onNew } = {}) {
   const overlay = document.createElement('div');
   overlay.className = 'welcome-overlay';
   overlay.hidden = true;
@@ -22,6 +23,7 @@ export function createWelcome(store) {
         albo przenieść na inny komputer, użyj <b>Eksportuj</b> i <b>Importuj</b>.</p>
       <div class="welcome-actions">
         <button type="button" data-welcome="example">Wczytaj przykładowy projekt</button>
+        <button type="button" data-welcome="new">Wnęka czy poddasze? Wybierz szablon…</button>
         <button type="button" class="primary" data-welcome="close">Zaczynam</button>
       </div>
     </div>`;
@@ -43,6 +45,10 @@ export function createWelcome(store) {
   overlay.addEventListener('click', (e) => {
     const action = e.target.dataset?.welcome;
     if (e.target === overlay || action === 'close') close();
+    if (action === 'new') {
+      close();
+      onNew?.();
+    }
     if (action === 'example') {
       const hasWork = store.get().furniture.length > 0;
       if (!hasWork || confirm('Wczytać przykładowy projekt? Bieżący projekt zostanie zastąpiony (możesz go najpierw wyeksportować).')) {

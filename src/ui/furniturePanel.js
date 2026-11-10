@@ -17,9 +17,13 @@ import {
   cabinetLegs,
   getPath,
   setPath,
+  slopeTopPlane,
+  slopeTopGap,
+  describeCuts,
+  stiffenerY,
 } from '../model/furniture.js';
 import { duplicateCabinet, slideCabinet } from '../model/placement.js';
-import { addCabinetToLayout } from '../model/layout.js';
+import { addCabinetToLayout, updateCabinetRefit } from '../model/layout.js';
 import { cabinetMaterials } from '../model/materials.js';
 import { setEye, materialSelect } from './widgets.js';
 import { sideBlendSummary } from './sideBlends.js';
@@ -178,6 +182,20 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
           <input type="number" step="1" min="0" max="${CABINET_LIMITS.sizeMax}" data-f="backGap" />
         </label>
       </div>
+      <div class="slope-top">
+        <div class="grid-2">
+          <label class="check" title="Korpus pod skosem dostaje skośną górę: boki i plecy docięte równolegle do skosu, wieniec górny pod kątem">
+            <input type="checkbox" data-f="slopeTop.enabled" /> Góra pod skos
+          </label>
+          <label class="field small slope-gap-field" title="Odstęp między skośną górą korpusu a skosem (prostopadle do skosu). Domyślnie — luz ustawiony przy skosie (Przestrzeń); wpisana wartość dotyczy tylko tego korpusu.">
+            <span>Luz do skosu <small>mm</small> <small class="auto-tag">ze skosu</small>
+              <button type="button" class="icon tiny" data-reset-slope-gap title="Wróć do luzu ustawionego przy skosie">↺</button>
+            </span>
+            <input type="number" step="1" min="0" max="500" data-f="slopeTop.gap" />
+          </label>
+        </div>
+        <p class="hint slope-top-info"></p>
+      </div>
       <div class="item-row">
         <span class="hint">Grubości i kolory — z zakładki „Materiały”.</span>
         <button type="button" data-action="fit">Dopasuj do wnęki</button>
@@ -202,7 +220,8 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
 
     const stiff = `
       <p class="hint">Pionowe listwy tuż przed plecami, między bokami — usztywniają korpus
-        (np. do zawieszenia szafki). Mieszczą się w korpusie, nie zmieniają jego wymiarów.</p>
+        (np. do zawieszenia szafki). Mieszczą się w korpusie, nie zmieniają jego wymiarów.
+        Nowe poprzeczki rozkładają się równo: jedna — na środku, dwie — dzielą wnętrze na trzy równe części itd.</p>
       ${(c.stiffeners ?? [])
         .map(
           (st, i) => `
@@ -288,6 +307,7 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
           ${edgeChecks(p.thicknessAxis)}
         </div>
         <div class="part-cutsize"></div>
+        <div class="part-shape"></div>
         <div class="allowance-note part-allowance"></div>
       </div>`;
   }
@@ -319,6 +339,25 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
       el.classList.toggle('is-hidden', !!c.hidden);
       setEye(el.querySelector('[data-toggle-hidden="cabinet"]'), c.hidden, 'korpus');
       el.querySelector('.rail-width').hidden = c.topType !== 'rails';
+      // Góra pod skos — tylko gdy przestrzeń ma skos z tyłu lub z przodu.
+      const zSlope = project.space.slopes.some((s) => s.side === 'back' || s.side === 'front');
+      el.querySelector('.slope-top').hidden = !zSlope;
+      // Luz: własny korpusu albo (pusty) — ze skosu; pokazujemy wartość, która obowiązuje.
+      const gapInput = el.querySelector('[data-f="slopeTop.gap"]');
+      const gapAuto = c.slopeTop?.gap == null;
+      if (gapAuto && !gapInput.classList.contains('invalid')) setIfNotFocused(gapInput, slopeTopGap(c, project));
+      gapInput.classList.toggle('overridden', !gapAuto);
+      el.querySelector('.slope-gap-field .auto-tag').hidden = !gapAuto;
+      el.querySelector('[data-reset-slope-gap]').hidden = gapAuto;
+      const slant = slopeTopPlane(c, project);
+      const angle = slant ? Math.round((Math.acos(slant.normal[1]) * 180) / Math.PI * 10) / 10 : null;
+      el.querySelector('.slope-top-info').textContent = !zSlope
+        ? ''
+        : c.slopeTop?.enabled === false
+          ? 'Góra prosta — korpus jest prostopadłościanem.'
+          : slant
+            ? `Korpus sięga skosu — góra docięta pod kątem ${angle}°${c.topType === 'rails' ? ' (zamiast trawersów pełny wieniec skośny)' : ''}.`
+            : 'Korpus nie sięga skosu — zwykła, prosta góra.';
 
       // Podsumowania w nagłówkach sekcji.
       const bodyMat = cabinetMaterials(c, project).body;
@@ -327,7 +366,13 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
       const nStiff = c.stiffeners?.length ?? 0;
       setSummary(el, 'stiff', nStiff ? `${nStiff} ${nStiff === 1 ? 'poprzeczka' : nStiff < 5 ? 'poprzeczki' : 'poprzeczek'}` : 'brak');
       el.querySelectorAll('.stiff-row').forEach((row, i) => {
-        row.querySelector('.stiff-y').hidden = c.stiffeners?.[i]?.position !== 'backAt';
+        const st = c.stiffeners?.[i];
+        const label = row.querySelector('.stiff-y');
+        const input = label.querySelector('input');
+        // „Na wysokości…” — wpisywana; „równo rozłożone” — wyliczona (tylko do odczytu).
+        label.hidden = st?.position !== 'backAt' && st?.position !== 'even';
+        input.disabled = st?.position === 'even';
+        if (st?.position === 'even') input.value = round1(stiffenerY(c, st, project));
       });
       const issues = cabinetIssues(c, project);
       el.classList.toggle('has-issues', issues.length > 0);
@@ -372,6 +417,8 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
           p.valid && s.band && (s.edges.l || s.edges.w)
             ? `do cięcia: ${round1(s.cutLength)} × ${round1(s.cutWidth)} mm (obrzeże ${s.band} mm: ${edgeSet.map((k) => EDGE_LABELS[k]).join(', ')})`
             : '';
+        // Płyta docięta pod skos: ścięte rogi i krawędzie cięte pod kątem.
+        partEl.querySelector('.part-shape').textContent = p.valid ? describeCuts(s) : '';
         partEl.querySelector('[data-reset-part]').hidden = p.overridden.length === 0 && !p.free;
         partEl.querySelector('[data-part-free]').checked = p.free;
         partEl.classList.toggle('free', p.free);
@@ -477,12 +524,35 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
       updateCabinet(id, () => next);
       return;
     }
+    // Przejście na „na wysokości…”: zaczynamy od miejsca, w którym poprzeczka jest teraz.
+    const stiffPos = field.match(/^stiffeners\.(\d+)\.position$/);
+    if (stiffPos && value === 'backAt') {
+      updateCabinet(id, (c, p) => {
+        const i = Number(stiffPos[1]);
+        const y = Math.round(stiffenerY(c, c.stiffeners[i], p));
+        return setPath(setPath(c, field, value), `stiffeners.${i}.y`, y);
+      });
+      return;
+    }
+    if (field.startsWith('slopeTop.')) {
+      // Włączenie / wyłączenie skośnej góry albo zmiana luzu — korpus o wysokości automatycznej
+      // dopasowuje się na nowo (z przodu sięga skosu albo zniża się do najniższego miejsca).
+      store.set((p) => updateCabinetRefit(p, id, (c) => setPath(c, field, value)));
+      return;
+    }
     updateCabinet(id, (c) => setPath(c, field, value));
   });
 
   // Po opuszczeniu pola z błędną wartością przywracamy ostatnią poprawną.
   root.addEventListener('change', (e) => {
     const input = e.target;
+    // Wyczyszczony luz do skosu wraca do luzu ustawionego przy skosie.
+    const gapCabinet = input.closest('[data-kind="cabinet"]')?.dataset.id;
+    if (input.dataset.f === 'slopeTop.gap' && input.value.trim() === '' && gapCabinet) {
+      input.classList.remove('invalid');
+      store.set((p) => updateCabinetRefit(p, gapCabinet, (c) => setPath(c, 'slopeTop.gap', null)));
+      return;
+    }
     if (input.type !== 'number' || commitEmptyAsZero(input)) return;
     if (!input.classList.contains('invalid') && input.value.trim() !== '') return;
     input.classList.remove('invalid');
@@ -523,7 +593,9 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
       action, remove, resetPart, slide, removeStiff, toggleHidden, togglePartHidden,
     } = e.target.dataset ?? {};
     const id = e.target.closest('[data-kind="cabinet"]')?.dataset.id;
-    if (e.target.closest('[data-collapse-card]') && id) {
+    if (e.target.closest('[data-reset-slope-gap]') && id) {
+      store.set((p) => updateCabinetRefit(p, id, (c) => setPath(c, 'slopeTop.gap', null)));
+    } else if (e.target.closest('[data-collapse-card]') && id) {
       setCollapsed([id], !collapsed.has(id));
     } else if (action === 'collapse-all') {
       setCollapsed(store.get().furniture.map((c) => c.id), true);

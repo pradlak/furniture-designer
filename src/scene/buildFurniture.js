@@ -33,6 +33,19 @@ function addEdgeBanding(group, box, keys, band, color, materialFor, space) {
   }
 }
 
+// Bryła wypukła (ściany jako wielokąty w mm, układ przestrzeni) → geometria Three.js w scenie.
+function solidGeometry(faces, space) {
+  const positions = [];
+  for (const face of faces) {
+    const pts = face.map(([x, y, z]) => toScene(x, y, z, space));
+    for (let i = 1; i < pts.length - 1; i++) positions.push(...pts[0], ...pts[i], ...pts[i + 1]);
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
 const LEG_COLOR = '#3f3f46';
 
 const EDGE_OK = 0x5b4630;
@@ -82,6 +95,17 @@ export function buildFurniture(project, selectedId = null) {
     }
     return byColor.get(color);
   };
+  // Płyty docięte pod skos: materiał dwustronny (ściany bryły po przycięciu mają różną orientację).
+  const solidByColor = new Map();
+  const solidMaterialFor = (color) => {
+    if (!solidByColor.has(color)) {
+      const m = boardMaterial(color);
+      m.side = THREE.DoubleSide;
+      solidByColor.set(color, m);
+      disposables.push(m);
+    }
+    return solidByColor.get(color);
+  };
 
   const view = project.view ?? {};
   const panelVisible = (p) =>
@@ -101,6 +125,14 @@ export function buildFurniture(project, selectedId = null) {
     cabinetGroup.userData.cabinetId = cabinet.id; // do wybierania myszką
     solids ??= projectSolids(project);
     for (const p of cabinetPanels(cabinet, project).filter(panelVisible)) {
+      if (p.solid) {
+        // Płyta docięta pod skos — rysujemy jej bryłę (lica i krawędzie w jednym kolorze płyty).
+        const geometry = solidGeometry(p.solid, project.space);
+        const mesh = new THREE.Mesh(geometry, solidMaterialFor(p.material.color));
+        mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geometry, 20), edgeMat));
+        cabinetGroup.add(mesh);
+        continue;
+      }
       const geometry = new THREE.BoxGeometry(p.width * MM, p.height * MM, p.depth * MM);
       const mesh = new THREE.Mesh(geometry, panelFaceMaterials(p.material, p.thicknessAxis, materialFor));
       mesh.position.set(...toScene(p.x + p.width / 2, p.y + p.height / 2, p.z + p.depth / 2, project.space));
@@ -138,6 +170,14 @@ export function buildFurniture(project, selectedId = null) {
     const tm = trimMaterial(trim, project);
     if (tm.edgeBanding) solids ??= projectSolids(project);
     segments.forEach((box, i) => {
+      if (box.solid) {
+        // Blenda docięta pod skos (np. blenda górna do skosu).
+        const geometry = solidGeometry(box.solid, project.space);
+        const mesh = new THREE.Mesh(geometry, solidMaterialFor(tm.color));
+        mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geometry, 20), edgeMat));
+        group.add(mesh);
+        return;
+      }
       if (tm.edgeBanding) {
         addEdgeBanding(group, box, trimEdgeSet(trim, box, i, solids), tm.edgeBanding, edgeColorOf(tm), materialFor, project.space);
       }
