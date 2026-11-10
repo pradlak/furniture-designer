@@ -274,7 +274,12 @@ select {
 .section-body > .grid-2 > .check { align-self: center; font-size: 13px; }
 .stiff-row { display: grid; grid-template-columns: 1.4fr 1fr 1fr auto; gap: 0 6px; align-items: end; }
 .stiff-row > button { margin-bottom: 12px; }
+.shelf-row { display: grid; grid-template-columns: auto 1fr 1fr auto; gap: 0 6px; align-items: end; }
+.shelf-row > button { margin-bottom: 12px; }
+.shelf-name { font-size: 12px; font-weight: 600; margin-bottom: 18px; white-space: nowrap; }
 .stiff-row .stiff-y[hidden] { display: block !important; visibility: hidden; }
+.stiff-note { grid-column: 1 / -1; font-size: 11px; color: #c2410c; margin-top: -8px; }
+.stiff-note:empty { display: none; }
 .part-edges { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--muted); margin: -4px 0 2px; }
 .part-edges select { padding: 1px 3px; font-size: 11px; flex: none; }
 .part-material { flex: 1; font-style: italic; }

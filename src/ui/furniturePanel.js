@@ -21,7 +21,16 @@ import {
   slopeTopGap,
   describeCuts,
   stiffenerY,
+  createShelf,
+  shelfPlacement,
+  shelfKey,
+  newId,
 } from '../model/furniture.js';
+
+// Inne korpusy o tej samej wysokości i głębokości — do skopiowania półek. Szerokość nie ma znaczenia
+// (półka idzie od boku do boku), np. przy podziale wnęki 2000 mm na trzy korpusy: 666 / 666 / 668.
+const sameSize = (a, b) => ['height', 'depth'].every((k) => Math.abs(a[k] - b[k]) < 0.5);
+const sameSizeCabinets = (cabinet, project) => project.furniture.filter((c) => c.id !== cabinet.id && sameSize(c, cabinet));
 import { duplicateCabinet, slideCabinet } from '../model/placement.js';
 import { addCabinetToLayout, updateCabinetRefit } from '../model/layout.js';
 import { cabinetMaterials } from '../model/materials.js';
@@ -221,7 +230,8 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
     const stiff = `
       <p class="hint">Pionowe listwy tuż przed plecami, między bokami — usztywniają korpus
         (np. do zawieszenia szafki). Mieszczą się w korpusie, nie zmieniają jego wymiarów.
-        Nowe poprzeczki rozkładają się równo: jedna — na środku, dwie — dzielą wnętrze na trzy równe części itd.</p>
+        Nowe poprzeczki rozkładają się równo: jedna — na środku, dwie — dzielą wnętrze na trzy równe części itd.
+        Poprzeczka nie nachodzi na półkę — jeśli trafia na półkę, przesuwa się tuż nad nią albo pod nią.</p>
       ${(c.stiffeners ?? [])
         .map(
           (st, i) => `
@@ -241,10 +251,41 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
             <input type="number" step="1" min="0" max="${CABINET_LIMITS.sizeMax}" data-f="stiffeners.${i}.y" />
           </label>
           <button type="button" class="icon danger" data-remove-stiff="${st.id}" title="Usuń poprzeczkę">✕</button>
+          <span class="stiff-note"></span>
         </div>`,
         )
         .join('')}
       <div class="add-row"><button type="button" data-action="add-stiff">+ poprzeczka</button></div>`;
+
+    // Półki: wysokość i głębokość — wartości wyliczone (równy rozkład / pełna głębokość) albo wpisane.
+    const shelvesHtml = `
+      <p class="hint">Półki rozkładają się równo — jedna dzieli wnętrze na dwa równe prześwity, dwie na trzy itd.
+        Wpisanie wysokości ustawia półkę ręcznie (↺ wraca do równego rozkładu); głębokość skraca półkę od przodu.</p>
+      ${(c.shelves ?? [])
+        .map(
+          (s, i) => `
+        <div class="shelf-row" data-shelf="${i}">
+          <span class="shelf-name">Półka ${i + 1}</span>
+          <label class="field small">
+            <span>Od dołu korpusu <small>mm</small> <small class="auto-tag">równo</small>
+              <button type="button" class="icon tiny" data-reset-shelf-y title="Wróć do równego rozkładu">↺</button>
+            </span>
+            <input type="number" step="1" min="0" max="${CABINET_LIMITS.sizeMax}" data-shelf-y />
+          </label>
+          <label class="field small">
+            <span>Głębokość <small>mm</small> <small class="auto-tag">pełna</small>
+              <button type="button" class="icon tiny" data-reset-shelf-depth title="Pełna głębokość wnętrza">↺</button>
+            </span>
+            <input type="number" step="1" min="1" max="${CABINET_LIMITS.sizeMax}" data-shelf-depth />
+          </label>
+          <button type="button" class="icon danger" data-remove-shelf="${s.id}" title="Usuń półkę">✕</button>
+        </div>`,
+        )
+        .join('')}
+      <div class="add-row">
+        <button type="button" data-action="add-shelf">+ półka</button>
+        <button type="button" data-action="copy-shelves" title="Kopiuje półki (położenie i głębokość) do korpusów o tej samej wysokości i głębokości (szerokość może być inna) — ich dotychczasowe półki zostaną zastąpione. Ctrl+Z cofa.">⧉ Kopiuj półki</button>
+      </div>`;
 
     const parts = `
       <p class="hint">Osie: X — szerokość, Y — wysokość, Z — głębokość korpusu.
@@ -268,6 +309,7 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
         <div class="card-sum" data-collapse-card title="Kliknij, aby rozwinąć"></div>
         <ul class="issues"></ul>
         ${section('body', 'Korpus', body)}
+        ${section('shelves', 'Półki', shelvesHtml)}
         ${section('stiff', 'Wzmocnienia', stiff)}
         ${section('legs', 'Nóżki', legs)}
         <div class="trims-info">
@@ -365,6 +407,33 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
       setSummary(el, 'legs', c.legs?.enabled ? `${c.legs.height} mm` : 'brak');
       const nStiff = c.stiffeners?.length ?? 0;
       setSummary(el, 'stiff', nStiff ? `${nStiff} ${nStiff === 1 ? 'poprzeczka' : nStiff < 5 ? 'poprzeczki' : 'poprzeczek'}` : 'brak');
+      const nShelves = c.shelves?.length ?? 0;
+      setSummary(el, 'shelves', nShelves ? `${nShelves} ${nShelves === 1 ? 'półka' : nShelves < 5 ? 'półki' : 'półek'}` : 'brak');
+      // Kopiowanie półek: do korpusów o identycznych wymiarach.
+      const twins = sameSizeCabinets(c, project);
+      const copyBtn = el.querySelector('[data-action="copy-shelves"]');
+      copyBtn.hidden = nShelves === 0;
+      copyBtn.disabled = twins.length === 0;
+      copyBtn.textContent = twins.length
+        ? `⧉ Kopiuj półki do ${twins.length === 1 ? twins[0].name : `${twins.length} korpusów`} o tej samej wysokości i głębokości`
+        : '⧉ Kopiuj półki — brak korpusów o tej samej wysokości i głębokości';
+      el.querySelectorAll('.shelf-row').forEach((row) => {
+        const s = c.shelves?.[Number(row.dataset.shelf)];
+        if (!s) return;
+        const place = shelfPlacement(c, s, project);
+        const yInput = row.querySelector('[data-shelf-y]');
+        const dInput = row.querySelector('[data-shelf-depth]');
+        if (!yInput.classList.contains('invalid')) setIfNotFocused(yInput, round1(place.y));
+        if (!dInput.classList.contains('invalid')) setIfNotFocused(dInput, round1(place.depth));
+        const even = s.position === 'even';
+        yInput.classList.toggle('overridden', !even);
+        row.querySelector('[data-reset-shelf-y]').hidden = even;
+        row.querySelector('[data-reset-shelf-y]').previousElementSibling.hidden = !even;
+        const fullDepth = s.depth == null;
+        dInput.classList.toggle('overridden', !fullDepth);
+        row.querySelector('[data-reset-shelf-depth]').hidden = fullDepth;
+        row.querySelector('[data-reset-shelf-depth]').previousElementSibling.hidden = !fullDepth;
+      });
       el.querySelectorAll('.stiff-row').forEach((row, i) => {
         const st = c.stiffeners?.[i];
         const label = row.querySelector('.stiff-y');
@@ -372,7 +441,14 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
         // „Na wysokości…” — wpisywana; „równo rozłożone” — wyliczona (tylko do odczytu).
         label.hidden = st?.position !== 'backAt' && st?.position !== 'even';
         input.disabled = st?.position === 'even';
-        if (st?.position === 'even') input.value = round1(stiffenerY(c, st, project));
+        const actual = st ? stiffenerY(c, st, project) : 0;
+        if (st?.position === 'even') input.value = round1(actual);
+        // Poprzeczka ustawiona na wysokości, na której jest półka (albo inna poprzeczka) — przesunięta obok.
+        const wanted = st?.position === 'backAt' ? st.y : null;
+        const moved = (c.shelves?.length ?? 0) > 0 && wanted !== null && Math.abs(actual - wanted) > 0.5;
+        row.querySelector('.stiff-note').textContent = moved
+          ? `Przesunięta na ${round1(actual)} mm — na ${round1(wanted)} mm nachodziłaby na półkę.`
+          : '';
       });
       const issues = cabinetIssues(c, project);
       el.classList.toggle('has-issues', issues.length > 0);
@@ -475,6 +551,17 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
       return;
     }
 
+    // Półka: wpisana wysokość ustawia ją ręcznie, głębokość — płytsza półka.
+    const shelfRow = input.closest('[data-shelf]');
+    if (shelfRow && (input.dataset.shelfY !== undefined || input.dataset.shelfDepth !== undefined)) {
+      const value = readNumberInput(input);
+      if (value === undefined) return;
+      const i = Number(shelfRow.dataset.shelf);
+      const patch = input.dataset.shelfY !== undefined ? { position: 'at', y: value } : { depth: value };
+      updateCabinet(id, (c) => ({ ...c, shelves: c.shelves.map((s, j) => (j === i ? { ...s, ...patch } : s)) }));
+      return;
+    }
+
     // Pole elementu korpusu.
     if (input.dataset.pf) {
       const value = readNumberInput(input);
@@ -548,6 +635,25 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
     const input = e.target;
     // Wyczyszczony luz do skosu wraca do luzu ustawionego przy skosie.
     const gapCabinet = input.closest('[data-kind="cabinet"]')?.dataset.id;
+    // Wyczyszczone pole półki wraca do wartości automatycznej (równy rozkład / pełna głębokość);
+    // błędna wartość — do bieżącej.
+    const shelfRow = input.closest('[data-shelf]');
+    if (shelfRow && gapCabinet && (input.dataset.shelfY !== undefined || input.dataset.shelfDepth !== undefined)) {
+      const i = Number(shelfRow.dataset.shelf);
+      const isY = input.dataset.shelfY !== undefined;
+      if (input.value.trim() === '') {
+        input.classList.remove('invalid');
+        const patch = isY ? { position: 'even' } : { depth: null };
+        updateCabinet(gapCabinet, (c) => ({ ...c, shelves: c.shelves.map((s, j) => (j === i ? { ...s, ...patch } : s)) }));
+      } else if (input.classList.contains('invalid')) {
+        input.classList.remove('invalid');
+        const p = store.get();
+        const c = p.furniture.find((x) => x.id === gapCabinet);
+        const place = shelfPlacement(c, c.shelves[i], p);
+        input.value = round1(isY ? place.y : place.depth);
+      }
+      return;
+    }
     if (input.dataset.f === 'slopeTop.gap' && input.value.trim() === '' && gapCabinet) {
       input.classList.remove('invalid');
       store.set((p) => updateCabinetRefit(p, gapCabinet, (c) => setPath(c, 'slopeTop.gap', null)));
@@ -593,7 +699,40 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
       action, remove, resetPart, slide, removeStiff, toggleHidden, togglePartHidden,
     } = e.target.dataset ?? {};
     const id = e.target.closest('[data-kind="cabinet"]')?.dataset.id;
-    if (e.target.closest('[data-reset-slope-gap]') && id) {
+    const shelfIndex = Number(e.target.closest('[data-shelf]')?.dataset.shelf);
+    const patchShelf = (patch) =>
+      updateCabinet(id, (c) => ({ ...c, shelves: c.shelves.map((s, j) => (j === shelfIndex ? { ...s, ...patch } : s)) }));
+    if (action === 'copy-shelves' && id) {
+      // Półki z nowymi identyfikatorami (każdy korpus ma własne płyty), w tym ręczne ustawienia płyt półek.
+      store.set((p) => {
+        const source = p.furniture.find((c) => c.id === id);
+        const targets = new Set(sameSizeCabinets(source, p).map((c) => c.id));
+        return {
+          ...p,
+          furniture: p.furniture.map((c) => {
+            if (!targets.has(c.id)) return c;
+            const overrides = Object.fromEntries(
+              Object.entries(c.panelOverrides ?? {}).filter(([key]) => !key.startsWith('shelf-')),
+            );
+            const shelves = source.shelves.map((s) => {
+              const copy = { ...s, id: newId() };
+              const o = source.panelOverrides?.[shelfKey(s)];
+              if (o) overrides[shelfKey(copy)] = structuredClone(o);
+              return copy;
+            });
+            return { ...c, shelves, panelOverrides: overrides };
+          }),
+        };
+      });
+    } else if (action === 'add-shelf' && id) {
+      updateCabinet(id, (c) => ({ ...c, shelves: [...(c.shelves ?? []), createShelf(c)] }));
+    } else if (e.target.dataset.removeShelf && id) {
+      updateCabinet(id, (c) => ({ ...c, shelves: c.shelves.filter((s) => s.id !== e.target.dataset.removeShelf) }));
+    } else if (e.target.closest('[data-reset-shelf-y]') && id) {
+      patchShelf({ position: 'even' });
+    } else if (e.target.closest('[data-reset-shelf-depth]') && id) {
+      patchShelf({ depth: null });
+    } else if (e.target.closest('[data-reset-slope-gap]') && id) {
       store.set((p) => updateCabinetRefit(p, id, (c) => setPath(c, 'slopeTop.gap', null)));
     } else if (e.target.closest('[data-collapse-card]') && id) {
       setCollapsed([id], !collapsed.has(id));

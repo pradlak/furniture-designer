@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { MM } from './units.js';
 import { snapPosition } from '../model/placement.js';
+import { cabinetPanels, legHeight, shelfKey } from '../model/furniture.js';
 
 const CLICK_TOLERANCE_PX = 4;
 
@@ -8,6 +9,7 @@ const CLICK_TOLERANCE_PX = 4;
 //  - klik w korpus zaznacza go, klik w puste miejsce odznacza,
 //  - przeciąganie korpusu przesuwa go po podłodze (X/Z),
 //    z Shift — w pionie (Y), z Alt — bez przyciągania do ścian i innych mebli,
+//  - przeciąganie półki w górę / w dół zmienia jej wysokość w korpusie,
 //  - przeciąganie poza korpusem obraca widok jak dotąd.
 export function attachCabinetInteraction(viewer, store, ui) {
   const el = viewer.renderer.domElement;
@@ -22,15 +24,34 @@ export function attachCabinetInteraction(viewer, store, ui) {
     raycaster.setFromCamera(pointer, viewer.camera);
   }
 
+  // Trafiony korpus i płyta (panelKey, np. „shelf-…” — półkę przeciąga się w pionie).
   function pickCabinet() {
     if (!viewer.furnitureGroup) return null;
     const hits = raycaster.intersectObjects(viewer.furnitureGroup.children, true).filter((h) => h.object.isMesh);
     for (const hit of hits) {
       let o = hit.object;
-      while (o && !o.userData.cabinetId) o = o.parent;
-      if (o) return { id: o.userData.cabinetId, point: hit.point };
+      let panelKey = null;
+      while (o && !o.userData.cabinetId) {
+        panelKey ??= o.userData.panelKey ?? null;
+        o = o.parent;
+      }
+      if (o) return { id: o.userData.cabinetId, panelKey, point: hit.point };
     }
     return null;
+  }
+
+  const isShelf = (hit) => hit?.panelKey?.startsWith('shelf-');
+
+  // Przeciąganie półki: nowa wysokość (spód półki od dołu korpusu), w granicach wnętrza korpusu.
+  function dragShelf(dy) {
+    store.set((prj) => ({
+      ...prj,
+      furniture: prj.furniture.map((c) => {
+        if (c.id !== drag.id) return c;
+        const y = Math.round(Math.min(drag.maxY, Math.max(drag.minY, drag.from.y + dy)));
+        return { ...c, shelves: c.shelves.map((s) => (s.id === drag.shelfId ? { ...s, position: 'at', y } : s)) };
+      }),
+    }));
   }
 
   // Płaszczyzna przeciągania: pozioma (przez punkt chwytu) albo pionowa zwrócona do kamery.
@@ -55,12 +76,34 @@ export function attachCabinetInteraction(viewer, store, ui) {
       if (!hit) return;
 
       ui.set({ ...ui.get(), selectedId: hit.id }, { reveal: true });
-      const cabinet = store.get().furniture.find((c) => c.id === hit.id);
-      const plane = dragPlane(hit.point, e.shiftKey);
+      const project = store.get();
+      const cabinet = project.furniture.find((c) => c.id === hit.id);
+      const shelfHit = isShelf(hit);
+      const plane = dragPlane(hit.point, e.shiftKey || shelfHit);
       const start = raycaster.ray.intersectPlane(plane, new THREE.Vector3());
       if (!cabinet || !start) return;
 
-      drag = { id: hit.id, plane, start, from: { x: cabinet.x, y: cabinet.y, z: cabinet.z }, vertical: e.shiftKey };
+      if (shelfHit) {
+        // Półka: przeciąganie w górę / w dół zmienia jej wysokość (od tej chwili — ustawioną ręcznie).
+        const shelf = cabinet.shelves.find((s) => shelfKey(s) === hit.panelKey);
+        const panels = cabinetPanels(cabinet, project);
+        const panel = panels.find((p) => p.key === hit.panelKey);
+        const base = cabinet.y + legHeight(cabinet);
+        const bottom = panels.find((p) => p.key === 'bottom');
+        const t = panel.height;
+        drag = {
+          id: hit.id,
+          shelfId: shelf.id,
+          plane,
+          start,
+          from: { y: panel.y - base },
+          // od wieńca dolnego do wieńca górnego (górna półka pod skosem jest docinana)
+          minY: bottom ? bottom.y + bottom.height - base : 0,
+          maxY: cabinet.height - 2 * t,
+        };
+      } else {
+        drag = { id: hit.id, plane, start, from: { x: cabinet.x, y: cabinet.y, z: cabinet.z }, vertical: e.shiftKey };
+      }
       viewer.controls.enabled = false;
       el.setPointerCapture(e.pointerId);
     },
@@ -70,13 +113,18 @@ export function attachCabinetInteraction(viewer, store, ui) {
   el.addEventListener('pointermove', (e) => {
     setRay(e);
     if (!drag) {
-      el.style.cursor = pickCabinet() ? 'grab' : '';
+      const hover = pickCabinet();
+      el.style.cursor = isShelf(hover) ? 'ns-resize' : hover ? 'grab' : '';
       return;
     }
-    el.style.cursor = 'grabbing';
+    el.style.cursor = drag.shelfId ? 'ns-resize' : 'grabbing';
     const p = raycaster.ray.intersectPlane(drag.plane, new THREE.Vector3());
     if (!p) return;
     const d = p.sub(drag.start).divideScalar(MM);
+    if (drag.shelfId) {
+      dragShelf(d.y);
+      return;
+    }
 
     const project = store.get();
     const axes = drag.vertical ? ['y'] : ['x', 'z'];
@@ -93,10 +141,10 @@ export function attachCabinetInteraction(viewer, store, ui) {
   el.addEventListener('pointerup', (e) => {
     const moved = down && Math.hypot(e.clientX - down.x, e.clientY - down.y) > CLICK_TOLERANCE_PX;
     if (drag) {
+      el.style.cursor = drag.shelfId ? 'ns-resize' : 'grab';
       drag = null;
       viewer.controls.enabled = true;
       el.releasePointerCapture(e.pointerId);
-      el.style.cursor = 'grab';
     } else if (down && !moved && e.button === 0) {
       ui.set({ ...ui.get(), selectedId: null }); // klik w puste miejsce
     }

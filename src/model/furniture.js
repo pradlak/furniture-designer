@@ -59,6 +59,23 @@ export function createStiffener(cabinet) {
 
 export const stiffenerKey = (s) => `stiff-${s.id}`;
 
+// Półki: position 'even' — równo rozłożone (domyślnie), 'at' — na wysokości y (od dołu korpusu);
+// depth: null = pełna głębokość wnętrza (od pleców do przodu), liczba — półka płytsza (skrócona od przodu).
+export function createShelf(cabinet) {
+  return { id: newId(), position: 'even', y: Math.round(cabinet.height / 2), depth: null };
+}
+export const shelfKey = (s) => `shelf-${s.id}`;
+
+// Położenie (spód półki od dołu korpusu, bez nóżek) i głębokość półki — tak, jak ją rozmieszcza cabinetPanels.
+export function shelfPlacement(cabinet, shelf, project) {
+  const panel = cabinetPanels(cabinet, project).find((p) => p.key === shelfKey(shelf));
+  if (!panel) return { y: shelf.y ?? 0, depth: shelf.depth ?? cabinet.depth };
+  const y = panel.y - cabinet.y - legHeight(cabinet);
+  // głębokość z modelu (przycięcie pod skos nie zmienia ustawionej głębokości)
+  const base = cabinet.shelves.find((s) => s.id === shelf.id);
+  return { y, depth: base?.depth ?? panel.depth };
+}
+
 // Wysokość spodu poprzeczki od dołu korpusu (bez nóżek) — tak, jak ją rozmieszcza cabinetPanels.
 export function stiffenerY(cabinet, st, project) {
   const panel = cabinetPanels(cabinet, project).find((p) => p.key === stiffenerKey(st));
@@ -263,6 +280,7 @@ export function createCabinet(project, overrides = {}) {
     topType: 'full',
     railWidth: DEFAULT_RAIL_WIDTH,
     stiffeners: [],
+    shelves: [],
     backGap: 0, // odstęp pleców od tylnej ściany (np. na rury) — patrz setBackGap
     slopeTop: defaultSlopeTop(),
     ...defaultAccessories(),
@@ -504,10 +522,39 @@ export function cabinetPanels(cabinet, project) {
   const planeTopAt = (offset, zLocal) =>
     (offset - slant.normal[2] * (cabinet.z + zLocal)) / slant.normal[1] - cabinet.y - L;
 
+  // Półki — między bokami, od pleców do przodu (głębokość skraca półkę od przodu).
+  // „Równo rozłożone” dzielą wnętrze (od wieńca dolnego do górnego) na równe prześwity:
+  // jedna — dwa równe prześwity, dwie — trzy itd. Pod skośną górą liczymy wnętrze z przodu,
+  // a półki sięgające skosu są docinane pod jego kąt.
+  const shelves = cabinet.shelves ?? [];
+  const shelfT = (s) => thickAt(shelfKey(s), 'y');
+  const evenShelves = shelves.filter((s) => s.position === 'even');
+  const innerTop = slant ? Math.min(H - tT, planeTopAt(inner, D)) : H - tT;
+  const clear = (innerTop - tB - evenShelves.reduce((sum, s) => sum + shelfT(s), 0)) / (evenShelves.length + 1);
+  let evenY = tB;
+  const evenPos = new Map();
+  for (const s of evenShelves) {
+    evenY += clear;
+    evenPos.set(s.id, Math.round(evenY)); // pełne milimetry
+    evenY += shelfT(s);
+  }
+  const shelfDefs = [];
+  const occupied = []; // zajęte pasy wysokości przy plecach: [od, do] — półki, potem poprzeczki
+  for (const s of shelves) {
+    const key = shelfKey(s);
+    const depth = Math.min(s.depth ?? D - zInner, D - zInner);
+    const y = s.position === 'even' ? evenPos.get(s.id) : s.y;
+    base[key] = [tL, y, zInner, W - tL - tR, shelfT(s), depth];
+    shelfDefs.push({ key, name: 'Półka', thicknessAxis: 'y', shelf: s });
+    occupied.push([y, y + shelfT(s)]);
+  }
+
   // Poprzeczki usztywniające — między bokami, tuż przed plecami (grubość w osi Z).
-  const stiffDefs = [];
-  // Poprzeczki „równo rozłożone” dzielą wnętrze korpusu (od wieńca dolnego do górnego) na równe części:
+  // „Równo rozłożone” dzielą wnętrze korpusu (od wieńca dolnego do górnego) na równe części:
   // jedna — na środku, dwie — na 1/3 i 2/3 wysokości itd. (środek poprzeczki na linii podziału).
+  // Poprzeczka nie może nachodzić na półkę (półki sięgają pleców) ani na inną poprzeczkę —
+  // wtedy przesuwa się najbliżej, jak się da: tuż nad albo tuż pod przeszkodę.
+  const stiffDefs = [];
   const evenIds = (cabinet.stiffeners ?? []).filter((s) => s.position === 'even').map((s) => s.id);
   for (const st of cabinet.stiffeners ?? []) {
     const key = stiffenerKey(st);
@@ -518,7 +565,9 @@ export function cabinetPanels(cabinet, project) {
     const k = evenIds.indexOf(st.id);
     // (zaokrąglone do pełnego milimetra)
     const even = k >= 0 ? Math.round(tB + ((topLimit - tB) * (k + 1)) / (evenIds.length + 1) - h / 2) : null;
-    const y = { backTop: topLimit - h, backBottom: tB, backAt: st.y, even }[st.position];
+    const wanted = { backTop: topLimit - h, backBottom: tB, backAt: st.y, even }[st.position];
+    const y = freeSpot(wanted, h, tB, topLimit, occupied);
+    occupied.push([y, y + h]);
     base[key] = [tL, y, zInner, W - tL - tR, h, t];
     stiffDefs.push({ key, name: stiffenerName(st), thicknessAxis: 'z', stiffener: st });
   }
@@ -596,7 +645,7 @@ export function cabinetPanels(cabinet, project) {
   // Którą płaszczyzną skosu przycinamy płytę: wieniec płaski, plecy wpuszczane, poprzeczki
   // i boki pod wieńcem nakładanym — wewnętrzną (są pod skośnym wieńcem); reszta — zewnętrzną.
   const clipOffset = (key) => {
-    if (key === 'top' || key === 'bottom' || key.startsWith('stiff-')) return inner;
+    if (key === 'top' || key === 'bottom' || key.startsWith('stiff-') || key.startsWith('shelf-')) return inner;
     if (key === 'left' || key === 'right') return topOverlay ? inner : slant.outer;
     if (key === 'back') return backType === 'board' ? inner : slant.outer;
     return slant.outer;
@@ -606,7 +655,7 @@ export function cabinetPanels(cabinet, project) {
   const ceilingClips = ceilingKeys.size ? ceilingClipPlanes(cabinet, project) : [];
 
   const panels = [];
-  for (const def of [...PANEL_DEFS, ...stiffDefs]) {
+  for (const def of [...PANEL_DEFS, ...stiffDefs, ...shelfDefs]) {
     if (!base[def.key]) continue;
     const axis = thicknessAxis[def.key] ?? def.thicknessAxis;
     const [x, y, z, sx, sy, sz] = base[def.key];
@@ -685,6 +734,18 @@ export function cabinetPanels(cabinet, project) {
 
 const FACE_AXES_OF = { x: ['y', 'z'], y: ['x', 'z'], z: ['x', 'y'] };
 
+// Najbliższe miejsce (spód elementu o wysokości h) dla `wanted`, w którym element nie nachodzi
+// na zajęte pasy [od, do] i mieści się w [min, max − h]. Gdy nigdzie się nie mieści — `wanted`.
+function freeSpot(wanted, h, min, max, occupied) {
+  const fits = (y) => y >= min - 0.01 && y + h <= max + 0.01 && occupied.every(([a, b]) => y + h <= a + 0.01 || y >= b - 0.01);
+  const candidates = [wanted, ...occupied.flatMap(([a, b]) => [b, a - h]), min, max - h];
+  let best = null;
+  for (const y of candidates) {
+    if (fits(y) && (best === null || Math.abs(y - wanted) < Math.abs(best - wanted))) best = y;
+  }
+  return best ?? wanted;
+}
+
 // Bryła płyty (skośnie docięta albo prostopadłościan).
 export const panelSolid = (p) => p.solid ?? boxSolid(p);
 export const panelVertices = (p) => (p.solid ? vertices(p.solid) : boxCorners(p));
@@ -754,6 +815,10 @@ export function cabinetLegs(cabinet, project) {
 
 // Ścieżka w obiekcie korpusu, której dotyczy zmiana wymiaru powiązanego elementu w danej osi.
 function linkedTarget(panel, axis, cabinet) {
+  if (axis === 'z' && panel.key.startsWith('shelf-')) {
+    const i = (cabinet.shelves ?? []).findIndex((s) => shelfKey(s) === panel.key);
+    return `shelves.${i}.depth`;
+  }
   if (axis === 'y' && panel.key.startsWith('stiff-')) {
     const i = (cabinet.stiffeners ?? []).findIndex((st) => stiffenerKey(st) === panel.key);
     return `stiffeners.${i}.height`;
@@ -785,7 +850,9 @@ export function resizePanelLinked(cabinet, key, axis, value, project) {
   if (!panel) return null;
   const path = linkedTarget(panel, axis, cabinet);
   const next = (getPath(cabinet, path) ?? panel[AXIS_PROP[axis]]) + (value - panel[AXIS_PROP[axis]]);
-  const [min, max] = LINKED_LIMITS[path] ?? (path.startsWith('stiffeners.') ? [1, CABINET_LIMITS.sizeMax] : [CABINET_LIMITS.sizeMin, CABINET_LIMITS.sizeMax]);
+  const [min, max] =
+    LINKED_LIMITS[path] ??
+    (path.startsWith('stiffeners.') || path.startsWith('shelves.') ? [1, CABINET_LIMITS.sizeMax] : [CABINET_LIMITS.sizeMin, CABINET_LIMITS.sizeMax]);
   if (next < min || next > max) return null;
   return setPath(cabinet, path, next);
 }
@@ -961,8 +1028,15 @@ export function normalizeCabinet(raw = {}) {
     y: num(st?.y, 0, -sizeMax, sizeMax),
   }));
 
+  const shelves = (Array.isArray(raw.shelves) ? raw.shelves : []).map((s) => ({
+    id: typeof s?.id === 'string' && s.id ? s.id : newId(),
+    position: s?.position === 'at' ? 'at' : 'even',
+    y: num(s?.y, 0, -sizeMax, sizeMax),
+    depth: s?.depth == null ? null : num(s.depth, null, 1, sizeMax),
+  }));
+
   const panelOverrides = {};
-  for (const key of [...PANEL_DEFS.map((d) => d.key), ...stiffeners.map(stiffenerKey)]) {
+  for (const key of [...PANEL_DEFS.map((d) => d.key), ...stiffeners.map(stiffenerKey), ...shelves.map(shelfKey)]) {
     const src = raw.panelOverrides?.[key];
     if (!src || typeof src !== 'object') continue;
     const o = {};
@@ -1009,6 +1083,7 @@ export function normalizeCabinet(raw = {}) {
     topType: raw.topType === 'rails' ? 'rails' : 'full',
     railWidth: num(raw.railWidth, DEFAULT_RAIL_WIDTH, 10, sizeMax),
     stiffeners,
+    shelves,
     backGap: num(raw.backGap, 0, 0, sizeMax),
     slopeTop: {
       enabled: raw.slopeTop?.enabled !== false,

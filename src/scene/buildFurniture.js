@@ -18,7 +18,7 @@ function panelFaceMaterials(material, thicknessAxis, materialFor) {
 // (Prawdziwa grubość 0,8 mm byłaby niewidoczna — rysujemy co najmniej EDGE_VISUAL mm.)
 const EDGE_VISUAL = 1.2;
 const DIMS = { x: 'width', y: 'height', z: 'depth' };
-function addEdgeBanding(group, box, keys, band, color, materialFor, space) {
+function addEdgeBanding(group, box, keys, band, color, materialFor, space, panelKey = null) {
   if (!band || !keys.length) return;
   const t = Math.max(band, EDGE_VISUAL);
   for (const key of keys) {
@@ -29,6 +29,7 @@ function addEdgeBanding(group, box, keys, band, color, materialFor, space) {
     const geometry = new THREE.BoxGeometry(strip.width * MM, strip.height * MM, strip.depth * MM);
     const mesh = new THREE.Mesh(geometry, materialFor(color));
     mesh.position.set(...toScene(strip.x + strip.width / 2, strip.y + strip.height / 2, strip.z + strip.depth / 2, space));
+    mesh.userData.panelKey = panelKey; // obrzeże należy do płyty (do chwytania myszką)
     group.add(mesh);
   }
 }
@@ -130,6 +131,7 @@ export function buildFurniture(project, selectedId = null) {
         const geometry = solidGeometry(p.solid, project.space);
         const mesh = new THREE.Mesh(geometry, solidMaterialFor(p.material.color));
         mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geometry, 20), edgeMat));
+        mesh.userData.panelKey = p.key;
         cabinetGroup.add(mesh);
         continue;
       }
@@ -137,11 +139,12 @@ export function buildFurniture(project, selectedId = null) {
       const mesh = new THREE.Mesh(geometry, panelFaceMaterials(p.material, p.thicknessAxis, materialFor));
       mesh.position.set(...toScene(p.x + p.width / 2, p.y + p.height / 2, p.z + p.depth / 2, project.space));
       mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geometry), edgeMat));
+      mesh.userData.panelKey = p.key; // np. „shelf-…” — półkę można przeciągać w pionie
       cabinetGroup.add(mesh);
       addAllowance(cabinetGroup, p, p.allowanceMin, p.allowanceMax, project.space);
       if (p.material.edgeBanding) {
         const keys = panelEdgeSet(p, cabinet, project, solids);
-        addEdgeBanding(cabinetGroup, p, keys, p.material.edgeBanding, edgeColorOf(p.material), materialFor, project.space);
+        addEdgeBanding(cabinetGroup, p, keys, p.material.edgeBanding, edgeColorOf(p.material), materialFor, project.space, p.key);
       }
     }
 

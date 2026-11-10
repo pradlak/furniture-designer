@@ -93,6 +93,8 @@ export function panelEdgeSet(panel, cabinet, project, solids) {
   const manual = cabinet.panelOverrides?.[panel.key]?.edgeSet;
   if (Array.isArray(manual)) return manual;
   if (panel.key.startsWith('stiff-')) return [];
+  // Półka: oklejamy tylko przód (boki stykają się z bokami korpusu, tył — z plecami / jest niewidoczny).
+  if (panel.key.startsWith('shelf-')) return ['zMax'];
   const edges = visibleEdges(panel, panel.thicknessAxis, `${cabinet.id}:${panel.key}`, solids ?? projectSolids(project));
   // Panel przy ścianie: tylna krawędź jest schowana między ścianą a blendą boczną.
   if (panel.key === 'wallPanelLeft' || panel.key === 'wallPanelRight') return edges.filter((k) => k !== 'zMin');
