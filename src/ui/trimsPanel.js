@@ -17,7 +17,9 @@ import { trimMaterial } from '../model/materials.js';
 import { escapeHtml, numberField, readNumberInput, setIfNotFocused, round1, commitEmptyAsZero } from './dom.js';
 import { setEye, materialSelect } from './widgets.js';
 import { renderSideBlendCard, updateSideBlendCard } from './sideBlends.js';
-import { setPath } from '../model/furniture.js';
+import { createCardCollapse, COLLAPSE_BUTTON, COLLAPSE_ALL_BUTTONS } from './collapsible.js';
+import { setPath, setSideBlendField } from '../model/furniture.js';
+import { updateCabinetKeepingRow } from '../model/layout.js';
 
 // Zakładka „Blendy i blaty”: elementy, które mogą obejmować kilka korpusów — blendy dolne,
 // blendy górne i blaty. To jedyne miejsce ich edycji (karta korpusu tylko pokazuje, co go obejmuje).
@@ -60,6 +62,7 @@ const trimValue = (t, field, project) => {
 
 export function createTrimsPanel(root, store, ui) {
   let renderedKey = null;
+  const cardCollapse = createCardCollapse(root); // zwijane karty (jak karty korpusów)
   const structureKey = (project) =>
     project.trims.map((t) => t.id).join('|') +
     '#' +
@@ -72,15 +75,15 @@ export function createTrimsPanel(root, store, ui) {
   function render(project) {
     root.innerHTML = `
       <h2>Blendy i blaty</h2>
+      <p class="hint">Blendy dolne, górne i blaty mogą obejmować kilka korpusów — w karcie zaznacz, które.</p>
+      <p class="hint add-target"></p>
+      ${project.furniture.length || project.trims.length ? COLLAPSE_ALL_BUTTONS : ''}
       <h3>Blendy boczne</h3>
       <p class="hint">Po bokach korpusu: blenda boczna — pas z przodu przy ścianie (opcjonalnie z panelem przy ścianie),
         panel na pełną wysokość albo cokół boczny. Każdy korpus ma swoją kartę.</p>
       <div class="items">
         ${project.furniture.map(renderSideBlendCard).join('') || '<p class="empty">Brak korpusów.</p>'}
       </div>
-
-      <p class="hint">Blendy dolne, górne i blaty mogą obejmować kilka korpusów — w karcie zaznacz, które.</p>
-      <p class="hint add-target"></p>
       ${GROUPS.map(
         (g) => `
         <h3>${g.title}</h3>
@@ -91,6 +94,7 @@ export function createTrimsPanel(root, store, ui) {
         <div class="add-row"><button type="button" data-add-trim="${g.type}">${g.add}</button></div>`,
       ).join('')}
     `;
+    cardCollapse.applyAll();
     renderedKey = structureKey(project);
     updateStatus(project);
     syncSelection();
@@ -133,10 +137,12 @@ export function createTrimsPanel(root, store, ui) {
     return `
       <div class="item trim ${t.type}" data-kind="trim" data-id="${t.id}">
         <div class="item-head">
+          ${COLLAPSE_BUTTON}
           <input type="text" data-f="name" value="${escapeHtml(t.name)}" aria-label="Nazwa" />
           <button type="button" class="eye" data-toggle-trim-hidden>👁</button>
           <button type="button" class="danger" data-remove-trim title="Usuń">✕</button>
         </div>
+        <div class="card-sum" data-collapse-card title="Kliknij, aby rozwinąć"></div>
         <div class="trim-cabinets">
           <span>Obejmuje:</span>
           ${
@@ -245,6 +251,11 @@ export function createTrimsPanel(root, store, ui) {
 
       const issues = trimIssues(t, project);
       el.classList.toggle('has-issues', issues.length > 0);
+      // Podsumowanie widoczne w zwiniętej karcie: co obejmuje i ewentualne problemy.
+      const covered = project.furniture.filter((c) => t.cabinetIds.includes(c.id)).map((c) => c.name);
+      el.querySelector('.card-sum').textContent =
+        (covered.length ? `Obejmuje: ${covered.join(', ')}` : 'Nie obejmuje żadnego korpusu') +
+        (issues.length ? ` · ⚠ ${issues.length} ${issues.length === 1 ? 'problem' : issues.length < 5 ? 'problemy' : 'problemów'}` : '');
       el.querySelector('.issues').innerHTML = issues.map((i) => `<li>${escapeHtml(i)}</li>`).join('');
     }
   }
@@ -275,6 +286,8 @@ export function createTrimsPanel(root, store, ui) {
   // --- zdarzenia ---
   const updateCabinet = (id, fn) =>
     store.set((p) => ({ ...p, furniture: p.furniture.map((c) => (c.id === id ? fn(c) : c)) }));
+  // Zmiana blendy / panelu bocznego — korpusy w pełnym rzędzie robią jej miejsce (model/layout.js).
+  const updateCabinetRow = (id, fn) => store.set((p) => updateCabinetKeepingRow(p, id, fn));
 
   root.addEventListener('input', (e) => {
     const input = e.target;
@@ -286,7 +299,7 @@ export function createTrimsPanel(root, store, ui) {
         value = readNumberInput(input);
         if (value === undefined) return;
       }
-      updateCabinet(cabinetId, (c) => setPath(c, input.dataset.f, value));
+      updateCabinetRow(cabinetId, (c) => setSideBlendField(c, input.dataset.f, value));
       return;
     }
     const id = input.closest('[data-kind="trim"]')?.dataset.id;
@@ -328,7 +341,7 @@ export function createTrimsPanel(root, store, ui) {
     const sideCabinet = input.closest('[data-kind="side-blends"]')?.dataset.id;
     if (sideCabinet && input.closest('[data-side-auto]') && input.value.trim() === '') {
       input.classList.remove('invalid');
-      updateCabinet(sideCabinet, (c) => setPath(c, input.dataset.f, null));
+      updateCabinetRow(sideCabinet, (c) => setPath(c, input.dataset.f, null));
       return;
     }
     if (commitEmptyAsZero(input)) return;
@@ -345,13 +358,14 @@ export function createTrimsPanel(root, store, ui) {
   });
 
   root.addEventListener('click', (e) => {
+    if (cardCollapse.handleClick(e.target)) return;
     const data = e.target.dataset ?? {};
     const id = e.target.closest('[data-kind="trim"]')?.dataset.id;
     const cabinetId = e.target.closest('[data-kind="side-blends"]')?.dataset.id;
     if (data.resetSideField && data.side && cabinetId) {
-      updateCabinet(cabinetId, (c) => setPath(c, `sideBlends.${data.side}.${data.resetSideField}`, null));
+      updateCabinetRow(cabinetId, (c) => setPath(c, `sideBlends.${data.side}.${data.resetSideField}`, null));
     } else if (data.resetSideWidth && cabinetId) {
-      updateCabinet(cabinetId, (c) => setPath(c, `sideBlends.${data.resetSideWidth}.width`, null));
+      updateCabinetRow(cabinetId, (c) => setPath(c, `sideBlends.${data.resetSideWidth}.width`, null));
     } else if (data.toggleSideHidden && cabinetId) {
       const side = data.toggleSideHidden;
       updateCabinet(cabinetId, (c) => setPath(c, `sideBlends.${side}.hidden`, !c.sideBlends?.[side]?.hidden));
@@ -383,7 +397,9 @@ export function createTrimsPanel(root, store, ui) {
     // Przewija do pierwszego elementu obejmującego korpus (z karty korpusu: „Edytuj →”).
     reveal(cabinetId) {
       syncSelection();
-      root.querySelector(`[data-kind="side-blends"][data-id="${cabinetId}"]`)?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      const card = root.querySelector(`[data-kind="side-blends"][data-id="${cabinetId}"]`);
+      cardCollapse.expand(card); // karta mogła być zwinięta
+      card?.scrollIntoView({ block: 'start', behavior: 'smooth' });
     },
   };
 }

@@ -299,6 +299,24 @@ button.eye.off { opacity: 0.35; text-decoration: line-through; }
 .allowance-note:empty { display: none; }
 .allowance-field span { color: #c2410c; }
 
+/* --- zwijanie kart korpusów --- */
+.collapse-toggle {
+  flex: none;
+  width: 26px;
+  padding: 0;
+  font-size: 13px;
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+}
+.collapse-toggle:hover { background: color-mix(in srgb, var(--accent) 10%, #fff); }
+.item.collapsed > :not(.item-head):not(.card-sum) { display: none; }
+.item.collapsed .item-head { margin-bottom: 4px; }
+.card-sum { display: none; font-size: 12px; color: var(--muted); cursor: pointer; padding-left: 32px; }
+.item.collapsed .card-sum { display: block; }
+.item.collapsed.has-issues .card-sum { color: var(--danger); }
+.collapse-all { display: flex; gap: 6px; margin: 0 0 8px; }
+.collapse-all button { padding: 2px 8px; font-size: 12px; }
+
 /* --- zakładka „Blendy i blaty” --- */
 .tabs { flex-wrap: wrap; }
 .tabs button { padding: 6px 9px; }

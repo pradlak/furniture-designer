@@ -1,6 +1,7 @@
 import { SIDE_BLEND_TYPES, CABINET_LIMITS, sidePanelExtension, sideBlendWidth, getPath } from '../model/furniture.js';
 import { escapeHtml, setIfNotFocused, round1 } from './dom.js';
 import { setEye } from './widgets.js';
+import { COLLAPSE_BUTTON } from './collapsible.js';
 
 // Blendy boczne korpusu (lewa i prawa): blenda boczna (przy ścianie), panel na pełną wysokość, cokół boczny.
 // Edytowane w zakładce „Blendy i blaty” — po jednej karcie na korpus.
@@ -86,6 +87,7 @@ export function renderSideBlendCard(cabinet) {
   return `
     <div class="item side-blends" data-kind="side-blends" data-id="${cabinet.id}">
       <div class="item-head">
+        ${COLLAPSE_BUTTON}
         <span class="side-blends-name">${escapeHtml(cabinet.name)}</span>
         <span class="side-blends-sum"></span>
       </div>

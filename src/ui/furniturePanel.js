@@ -1,7 +1,6 @@
 import {
   BACK_TYPES,
   CABINET_LIMITS,
-  createCabinet,
   fitCabinetToSpace,
   cabinetPanels,
   cabinetIssues,
@@ -20,6 +19,7 @@ import {
   setPath,
 } from '../model/furniture.js';
 import { duplicateCabinet, slideCabinet } from '../model/placement.js';
+import { addCabinetToLayout } from '../model/layout.js';
 import { cabinetMaterials } from '../model/materials.js';
 import { setEye, materialSelect } from './widgets.js';
 import { sideBlendSummary } from './sideBlends.js';
@@ -79,6 +79,20 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
   // Rozwinięte sekcje kart korpusów („id:sekcja”); domyślnie otwarta jest sekcja „Korpus”.
   const sectionState = new Map();
   const isOpen = (id, key) => sectionState.get(`${id}:${key}`) ?? key === 'body';
+  // Całe karty zwinięte do nagłówka (id korpusów).
+  const collapsed = new Set();
+  const applyCollapsed = (el) => {
+    const isCollapsed = collapsed.has(el.dataset.id);
+    el.classList.toggle('collapsed', isCollapsed);
+    const btn = el.querySelector('[data-collapse-card]');
+    btn.textContent = isCollapsed ? '▸' : '▾';
+    btn.title = isCollapsed ? 'Rozwiń korpus' : 'Zwiń korpus';
+    btn.setAttribute('aria-expanded', String(!isCollapsed));
+  };
+  const setCollapsed = (ids, value) => {
+    for (const id of ids) value ? collapsed.add(id) : collapsed.delete(id);
+    root.querySelectorAll('[data-kind="cabinet"]').forEach(applyCollapsed);
+  };
 
   // Zmiany, po których zmienia się lista elementów (np. dochodzi blenda), wymagają przebudowy karty.
   const structureKey = (project) =>
@@ -96,6 +110,14 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
       <h2>Meble</h2>
       <p class="hint">Korpus składa się z boków, wieńca górnego i dolnego oraz pleców.
         Wymiary są zewnętrzne, pozycja to narożnik lewy‑dolny‑tylny.</p>
+      ${
+        project.furniture.length
+          ? `<div class="collapse-all">
+              <button type="button" data-action="collapse-all" title="Zwiń wszystkie karty korpusów do nagłówków">▸ Zwiń wszystkie</button>
+              <button type="button" data-action="expand-all" title="Rozwiń wszystkie karty korpusów">▾ Rozwiń wszystkie</button>
+            </div>`
+          : ''
+      }
       <div class="items">
         ${project.furniture.map((c) => renderCabinet(c, project)).join('') || '<p class="empty">Brak mebli.</p>'}
       </div>
@@ -106,6 +128,7 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
       <datalist id="leg-heights">${LEG_HEIGHTS.map((h) => `<option value="${h}"></option>`).join('')}</datalist>
     `;
     renderedKey = structureKey(project);
+    root.querySelectorAll('[data-kind="cabinet"]').forEach(applyCollapsed);
     updateStatus(project);
   }
 
@@ -217,11 +240,13 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
     return `
       <div class="item cabinet" data-kind="cabinet" data-id="${c.id}">
         <div class="item-head">
+          <button type="button" class="collapse-toggle" data-collapse-card>▾</button>
           <input type="text" data-f="name" value="${escapeHtml(c.name)}" aria-label="Nazwa mebla" />
           <button type="button" class="eye" data-toggle-hidden="cabinet">👁</button>
           <button type="button" data-action="duplicate" title="Duplikuj (Ctrl+D)">⧉</button>
           <button type="button" class="danger" data-remove="${c.id}" title="Usuń (Delete)">✕</button>
         </div>
+        <div class="card-sum" data-collapse-card title="Kliknij, aby rozwinąć"></div>
         <ul class="issues"></ul>
         ${section('body', 'Korpus', body)}
         ${section('stiff', 'Wzmocnienia', stiff)}
@@ -306,6 +331,10 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
       });
       const issues = cabinetIssues(c, project);
       el.classList.toggle('has-issues', issues.length > 0);
+      // Podsumowanie widoczne w zwiniętej karcie.
+      el.querySelector('.card-sum').textContent =
+        `${c.width} × ${c.height} × ${c.depth} mm` +
+        (issues.length ? ` · ⚠ ${issues.length} ${issues.length === 1 ? 'problem' : issues.length < 5 ? 'problemy' : 'problemów'}` : '');
       el.querySelector('.issues').innerHTML = issues.length
         ? issues.map((i) => `<li>${escapeHtml(i)}</li>`).join('')
         : '<li class="ok">Mieści się w przestrzeni.</li>';
@@ -494,7 +523,13 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
       action, remove, resetPart, slide, removeStiff, toggleHidden, togglePartHidden,
     } = e.target.dataset ?? {};
     const id = e.target.closest('[data-kind="cabinet"]')?.dataset.id;
-    if (toggleHidden && id) {
+    if (e.target.closest('[data-collapse-card]') && id) {
+      setCollapsed([id], !collapsed.has(id));
+    } else if (action === 'collapse-all') {
+      setCollapsed(store.get().furniture.map((c) => c.id), true);
+    } else if (action === 'expand-all') {
+      setCollapsed(store.get().furniture.map((c) => c.id), false);
+    } else if (toggleHidden && id) {
       updateCabinet(id, (c) => ({ ...c, hidden: !c.hidden }));
     } else if (e.target.dataset.resetEdges !== undefined && id) {
       const part = e.target.closest('[data-part]')?.dataset.part;
@@ -516,8 +551,9 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
     } else if (removeStiff && id) {
       updateCabinet(id, (c) => ({ ...c, stiffeners: c.stiffeners.filter((st) => st.id !== removeStiff) }));
     } else if (action === 'add-cabinet') {
-      const cabinet = createCabinet(store.get());
-      updateFurniture((list) => [...list, cabinet]);
+      // Pierwszy na całą szerokość, kolejne wypełniają wolne miejsce albo dzielą rząd (model/layout.js).
+      const { project, cabinet } = addCabinetToLayout(store.get());
+      store.set(project);
       ui.set({ ...ui.get(), selectedId: cabinet.id }, { reveal: true });
     } else if (action === 'duplicate' && id) {
       const copy = duplicateCabinet(store.get(), id);
@@ -545,6 +581,7 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
     });
     if (meta.reveal && selectedId) {
       tabs.activate('furniture-panel');
+      if (collapsed.has(selectedId)) setCollapsed([selectedId], false); // pokazujemy zaznaczony korpus
       root.querySelector(`[data-kind="cabinet"][data-id="${selectedId}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     }
   }

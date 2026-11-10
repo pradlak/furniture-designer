@@ -10,6 +10,7 @@ import {
   runFromAngle,
 } from '../model/space.js';
 import { escapeHtml, numberField, readNumberInput, setIfNotFocused, round1, commitEmptyAsZero } from './dom.js';
+import { createCardCollapse, COLLAPSE_BUTTON, COLLAPSE_ALL_BUTTONS } from './collapsible.js';
 
 const SPACE_FIELDS = [
   { key: 'width', label: 'Szerokość' },
@@ -38,6 +39,7 @@ const LISTS = { obstacle: 'obstacles', slope: 'slopes' };
 // (dodanie/usunięcie elementu, wczytanie projektu), żeby nie gubić fokusu podczas pisania.
 export function createSpacePanel(root, store) {
   let renderedKey = null;
+  const cardCollapse = createCardCollapse(root); // zwijane karty skosów i przeszkód (jak karty korpusów)
 
   const structureKey = ({ space }) =>
     [...space.slopes.map((s) => s.id), '#', ...space.obstacles.map((o) => o.id)].join('|');
@@ -63,6 +65,7 @@ export function createSpacePanel(root, store) {
         ).join('')}
       </div>
       <p class="hint">Wysokość to pełna wysokość pomieszczenia (tam, gdzie nie ma skosu).</p>
+      ${space.slopes.length || space.obstacles.length ? COLLAPSE_ALL_BUTTONS : ''}
 
       <h3>Ściany</h3>
       <div class="walls">
@@ -108,6 +111,7 @@ export function createSpacePanel(root, store) {
         ${OBSTACLE_PRESETS.map((p) => `<button type="button" data-add-obstacle="${p.key}">+ ${p.label}</button>`).join('')}
       </div>
     `;
+    cardCollapse.applyAll();
     renderedKey = structureKey(project);
     updateStatus(project);
   }
@@ -117,11 +121,13 @@ export function createSpacePanel(root, store) {
     return `
       <div class="item slope" data-kind="slope" data-id="${s.id}">
         <div class="item-head">
+          ${COLLAPSE_BUTTON}
           <select data-f="side" aria-label="Strona skosu">
             ${SLOPE_SIDES.map((o) => `<option value="${o.key}" ${o.key === s.side ? 'selected' : ''}>${o.label}</option>`).join('')}
           </select>
           <button type="button" class="danger" data-remove="${s.id}" title="Usuń">✕</button>
         </div>
+        <div class="card-sum" data-collapse-card title="Kliknij, aby rozwinąć"></div>
         <div class="grid-3">
           ${numberField('Ścianka kolankowa', 'kneeHeight', s.kneeHeight, { min: 0, max: LIMITS.spaceMax, small: true })}
           ${numberField('Długość skosu', 'run', s.run, { min: 1, max: LIMITS.spaceMax, small: true })}
@@ -135,9 +141,11 @@ export function createSpacePanel(root, store) {
     return `
       <div class="item obstacle" data-kind="obstacle" data-id="${o.id}">
         <div class="item-head">
+          ${COLLAPSE_BUTTON}
           <input type="text" data-f="name" value="${escapeHtml(o.name)}" aria-label="Nazwa przeszkody" />
           <button type="button" class="danger" data-remove="${o.id}" title="Usuń">✕</button>
         </div>
+        <div class="card-sum" data-collapse-card title="Kliknij, aby rozwinąć"></div>
         <div class="grid-3">
           ${OBSTACLE_FIELDS.map((f) => numberField(f.label, f.key, o[f.key], { min: f.min, small: true })).join('')}
         </div>
@@ -149,13 +157,23 @@ export function createSpacePanel(root, store) {
   function updateStatus({ space }) {
     for (const o of space.obstacles) {
       const el = itemEl('obstacle', o.id);
-      if (el) el.querySelector('.warning').hidden = !isObstacleOutside(o, space);
+      if (!el) continue;
+      const outside = isObstacleOutside(o, space);
+      el.querySelector('.warning').hidden = !outside;
+      // Podsumowanie widoczne w zwiniętej karcie.
+      el.querySelector('.card-sum').textContent =
+        `${o.width} × ${o.height} × ${o.depth} mm · od lewej ${o.x}, od podłogi ${o.y}, od tyłu ${o.z}` +
+        (outside ? ' · ⚠ wystaje poza przestrzeń' : '');
+      el.classList.toggle('has-issues', outside);
     }
     for (const s of space.slopes) {
       const el = itemEl('slope', s.id);
       if (!el) continue;
       const angle = slopeAngle(s, space);
       el.querySelector('.warning').hidden = angle != null;
+      el.querySelector('.card-sum').textContent =
+        `ścianka ${s.kneeHeight} mm · długość ${s.run} mm` + (angle == null ? ' · ⚠ skos nie działa' : ` · ${round1(angle)}°`);
+      el.classList.toggle('has-issues', angle == null);
       setIfNotFocused(el.querySelector('[data-f="angle"]'), angle == null ? '' : round1(angle));
       setIfNotFocused(el.querySelector('[data-f="run"]'), s.run);
     }
@@ -226,6 +244,7 @@ export function createSpacePanel(root, store) {
   });
 
   root.addEventListener('click', (e) => {
+    if (cardCollapse.handleClick(e.target)) return;
     const { action, addObstacle, remove } = e.target.dataset ?? {};
     if (action === 'add-slope') {
       updateSpace((s) => ({ ...s, slopes: [...s.slopes, createSlope(s)] }));

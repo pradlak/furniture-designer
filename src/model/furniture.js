@@ -201,7 +201,8 @@ export function frontSpan(cabinet, project) {
 // Szerokość blendy bocznej (0, gdy po tej stronie nie ma blendy). Ręczna — albo automatyczna:
 // wypełnia wolne miejsce od boku korpusu do ściany / sąsiedniego mebla / przeszkody,
 // pomniejszone o panel przy ścianie. Gdy po tej stronie nie ma ściany ani sąsiada — DEFAULT_FILLER_WIDTH.
-export const DEFAULT_FILLER_WIDTH = 50;
+// Nowo dodana blenda boczna dostaje DEFAULT_FILLER_WIDTH jako szerokość ręczną (patrz setSideBlendField).
+export const DEFAULT_FILLER_WIDTH = 40;
 export const DEFAULT_WALL_PANEL_DEPTH = 60;
 export function sideBlendWidth(cabinet, side, project) {
   const sb = cabinet.sideBlends?.[side];
@@ -251,6 +252,19 @@ function sideGap(cabinet, side, project) {
     if (o.x >= cabinet.x + cabinet.width - 0.01) limit = Math.min(limit ?? Infinity, o.x);
   }
   return limit == null ? null : limit - (cabinet.x + cabinet.width);
+}
+
+// Zmiana pola blendy bocznej, np. setSideBlendField(c, 'sideBlends.left.type', 'filler').
+// Wybranie blendy bocznej ustawia jej szerokość na DEFAULT_FILLER_WIDTH (zamiast automatycznej),
+// żeby korpusy w pełnym rzędzie mogły zrobić jej miejsce (patrz model/layout.js).
+export function setSideBlendField(cabinet, path, value) {
+  const next = setPath(cabinet, path, value);
+  const [, side, field] = path.split('.');
+  const wasFiller = cabinet.sideBlends?.[side]?.type === 'filler';
+  if (field === 'type' && value === 'filler' && !wasFiller) {
+    return setPath(next, `sideBlends.${side}.width`, DEFAULT_FILLER_WIDTH);
+  }
+  return next;
 }
 
 // Zapas na docięcie listwy przy ścianie po danej stronie korpusu (0, gdy nie ma listwy).
