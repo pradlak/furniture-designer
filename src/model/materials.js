@@ -69,12 +69,14 @@ export function resolveMaterial(project, id, type) {
   return materialById(project, id) ?? firstOfType(project, type) ?? FALLBACK[type];
 }
 
-// Materiały korpusu: body — korpus, blend — blendy boczne (i domyślnie fronty), hdf — plecy HDF.
+// Materiały korpusu: body — korpus, blend — blendy boczne, front — fronty (domyślnie jak blendy), hdf — plecy HDF.
 export function cabinetMaterials(cabinet, project) {
   const body = resolveMaterial(project, cabinet.materialId, 'chipboard');
+  const blend = materialById(project, cabinet.blendMaterialId) ?? firstOfType(project, 'mdf') ?? body;
   return {
     body,
-    blend: materialById(project, cabinet.blendMaterialId) ?? firstOfType(project, 'mdf') ?? body,
+    blend,
+    front: materialById(project, cabinet.frontMaterialId) ?? blend,
     hdf: resolveMaterial(project, null, 'hdf'),
   };
 }

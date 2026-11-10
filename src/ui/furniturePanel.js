@@ -25,6 +25,12 @@ import {
   shelfPlacement,
   shelfKey,
   newId,
+  FRONT_TYPES,
+  FRONT_LIMITS,
+  HANDLE_GROOVES,
+  FRONT_DECORS,
+  DECOR_LIMITS,
+  describeMilling,
 } from '../model/furniture.js';
 
 // Inne korpusy o tej samej wysokości i głębokości — do skopiowania półek. Szerokość nie ma znaczenia
@@ -257,6 +263,54 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
         .join('')}
       <div class="add-row"><button type="button" data-action="add-stiff">+ poprzeczka</button></div>`;
 
+    // Fronty nakładane: drzwi pojedyncze / podwójne albo szuflady (równe fronty).
+    const frontsHtml = `
+      <div class="grid-2">
+        <label class="field small">
+          <span>Rodzaj</span>
+          <select data-f="fronts.type">
+            ${FRONT_TYPES.map((t) => `<option value="${t.key}">${t.label}</option>`).join('')}
+          </select>
+        </label>
+        <label class="field small front-drawers">
+          <span>Liczba szuflad</span>
+          <input type="number" step="1" min="1" max="${FRONT_LIMITS.drawersMax}" data-f="fronts.drawers" />
+        </label>
+        <label class="field small front-hinge">
+          <span>Zawiasy</span>
+          <select data-f="fronts.hingeSide">
+            <option value="left">po lewej</option>
+            <option value="right">po prawej</option>
+          </select>
+        </label>
+        <label class="field small front-opt" title="Szczelina między frontami; przy krawędziach korpusu — połowa (sąsiednie korpusy mają między frontami pełną szczelinę)">
+          <span>Szczelina <small>mm</small></span>
+          <input type="number" step="0.5" min="0" max="${FRONT_LIMITS.gapMax}" data-f="fronts.gap" />
+        </label>
+        <span class="front-opt">${materialSelect('Materiał frontów', 'frontMaterialId', project)}</span>
+        <label class="field small front-opt" title="Uchwyt wyfrezowany w krawędzi frontu — zamiast uchwytu przykręcanego. Krawędź otwierania: w drzwiach po stronie przeciwnej do zawiasów (w podwójnych — na środku), w szufladach — górna.">
+          <span>Frez uchwytowy</span>
+          <select data-f="fronts.groove">
+            ${HANDLE_GROOVES.map((g) => `<option value="${g.key}">${g.label}</option>`).join('')}
+          </select>
+        </label>
+        <label class="field small front-opt" title="Ozdobne frezowanie lica frontu (zwykle MDF lakierowany)">
+          <span>Frez dekoracyjny</span>
+          <select data-f="fronts.decor">
+            ${FRONT_DECORS.map((d) => `<option value="${d.key}">${d.label}</option>`).join('')}
+          </select>
+        </label>
+        <label class="field small front-decor-margin" title="Odległość frezu ramki od krawędzi frontu">
+          <span>Ramka od krawędzi <small>mm</small></span>
+          <input type="number" step="1" min="${DECOR_LIMITS.min}" max="${DECOR_LIMITS.max}" data-f="fronts.decorMargin" />
+        </label>
+        <label class="field small front-decor-spacing" title="Odstęp między poziomymi rowkami (od dołu frontu)">
+          <span>Rozstaw rowków <small>mm</small></span>
+          <input type="number" step="1" min="${DECOR_LIMITS.min}" max="${DECOR_LIMITS.max}" data-f="fronts.decorSpacing" />
+        </label>
+      </div>
+      <p class="hint front-info"></p>`;
+
     // Półki: wysokość i głębokość — wartości wyliczone (równy rozkład / pełna głębokość) albo wpisane.
     const shelvesHtml = `
       <p class="hint">Półki rozkładają się równo — jedna dzieli wnętrze na dwa równe prześwity, dwie na trzy itd.
@@ -309,6 +363,7 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
         <div class="card-sum" data-collapse-card title="Kliknij, aby rozwinąć"></div>
         <ul class="issues"></ul>
         ${section('body', 'Korpus', body)}
+        ${section('fronts', 'Fronty', frontsHtml)}
         ${section('shelves', 'Półki', shelvesHtml)}
         ${section('stiff', 'Wzmocnienia', stiff)}
         ${section('legs', 'Nóżki', legs)}
@@ -407,6 +462,26 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
       setSummary(el, 'legs', c.legs?.enabled ? `${c.legs.height} mm` : 'brak');
       const nStiff = c.stiffeners?.length ?? 0;
       setSummary(el, 'stiff', nStiff ? `${nStiff} ${nStiff === 1 ? 'poprzeczka' : nStiff < 5 ? 'poprzeczki' : 'poprzeczek'}` : 'brak');
+      // Fronty: widoczne tylko pola pasujące do rodzaju; podsumowanie z wymiarami frontów.
+      const fr = c.fronts ?? { type: 'none' };
+      el.querySelector('.front-drawers').hidden = fr.type !== 'drawers';
+      el.querySelector('.front-hinge').hidden = fr.type !== 'door';
+      el.querySelectorAll('.front-opt').forEach((x) => (x.hidden = fr.type === 'none'));
+      el.querySelector('.front-decor-margin').hidden = fr.type === 'none' || fr.decor !== 'frame';
+      el.querySelector('.front-decor-spacing').hidden = fr.type === 'none' || fr.decor !== 'lines';
+      const frontPanels = cabinetPanels(c, project).filter((p) => p.key.startsWith('front-') && p.valid);
+      const sizes = [...new Set(frontPanels.map((p) => `${round1(p.width)} × ${round1(p.height)}`))];
+      const frontLabel = FRONT_TYPES.find((t) => t.key === fr.type)?.label.toLowerCase();
+      setSummary(el, 'fronts', fr.type === 'none' ? 'brak' : `${frontLabel} · ${frontPanels.length} × ${sizes.join(' / ')} mm`);
+      el.querySelector('.front-info').textContent =
+        fr.type === 'none'
+          ? 'Fronty nakładane (przed korpusem). Wybierz drzwi albo szuflady.'
+          : `Fronty: ${frontPanels.length} szt. ${sizes.join(' / ')} mm (szer. × wys.)` +
+            (fr.type === 'drawers' ? ' · na razie same fronty, bez skrzynek szuflad.' : '') +
+            ((frontPanels[0] && describeMilling(frontPanels[0])) ? ` · ${describeMilling(frontPanels[0])}.` : '') +
+            ' Zawiasy, prowadnice i uchwyty są w liście formatek (CSV) w części „Akcesoria”' +
+            (fr.groove !== 'none' && fr.groove ? ' (fronty z frezem uchwytowym — bez uchwytów).' : '.');
+
       const nShelves = c.shelves?.length ?? 0;
       setSummary(el, 'shelves', nShelves ? `${nShelves} ${nShelves === 1 ? 'półka' : nShelves < 5 ? 'półki' : 'półek'}` : 'brak');
       // Kopiowanie półek: do korpusów o identycznych wymiarach.
@@ -494,7 +569,9 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
             ? `do cięcia: ${round1(s.cutLength)} × ${round1(s.cutWidth)} mm (obrzeże ${s.band} mm: ${edgeSet.map((k) => EDGE_LABELS[k]).join(', ')})`
             : '';
         // Płyta docięta pod skos: ścięte rogi i krawędzie cięte pod kątem.
-        partEl.querySelector('.part-shape').textContent = p.valid ? describeCuts(s) : '';
+        partEl.querySelector('.part-shape').textContent = p.valid
+          ? [describeCuts(s), describeMilling(p)].filter(Boolean).join('; ')
+          : '';
         partEl.querySelector('[data-reset-part]').hidden = p.overridden.length === 0 && !p.free;
         partEl.querySelector('[data-part-free]').checked = p.free;
         partEl.classList.toggle('free', p.free);

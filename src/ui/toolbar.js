@@ -32,6 +32,8 @@ export function createToolbar(root, store, viewer, { onHelp, onNew } = {}) {
       <label class="check"><input type="checkbox" data-view-flag="showWalls" /> Ściany</label>
       <label class="check"><input type="checkbox" data-view-flag="showCountertops" /> Blaty</label>
       <label class="check"><input type="checkbox" data-view-flag="showBlends" /> Blendy</label>
+      <label class="check" title="Ukryj fronty, żeby zajrzeć do wnętrza korpusów (np. przesunąć półkę)"><input type="checkbox" data-view-flag="showFronts" /> Fronty</label>
+      <label class="check" title="Otwórz drzwi i wysuń szuflady — żeby zobaczyć, co jest w środku (tylko widok)"><input type="checkbox" data-view-flag="openFronts" data-default-off /> otwarte</label>
     </div>
     <div class="group help-group">
       <button type="button" data-action="help" title="Jak zacząć">?</button>
@@ -78,7 +80,12 @@ export function createToolbar(root, store, viewer, { onHelp, onNew } = {}) {
   const undoBtn = root.querySelector('[data-action="undo"]');
   const redoBtn = root.querySelector('[data-action="redo"]');
   const sync = (project) => {
-    for (const box of viewFlags) box.checked = project.view[box.dataset.viewFlag] !== false;
+    // Przełączniki domyślnie włączone (np. „Ściany”) — zaznaczone, dopóki nie są wyłączone;
+    // domyślnie wyłączone (data-default-off, np. „otwarte”) — tylko gdy włączone.
+    for (const box of viewFlags) {
+      const value = project.view[box.dataset.viewFlag];
+      box.checked = box.dataset.defaultOff !== undefined ? value === true : value !== false;
+    }
     undoBtn.disabled = !store.canUndo();
     redoBtn.disabled = !store.canRedo();
   };

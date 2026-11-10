@@ -59,6 +59,75 @@ export function createStiffener(cabinet) {
 
 export const stiffenerKey = (s) => `stiff-${s.id}`;
 
+// Fronty (nakładane — płyty przed korpusem): drzwi pojedyncze, drzwi podwójne albo szuflady.
+// Szczelina `gap` — między frontami i na obwodzie (po połowie przy krawędziach korpusu, żeby
+// sąsiednie korpusy miały między frontami pełną szczelinę). Pod blendą górną front kończy się
+// szczelinę pod blendą. Szuflady — na razie same fronty (bez skrzynek), równej wysokości.
+export const FRONT_TYPES = [
+  { key: 'none', label: 'Brak' },
+  { key: 'door', label: 'Drzwi pojedyncze' },
+  { key: 'doubleDoor', label: 'Drzwi podwójne' },
+  { key: 'drawers', label: 'Szuflady' },
+];
+export const FRONT_LIMITS = { drawersMax: 10, gapMax: 20 };
+export const DEFAULT_FRONT_GAP = 3;
+
+// Frez uchwytowy (uchwyt wyfrezowany w krawędzi frontu — zamiast uchwytu przykręcanego):
+// krawędź górna, dolna albo krawędź otwierania drzwi (przeciwna do zawiasów; w szufladach — górna).
+export const HANDLE_GROOVES = [
+  { key: 'none', label: 'Brak (uchwyt przykręcany)' },
+  { key: 'top', label: 'Górna krawędź' },
+  { key: 'bottom', label: 'Dolna krawędź' },
+  { key: 'opening', label: 'Krawędź otwierania' },
+];
+export const HANDLE_GROOVE_SIZE = 20; // mm — szerokość frezu od krawędzi (do widoku)
+
+// Frez dekoracyjny lica frontu: ramka (margines od krawędzi) albo poziome rowki (rozstaw).
+export const FRONT_DECORS = [
+  { key: 'none', label: 'Brak' },
+  { key: 'frame', label: 'Ramka' },
+  { key: 'lines', label: 'Poziome rowki' },
+];
+export const DECOR_LIMITS = { min: 10, max: 500 };
+
+export const defaultFronts = () => ({
+  type: 'none',
+  drawers: 3,
+  hingeSide: 'left',
+  gap: DEFAULT_FRONT_GAP,
+  groove: 'none',
+  decor: 'none',
+  decorMargin: 60, // ramka: odległość frezu od krawędzi frontu
+  decorSpacing: 100, // rowki: odstęp między rowkami
+});
+
+// Krawędź frontu (jak w obrzeżu: xMin / xMax / yMin / yMax), na której jest frez uchwytowy.
+function grooveEdge(groove, frontKind) {
+  if (groove === 'top') return 'yMax';
+  if (groove === 'bottom') return 'yMin';
+  if (groove !== 'opening') return null;
+  // krawędź otwierania: drzwi z zawiasami po lewej — prawa krawędź; szuflady — górna
+  return { doorLeftHinge: 'xMax', doorRightHinge: 'xMin', drawer: 'yMax' }[frontKind];
+}
+
+// Opis frezów frontu do listy formatek, np. „frez uchwytowy: górna krawędź; frez dekoracyjny: ramka 60 mm”.
+export function describeMilling(panel) {
+  const m = panel.milling;
+  if (!m) return '';
+  const edge = { yMax: 'górna krawędź', yMin: 'dolna krawędź', xMin: 'lewa krawędź', xMax: 'prawa krawędź' }[m.groove];
+  return [
+    edge && `frez uchwytowy: ${edge}`,
+    m.decor === 'frame' && `frez dekoracyjny: ramka ${m.decorMargin} mm od krawędzi`,
+    m.decor === 'lines' && `frez dekoracyjny: poziome rowki co ${m.decorSpacing} mm`,
+  ]
+    .filter(Boolean)
+    .join('; ');
+}
+export const frontKey = (i) => `front-${i}`;
+
+// Liczba zawiasów puszkowych na drzwi o danej wysokości (typowe zalecenia producentów).
+export const hingesFor = (height) => (height <= 900 ? 2 : height <= 1600 ? 3 : height <= 2000 ? 4 : 5);
+
 // Półki: position 'even' — równo rozłożone (domyślnie), 'at' — na wysokości y (od dołu korpusu);
 // depth: null = pełna głębokość wnętrza (od pleców do przodu), liczba — półka płytsza (skrócona od przodu).
 export function createShelf(cabinet) {
@@ -245,6 +314,39 @@ export function clipBox(box, planes, thicknessAxis) {
   return { ...box, ...solidBounds(solid), solid, frame: { u: V[a], v: V[b], w: V[thicknessAxis] } };
 }
 
+// Czy blenda górna idzie do sufitu / skosu: opcja włączona i wszystkie objęte korpusy sięgają sufitu lub skosu.
+export function topBlendToCeiling(trim, project) {
+  const cabs = trimCabinets(trim, project);
+  return trim.type === 'topBlend' && trim.toCeiling !== false && cabs.length > 0 && cabs.every((c) => cabinetReachesTop(c, project));
+}
+
+// Położenie blendy górnej: pas na szerokość objętych korpusów, w płaszczyźnie frontów, przy górnej
+// krawędzi korpusów. Przy „do sufitu / skosu” blenda zachowuje wysokość, ale podnosi się tak, żeby
+// górą dochodziła do sufitu albo skosu; wtedy clipPlanes — skosy, którymi trzeba ją dociąć.
+export function topBlendPlacement(trim, project) {
+  const cabs = trimCabinets(trim, project);
+  const left = Math.min(...cabs.map((c) => c.x));
+  const right = Math.max(...cabs.map((c) => c.x + c.width));
+  const top = Math.max(...cabs.map((c) => c.y + legHeight(c) + c.height));
+  const thickness = trimMaterial(trim, project).thickness;
+  const box = { x: left, y: top - trim.height, z: trimFront(trim, project), width: right - left, height: trim.height, depth: thickness };
+  if (!topBlendToCeiling(trim, project)) return { box, clipPlanes: null };
+  const planes = ceilingClipPlanes(cabs[0], project);
+  const ceiling = Math.min(project.space.height, ...planes.map(([n, off]) => planeTopOver(n, off, box)));
+  return { box: { ...box, y: Math.max(box.y, ceiling - trim.height) }, clipPlanes: planes };
+}
+
+// Najwyższe miejsce pod płaszczyzną (normal · p <= off) nad paskiem blendy: skos w głąb (tył / przód)
+// sięga najwyżej przy jednej z powierzchni blendy (resztę docina cięcie pod kątem), skos z boku —
+// ogranicza najniższy punkt na długości blendy.
+function planeTopOver([a, b, c], off, box) {
+  const at = (x, z) => (off - a * x - c * z) / b;
+  const xs = [box.x, box.x + box.width];
+  const zs = [box.z, box.z + box.depth];
+  const alongDepth = Math.abs(a) < 1e-9;
+  return alongDepth ? Math.max(...zs.map((z) => at(box.x, z))) : Math.min(...xs.map((x) => Math.max(...zs.map((z) => at(x, z)))));
+}
+
 // Wycinek bryły (albo prostopadłościanu) w przedziale X [x0, x1] — np. odcinek blendy między panelami.
 export function sliceX(box, x0, x1) {
   if (!box.solid) return { ...box, x: x0, width: x1 - x0 };
@@ -274,6 +376,8 @@ export function createCabinet(project, overrides = {}) {
     depth,
     materialId: project.materials?.find((m) => m.type === 'chipboard')?.id ?? null,
     blendMaterialId: project.materials?.find((m) => m.type === 'mdf')?.id ?? null,
+    frontMaterialId: project.materials?.find((m) => m.type === 'mdf')?.id ?? null,
+    fronts: defaultFronts(),
     backType: 'hdf',
     bottomJoint: 'inset',
     topJoint: 'inset',
@@ -400,13 +504,25 @@ export function cabinetContext(cabinet, project) {
   const trims = project?.trims ?? [];
   const plinth = trims.find((t) => t.type === 'plinth' && t.cabinetIds.includes(cabinet.id));
   const L = legHeight(cabinet);
-  // Grubość warstwy frontu: blenda górna, jeśli obejmuje korpus; inaczej zakładamy front z płyty korpusu.
+  // Grubość warstwy frontu: fronty korpusu, jeśli są; inaczej blenda górna, jeśli obejmuje korpus;
+  // inaczej zakładamy front z materiału blend korpusu.
   const topBlend = trims.find((t) => t.type === 'topBlend' && t.cabinetIds.includes(cabinet.id));
-  // (gdy nie ma blendy górnej — grubość materiału blend/frontów korpusu)
-  const frontThickness = topBlend
-    ? trimMaterial(topBlend, project).thickness
-    : cabinetMaterials(cabinet, project).blend.thickness;
-  const ctx = { plinthBack: null, plinthHeight: null, frontThickness };
+  const mats = cabinetMaterials(cabinet, project);
+  const hasFronts = (cabinet.fronts?.type ?? 'none') !== 'none';
+  const frontThickness = hasFronts
+    ? mats.front.thickness
+    : topBlend
+      ? trimMaterial(topBlend, project).thickness
+      : mats.blend.thickness;
+  // Blenda górna nad frontami: front kończy się szczeliną pod nią (wysokość blendy liczona od góry korpusu).
+  const ctx = {
+    plinthBack: null,
+    plinthHeight: null,
+    frontThickness,
+    // spód blendy górnej względem korpusu (bez nóżek) — fronty kończą się szczelinę niżej
+    topBlendBottom: topBlend ? topBlendPlacement(topBlend, project).box.y - cabinet.y - L : null,
+    topBlendGap: topBlend?.gap ?? 0,
+  };
   if (plinth && L > 0) {
     ctx.plinthBack = trimFront(plinth, project) - plinth.setback - trimMaterial(plinth, project).thickness - cabinet.z;
     ctx.plinthHeight = plinthHeight(plinth, project);
@@ -642,6 +758,47 @@ export function cabinetPanels(cabinet, project) {
     }
   }
 
+  // --- fronty (nakładane, przed korpusem) ---
+  const frontDefs = [];
+  const fr = cabinet.fronts ?? defaultFronts();
+  if (fr.type !== 'none') {
+    const g = fr.gap ?? DEFAULT_FRONT_GAP;
+    const t = mats.front.thickness;
+    const x0 = g / 2;
+    const x1 = W - g / 2;
+    const y0 = L + g / 2;
+    const y1 = ctx.topBlendBottom != null ? L + ctx.topBlendBottom - ctx.topBlendGap : L + H - g / 2;
+    // kind — do frezu uchwytowego na krawędzi otwierania: drzwi z zawiasami po lewej / prawej, szuflada
+    const add = (name, x, y, w, h, kind) => {
+      const key = frontKey(frontDefs.length);
+      base[key] = [x, y, D, w, h, t];
+      const milling = {
+        groove: grooveEdge(fr.groove ?? 'none', kind),
+        decor: fr.decor ?? 'none',
+        decorMargin: fr.decorMargin ?? 60,
+        decorSpacing: fr.decorSpacing ?? 100,
+      };
+      const hasMilling = milling.groove || milling.decor !== 'none';
+      // jak się otwiera (do widoku „otwarte”): drzwi — obrót na zawiasach po lewej / prawej, szuflada — wysunięcie
+      const opening = kind === 'drawer' ? { drawer: true } : { hinge: kind === 'doorRightHinge' ? 'right' : 'left' };
+      frontDefs.push({ key, name, thicknessAxis: 'z', milling: hasMilling ? milling : null, opening });
+    };
+    if (fr.type === 'door') {
+      const kind = fr.hingeSide === 'right' ? 'doorRightHinge' : 'doorLeftHinge';
+      add(`Front drzwi (zawiasy ${fr.hingeSide === 'right' ? 'prawe' : 'lewe'})`, x0, y0, x1 - x0, y1 - y0, kind);
+    } else if (fr.type === 'doubleDoor') {
+      const w = (x1 - x0 - g) / 2;
+      // drzwi podwójne otwierają się na środku: lewe mają zawiasy po lewej, prawe — po prawej
+      add('Front drzwi lewy', x0, y0, w, y1 - y0, 'doorLeftHinge');
+      add('Front drzwi prawy', x0 + w + g, y0, w, y1 - y0, 'doorRightHinge');
+    } else if (fr.type === 'drawers') {
+      const n = Math.max(1, Math.min(FRONT_LIMITS.drawersMax, fr.drawers ?? 1));
+      const h = (y1 - y0 - (n - 1) * g) / n;
+      // numeracja od góry: szuflada 1 — najwyżej
+      for (let i = 0; i < n; i++) add(`Front szuflady ${i + 1}`, x0, y1 - (i + 1) * h - i * g, x1 - x0, h, 'drawer');
+    }
+  }
+
   // Którą płaszczyzną skosu przycinamy płytę: wieniec płaski, plecy wpuszczane, poprzeczki
   // i boki pod wieńcem nakładanym — wewnętrzną (są pod skośnym wieńcem); reszta — zewnętrzną.
   const clipOffset = (key) => {
@@ -655,7 +812,7 @@ export function cabinetPanels(cabinet, project) {
   const ceilingClips = ceilingKeys.size ? ceilingClipPlanes(cabinet, project) : [];
 
   const panels = [];
-  for (const def of [...PANEL_DEFS, ...stiffDefs, ...shelfDefs]) {
+  for (const def of [...PANEL_DEFS, ...stiffDefs, ...shelfDefs, ...frontDefs]) {
     if (!base[def.key]) continue;
     const axis = thicknessAxis[def.key] ?? def.thicknessAxis;
     const [x, y, z, sx, sy, sz] = base[def.key];
@@ -665,7 +822,13 @@ export function cabinetPanels(cabinet, project) {
     const size = (a, auto) => (a === axis || o.free ? (o[`s${a}`] ?? auto) : auto);
     const overridden = OVERRIDE_KEYS.filter((k) => o[k] != null && (k[0] === 'd' || k[1] === axis || o.free));
     const side = { blendLeft: 'left', blendRight: 'right' }[def.key] ?? null;
-    const group = BLEND_KEYS.includes(def.key) ? 'blend' : def.key === 'back' && backType === 'hdf' ? 'hdf' : 'body';
+    const group = def.key.startsWith('front-')
+      ? 'front'
+      : BLEND_KEYS.includes(def.key)
+        ? 'blend'
+        : def.key === 'back' && backType === 'hdf'
+          ? 'hdf'
+          : 'body';
     const material = mats[group];
     const panel = {
       key: def.key,
@@ -690,6 +853,10 @@ export function cabinetPanels(cabinet, project) {
       // ukryta tylko w widoku 3D: sama płyta albo cała strona blend bocznych
       hidden: !!o.hidden || !!blends[BLEND_SIDE[def.key]]?.hidden,
       overridden,
+      // frezy frontu (uchwytowy, dekoracyjny) — patrz describeMilling
+      milling: def.milling ?? null,
+      // otwieranie frontu w widoku: { hinge: 'left' | 'right' } albo { drawer: true }
+      opening: def.opening ?? null,
     };
     panel.valid = panel.width > 0 && panel.height > 0 && panel.depth > 0;
 
@@ -1036,7 +1203,8 @@ export function normalizeCabinet(raw = {}) {
   }));
 
   const panelOverrides = {};
-  for (const key of [...PANEL_DEFS.map((d) => d.key), ...stiffeners.map(stiffenerKey), ...shelves.map(shelfKey)]) {
+  const frontKeys = Array.from({ length: FRONT_LIMITS.drawersMax }, (_, i) => frontKey(i));
+  for (const key of [...PANEL_DEFS.map((d) => d.key), ...stiffeners.map(stiffenerKey), ...shelves.map(shelfKey), ...frontKeys]) {
     const src = raw.panelOverrides?.[key];
     if (!src || typeof src !== 'object') continue;
     const o = {};
@@ -1091,6 +1259,23 @@ export function normalizeCabinet(raw = {}) {
     },
     materialId: typeof raw.materialId === 'string' ? raw.materialId : null,
     blendMaterialId: typeof raw.blendMaterialId === 'string' ? raw.blendMaterialId : null,
+    // starsze projekty nie miały frontów — materiał frontów jak blendy
+    frontMaterialId:
+      typeof raw.frontMaterialId === 'string'
+        ? raw.frontMaterialId
+        : typeof raw.blendMaterialId === 'string'
+          ? raw.blendMaterialId
+          : null,
+    fronts: {
+      type: FRONT_TYPES.some((t) => t.key === raw.fronts?.type) ? raw.fronts.type : 'none',
+      drawers: Math.round(num(raw.fronts?.drawers, 3, 1, FRONT_LIMITS.drawersMax)),
+      hingeSide: raw.fronts?.hingeSide === 'right' ? 'right' : 'left',
+      gap: num(raw.fronts?.gap, DEFAULT_FRONT_GAP, 0, FRONT_LIMITS.gapMax),
+      groove: HANDLE_GROOVES.some((g) => g.key === raw.fronts?.groove) ? raw.fronts.groove : 'none',
+      decor: FRONT_DECORS.some((d) => d.key === raw.fronts?.decor) ? raw.fronts.decor : 'none',
+      decorMargin: num(raw.fronts?.decorMargin, 60, DECOR_LIMITS.min, DECOR_LIMITS.max),
+      decorSpacing: num(raw.fronts?.decorSpacing, 100, DECOR_LIMITS.min, DECOR_LIMITS.max),
+    },
     legs: {
       enabled: raw.legs?.enabled === true,
       height: num(raw.legs?.height, def.legs.height, LEG_LIMITS.min, LEG_LIMITS.max),

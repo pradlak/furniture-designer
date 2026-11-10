@@ -28,7 +28,7 @@ body {
 .toolbar {
   display: flex;
   align-items: center;
-  gap: 24px;
+  gap: 8px 16px;
   padding: 8px 16px;
   background: var(--panel);
   border-bottom: 1px solid var(--border);
@@ -36,6 +36,10 @@ body {
 }
 .brand { font-weight: 600; font-size: 16px; }
 .group { display: flex; align-items: center; gap: 6px; }
+/* Pasek narzędzi — zwarty, żeby mieścił się w jednym wierszu na typowym laptopie. */
+.toolbar .group { gap: 4px; }
+.toolbar button { padding: 5px 8px; }
+.toolbar .check { gap: 4px; }
 .group-label { color: var(--muted); }
 
 button {
@@ -246,19 +250,35 @@ select {
 }
 
 /* --- sekcje karty korpusu --- */
-.section { border-top: 1px solid var(--border); }
+/* Nagłówki sekcji wyróżnione tłem i akcentem, treść otwartej sekcji — z linią po lewej. */
+.section { margin-top: 6px; }
 .section > summary {
   display: flex;
   align-items: baseline;
   gap: 8px;
-  padding: 7px 0;
+  padding: 7px 10px;
   cursor: pointer;
   list-style: none;
+  background: color-mix(in srgb, var(--accent) 7%, #f6f7f9);
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border));
+  border-radius: 6px;
+}
+.section > summary:hover { background: color-mix(in srgb, var(--accent) 13%, #f6f7f9); }
+.section[open] > summary {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  background: color-mix(in srgb, var(--accent) 12%, #f6f7f9);
 }
 .section > summary::-webkit-details-marker { display: none; }
-.section > summary::before { content: '▸'; color: var(--muted); font-size: 11px; width: 10px; }
+.section > summary::before { content: '▸'; color: var(--accent); font-size: 13px; width: 12px; }
 .section[open] > summary::before { content: '▾'; }
-.section-title { font-weight: 600; font-size: 13px; }
+.section-title { font-weight: 700; font-size: 13px; color: var(--text, #1f2937); }
+.section[open] > .section-body {
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border));
+  border-top: 0;
+  border-radius: 0 0 6px 6px;
+  padding: 8px 10px 6px;
+}
 .section-sum {
   flex: 1;
   min-width: 0;

@@ -1,4 +1,4 @@
-import { cabinetPanels, cabinetLegs, panelCutSize, describeCuts } from './furniture.js';
+import { cabinetPanels, cabinetLegs, panelCutSize, describeCuts, describeMilling, hingesFor } from './furniture.js';
 import { projectSolids, panelEdgeSet, trimEdgeSet, edgeCounts, TRIM_THICKNESS_AXIS, EDGE_LABELS } from './edges.js';
 import { trimSegments, trimAllowance, TRIM_TYPES } from './trims.js';
 import { trimMaterial } from './materials.js';
@@ -12,7 +12,8 @@ const round = (v) => Math.round(v * 10) / 10;
 export function buildCutList(project) {
   const rows = [];
   const solids = projectSolids(project);
-  const add = (name, owner, material, cut, edgeSet) => {
+  // milling — opis frezów frontu (uchwytowy / dekoracyjny), dopisywany do kolumny cięć
+  const add = (name, owner, material, cut, edgeSet, milling = '') => {
     rows.push({
       name,
       owner,
@@ -27,14 +28,15 @@ export function buildCutList(project) {
       band: cut.band,
       allowance: round(cut.allowance ?? 0),
       edgeNames: cut.band ? edgeSet.map((k) => EDGE_LABELS[k]).join(', ') : '',
-      shape: describeCuts(cut), // skośne cięcia (płyty pod skos), np. „ścięty róg 470 × 560 mm …”
+      // skośne cięcia (płyty pod skos), np. „ścięty róg 470 × 560 mm …”, i frezy frontów
+      shape: [describeCuts(cut), milling].filter(Boolean).join('; '),
     });
   };
 
   for (const c of project.furniture) {
     for (const p of cabinetPanels(c, project).filter((x) => x.valid)) {
       const set = panelEdgeSet(p, c, project, solids);
-      add(p.name, c.name, p.material, panelCutSize({ ...p, edges: edgeCounts(p, p.thicknessAxis, set) }), set);
+      add(p.name, c.name, p.material, panelCutSize({ ...p, edges: edgeCounts(p, p.thicknessAxis, set) }), set, describeMilling(p));
     }
   }
 
@@ -68,13 +70,27 @@ export function buildCutList(project) {
   );
 }
 
-// Akcesoria (na razie nóżki) — osobno, bo to nie formatki.
+// Akcesoria (nóżki, zawiasy, prowadnice, uchwyty) — osobno, bo to nie formatki.
 export function buildAccessories(project) {
   const legs = new Map();
+  let hinges = 0;
+  let slides = 0;
+  let handles = 0;
   for (const c of project.furniture) {
     for (const l of cabinetLegs(c, project)) legs.set(l.height, (legs.get(l.height) ?? 0) + 1);
+    const fronts = cabinetPanels(c, project).filter((p) => p.valid && p.key.startsWith('front-'));
+    const type = c.fronts?.type;
+    if (type === 'door' || type === 'doubleDoor') hinges += fronts.reduce((s, p) => s + hingesFor(p.height), 0);
+    if (type === 'drawers') slides += fronts.length;
+    // front z frezem uchwytowym nie potrzebuje uchwytu
+    handles += fronts.filter((p) => !p.milling?.groove).length;
   }
-  return [...legs.entries()].map(([height, qty]) => ({ name: `Nóżka meblowa ${height} mm`, qty }));
+  return [
+    ...[...legs.entries()].map(([height, qty]) => ({ name: `Nóżka meblowa ${height} mm`, qty })),
+    ...(hinges ? [{ name: 'Zawias puszkowy (do frontów nakładanych)', qty: hinges }] : []),
+    ...(slides ? [{ name: 'Prowadnice do szuflad (komplet na szufladę)', qty: slides }] : []),
+    ...(handles ? [{ name: 'Uchwyt', qty: handles }] : []),
+  ];
 }
 
 // CSV dla Excela: separator średnik, przecinek dziesiętny, BOM (polskie znaki).
@@ -100,7 +116,7 @@ export function cutListCsv(project) {
     'Grubość obrzeża',
     'Oklejone krawędzie',
     'Zapas na docięcie',
-    'Cięcia skośne',
+    'Cięcia skośne / frezy',
   ];
   const lines = [header.join(';')];
   buildCutList(project).forEach((r, i) => {

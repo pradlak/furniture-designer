@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { MM, toScene } from './units.js';
-import { cabinetPanels, cabinetIssues, cabinetLegs } from '../model/furniture.js';
+import { cabinetPanels, cabinetIssues, cabinetLegs, HANDLE_GROOVE_SIZE } from '../model/furniture.js';
 import { trimSegments, trimIssues, trimAllowance } from '../model/trims.js';
 import { trimMaterial, edgeColorOf, coreColorOf } from '../model/materials.js';
 import { projectSolids, panelEdgeSet, trimEdgeSet, TRIM_THICKNESS_AXIS } from '../model/edges.js';
@@ -45,6 +45,68 @@ function solidGeometry(faces, space) {
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geometry.computeVertexNormals();
   return geometry;
+}
+
+// Frezy frontu w widoku: frez uchwytowy — ciemny pas wzdłuż krawędzi (wgłębienie), frez dekoracyjny —
+// cienkie ciemniejsze rowki na licu (ramka albo poziome linie). Rysowane tuż przed licem frontu.
+const DECOR_LINE = 6; // mm — szerokość rowka dekoracyjnego (do widoku)
+function addMilling(group, p, materialFor, space) {
+  const m = p.milling;
+  if (!m || p.solid) return;
+  const shade = (k) => `#${new THREE.Color(p.material.color).multiplyScalar(k).getHexString()}`;
+  const strip = (x, y, w, h, color) => {
+    if (w <= 0 || h <= 0) return;
+    const geometry = new THREE.BoxGeometry(w * MM, h * MM, 0.6 * MM);
+    const mesh = new THREE.Mesh(geometry, materialFor(color));
+    mesh.position.set(...toScene(x + w / 2, y + h / 2, p.z + p.depth + 0.3, space));
+    mesh.userData.panelKey = p.key;
+    group.add(mesh);
+  };
+  const decor = shade(0.75);
+  if (m.decor === 'frame') {
+    const k = m.decorMargin;
+    const [x0, y0, x1, y1] = [p.x + k, p.y + k, p.x + p.width - k, p.y + p.height - k];
+    if (x1 - x0 > 2 * DECOR_LINE && y1 - y0 > 2 * DECOR_LINE) {
+      strip(x0, y0, x1 - x0, DECOR_LINE, decor);
+      strip(x0, y1 - DECOR_LINE, x1 - x0, DECOR_LINE, decor);
+      strip(x0, y0, DECOR_LINE, y1 - y0, decor);
+      strip(x1 - DECOR_LINE, y0, DECOR_LINE, y1 - y0, decor);
+    }
+  } else if (m.decor === 'lines') {
+    for (let y = p.y + m.decorSpacing; y < p.y + p.height - DECOR_LINE; y += m.decorSpacing) {
+      strip(p.x, y - DECOR_LINE / 2, p.width, DECOR_LINE, decor);
+    }
+  }
+  if (m.groove) {
+    const S = Math.min(HANDLE_GROOVE_SIZE, p.width / 2, p.height / 2);
+    const groove = shade(0.45);
+    if (m.groove === 'yMax') strip(p.x, p.y + p.height - S, p.width, S, groove);
+    if (m.groove === 'yMin') strip(p.x, p.y, p.width, S, groove);
+    if (m.groove === 'xMin') strip(p.x, p.y, S, p.height, groove);
+    if (m.groove === 'xMax') strip(p.x + p.width - S, p.y, S, p.height, groove);
+  }
+}
+
+// Otwieranie frontów w widoku: drzwi obracają się na zawiasach (oś pionowa przy krawędzi z zawiasami,
+// na tylnej powierzchni frontu) o DOOR_OPEN_ANGLE na zewnątrz; szuflady wysuwają się o część głębokości korpusu.
+const DOOR_OPEN_ANGLE = 95;
+const DRAWER_PULL = 0.6;
+function openedFrontGroup(p, cabinet, parent, space) {
+  const pivot = new THREE.Group();
+  const inner = new THREE.Group(); // elementy frontu w zwykłych współrzędnych sceny
+  if (p.opening.hinge) {
+    const hingeX = p.opening.hinge === 'left' ? p.x : p.x + p.width;
+    const axis = new THREE.Vector3(...toScene(hingeX, 0, p.z, space));
+    pivot.position.copy(axis);
+    inner.position.copy(axis).negate();
+    // obrót wokół pionu: zawiasy po lewej — wolna krawędź (w prawo) idzie do przodu, więc kąt ujemny
+    pivot.rotation.y = THREE.MathUtils.degToRad(p.opening.hinge === 'left' ? -DOOR_OPEN_ANGLE : DOOR_OPEN_ANGLE);
+  } else {
+    pivot.position.z = cabinet.depth * DRAWER_PULL * MM;
+  }
+  pivot.add(inner);
+  parent.add(pivot);
+  return inner;
 }
 
 const LEG_COLOR = '#3f3f46';
@@ -110,7 +172,10 @@ export function buildFurniture(project, selectedId = null) {
 
   const view = project.view ?? {};
   const panelVisible = (p) =>
-    p.valid && !p.hidden && (view.showBlends !== false || p.group !== 'blend');
+    p.valid &&
+    !p.hidden &&
+    (view.showBlends !== false || p.group !== 'blend') &&
+    (view.showFronts !== false || p.group !== 'front');
   const trimVisible = (t) =>
     !t.hidden && (t.type === 'countertop' ? view.showCountertops !== false : view.showBlends !== false);
 
@@ -135,16 +200,20 @@ export function buildFurniture(project, selectedId = null) {
         cabinetGroup.add(mesh);
         continue;
       }
+      // Widok „otwarte”: front (z frezami i obrzeżem) w osobnej grupie obróconej na zawiasach
+      // albo wysuniętej (szuflada). Wymiary w modelu się nie zmieniają.
+      const target = view.openFronts && p.opening ? openedFrontGroup(p, cabinet, cabinetGroup, project.space) : cabinetGroup;
       const geometry = new THREE.BoxGeometry(p.width * MM, p.height * MM, p.depth * MM);
       const mesh = new THREE.Mesh(geometry, panelFaceMaterials(p.material, p.thicknessAxis, materialFor));
       mesh.position.set(...toScene(p.x + p.width / 2, p.y + p.height / 2, p.z + p.depth / 2, project.space));
       mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geometry), edgeMat));
       mesh.userData.panelKey = p.key; // np. „shelf-…” — półkę można przeciągać w pionie
-      cabinetGroup.add(mesh);
-      addAllowance(cabinetGroup, p, p.allowanceMin, p.allowanceMax, project.space);
+      target.add(mesh);
+      addMilling(target, p, materialFor, project.space);
+      addAllowance(target, p, p.allowanceMin, p.allowanceMax, project.space);
       if (p.material.edgeBanding) {
         const keys = panelEdgeSet(p, cabinet, project, solids);
-        addEdgeBanding(cabinetGroup, p, keys, p.material.edgeBanding, edgeColorOf(p.material), materialFor, project.space, p.key);
+        addEdgeBanding(target, p, keys, p.material.edgeBanding, edgeColorOf(p.material), materialFor, project.space, p.key);
       }
     }
 

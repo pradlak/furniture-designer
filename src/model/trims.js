@@ -12,8 +12,8 @@ import {
   cabinetContext,
   cabinetPanels,
   newId,
-  cabinetReachesTop,
-  ceilingClipPlanes,
+  topBlendPlacement,
+  topBlendToCeiling,
   clipBox,
   sliceX,
   panelVertices,
@@ -151,37 +151,13 @@ export function trimBox(trim, project) {
   }
   if (trim.type === 'countertop') return countertopBox(trim, project, cabs, front, thickness);
 
-  // blenda górna: tylko na szerokość korpusów (bez listew), przed frontem korpusu
-  const left = Math.min(...cabs.map((c) => c.x));
-  const right = Math.max(...cabs.map((c) => c.x + c.width));
-  const top = Math.max(...cabs.map((c) => c.y + legHeight(c) + c.height));
-  const box = { x: left, y: top - trim.height, z: front, width: right - left, height: trim.height, depth: thickness };
-  // „Do sufitu / skosu”: blenda zachowuje swoją wysokość, ale podnosi się tak, żeby górą dochodziła
-  // do sufitu albo skosu (przy przedniej powierzchni); górna krawędź jest docięta pod kąt skosu.
-  if (topBlendToCeiling(trim, project)) {
-    const planes = ceilingClipPlanes(cabs[0], project);
-    const ceiling = Math.min(project.space.height, ...planes.map(([n, off]) => planeTopOver(n, off, box)));
-    return clipBox({ ...box, y: Math.max(box.y, ceiling - trim.height) }, planes, 'z');
-  }
-  return box;
+  // blenda górna: położenie liczone w modelu korpusu (topBlendPlacement) — z niego korzystają też
+  // fronty pod blendą; przy „do sufitu / skosu” górna krawędź jest docięta pod kąt skosu.
+  const { box, clipPlanes } = topBlendPlacement(trim, project);
+  return clipPlanes ? clipBox(box, clipPlanes, 'z') : box;
 }
 
-// Najwyższe miejsce pod płaszczyzną (normal · p <= off) nad paskiem blendy: skos w głąb (tył / przód)
-// sięga najwyżej przy jednej z powierzchni blendy (resztę docina cięcie pod kątem), skos z boku —
-// ogranicza najniższy punkt na długości blendy.
-function planeTopOver([a, b, c], off, box) {
-  const at = (x, z) => (off - a * x - c * z) / b;
-  const xs = [box.x, box.x + box.width];
-  const zs = [box.z, box.z + box.depth];
-  const alongDepth = Math.abs(a) < 1e-9;
-  return alongDepth ? Math.max(...zs.map((z) => at(box.x, z))) : Math.min(...xs.map((x) => Math.max(...zs.map((z) => at(x, z)))));
-}
-
-// Czy blenda górna idzie do sufitu / skosu: opcja włączona i wszystkie objęte korpusy sięgają sufitu lub skosu.
-export function topBlendToCeiling(trim, project) {
-  const cabs = trimCabinets(trim, project);
-  return trim.type === 'topBlend' && trim.toCeiling !== false && cabs.length > 0 && cabs.every((c) => cabinetReachesTop(c, project));
-}
+export { topBlendToCeiling };
 
 // O ile blat wystaje przed korpus: wysunięcie + (opcjonalnie) grubość frontu,
 // np. 30 + 18 = 48 mm. Przy kilku korpusach — najgrubszy front.
