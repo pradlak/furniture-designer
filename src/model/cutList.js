@@ -33,6 +33,7 @@ export function buildCutList(project, parts = ALL_PARTS) {
       name,
       owner,
       material: material.name,
+      materialType: material.type, // np. chipboard — płyta meblowa (do eksportu na meble.pl)
       thickness: round(cut.thickness),
       length: round(cut.length),
       width: round(cut.width),
@@ -212,4 +213,55 @@ export function cutListXlsx(project, { parts = ALL_PARTS, accessories: withAcces
   }
   sheets.push({ name: 'Objaśnienia', header: ['Objaśnienia'], rows: CUT_LIST_NOTES.map((n) => [n]), widths: [140] });
   return buildXlsx(sheets);
+}
+
+// --- Eksport do rozkroju na meble.pl (https://www.meble.pl/rozkroj,plyty-meblowe) ---
+// Format jak w pliku eksportowanym przez sam meble.pl („pobierz CSV z obecnego rozkroju”): CSV ze
+// średnikami (także na końcu każdego wiersza), UTF-8, grubość z dwoma miejscami po kropce (np. 3.00),
+// kolumny: Nazwa; Szerokość; Oklejanie szerokości; Wysokość; Oklejanie wysokości; Grubość płyty;
+// Ilość sztuk; Słoje. Oklejanie (zapis jak w PRO100): „=” — obie krawędzie tego wymiaru,
+// „-” — jedna, puste — bez okleiny. Słoje: 0 — bez znaczenia, 1 — wzdłuż wysokości, 2 / puste — wzdłuż szerokości.
+// Płyty meblowe (laminowane) — rozkrój „Płyty meblowe”, i HDF (plecy) — rozkrój „Płyty budowlane”
+// (ten sam format pliku). Każdy materiał (dekor) w osobnym pliku, bo jedno zamówienie rozkroju to jedna płyta.
+// Fronty i blendy z MDF lakierowanego oraz blaty meble.pl tnie inaczej — nie trafiają do plików.
+// Wymiary: gotowej formatki (z okleiną) — Szerokość = krótszy bok, Wysokość = dłuższy bok;
+// słoje: płyta meblowa — wzdłuż dłuższego boku (1), żeby dekor drewnopodobny szedł wzdłuż elementu;
+// HDF — bez znaczenia (0).
+export const MEBLEPL_LIMITS = { minLong: 240, minShort: 100, maxLong: 2500, maxShort: 1200 };
+
+// Gdzie na meble.pl wczytać plik danego rodzaju płyty.
+export const MEBLEPL_CUTTING = {
+  chipboard: { label: 'Płyty meblowe', url: 'https://www.meble.pl/rozkroj,plyty-meblowe' },
+  hdf: { label: 'Płyty budowlane (HDF)', url: 'https://www.meble.pl/rozkroj,plyty' },
+};
+
+// → [{ material, type, csv: Uint8Array, count, outOfRange: [opis formatki] }] — po jednym na materiał.
+export function cutListMeblePl(project, { parts = ALL_PARTS } = {}) {
+  const band = (n) => (n >= 2 ? '=' : n === 1 ? '-' : '');
+  const clean = (s) => String(s).replace(/[;\r\n"]/g, ' ').trim();
+  const byMaterial = new Map();
+  for (const r of buildCutList(project, parts).filter((x) => x.materialType in MEBLEPL_CUTTING)) {
+    if (!byMaterial.has(r.material)) byMaterial.set(r.material, []);
+    byMaterial.get(r.material).push(r);
+  }
+  const header =
+    'Nazwa (nie wpływa na rozkrój);Szerokość;Oklejanie szerokości;Wysokość;Oklejanie wysokości;Grubość płyty;Ilość sztuk;' +
+    'Słoje [0 = bez znaczenia / 1 = po drugim wymiarze (po wysokości) / 2 lub puste = po pierwszym wymiarze (po szerokości)];';
+  return [...byMaterial.entries()].map(([material, rows]) => {
+    const outOfRange = [];
+    const lines = rows.map((r) => {
+      const name = clean(`${r.names.join(', ')} (${r.owners.join(', ')})`);
+      const short = Math.round(r.width);
+      const long = Math.round(r.length);
+      const { minLong, minShort, maxLong, maxShort } = MEBLEPL_LIMITS;
+      if (long < minLong || short < minShort || long > maxLong || short > maxShort) {
+        outOfRange.push(`${r.names.join(', ')}: ${long} × ${short} mm`);
+      }
+      // edgesW — krawędzie krótkie (o długości szerokości), edgesL — długie (o długości wysokości)
+      const grain = r.materialType === 'hdf' ? 0 : 1;
+      return [name, short, band(r.edgesW), long, band(r.edgesL), r.thickness.toFixed(2), r.qty, grain, ''].join(';');
+    });
+    const csv = new TextEncoder().encode([header, ...lines].join('\r\n') + '\r\n');
+    return { material, type: rows[0].materialType, csv, count: rows.reduce((s, r) => s + r.qty, 0), outOfRange };
+  });
 }

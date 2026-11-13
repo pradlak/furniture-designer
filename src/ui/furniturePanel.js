@@ -369,9 +369,13 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
             <option value="right">po prawej</option>
           </select>
         </label>
-        <label class="field small front-opt" title="Szczelina między frontami; przy krawędziach korpusu — połowa (sąsiednie korpusy mają między frontami pełną szczelinę)">
-          <span>Szczelina <small>mm</small></span>
+        <label class="field small front-opt" title="Szczelina boczna (lewa + prawa razem): po połowie przy każdym boku korpusu (np. 5 mm = 2,5 + 2,5 — sąsiednie korpusy mają między frontami pełne 5 mm), cała między drzwiami podwójnymi">
+          <span>Szczelina boczna <small>(lewa + prawa) mm</small></span>
           <input type="number" step="0.5" min="0" max="${FRONT_LIMITS.gapMax}" data-f="fronts.gap" />
+        </label>
+        <label class="field small front-opt" title="Szczelina pionowa (góra + dół razem): cała od góry i między szufladami; od dołu nie ma szczeliny — dolny front równa się z dołem korpusu (chyba że pod korpusem stoi inny korpus — wtedy szczelina dzieli się po połowie)">
+          <span>Szczelina pionowa <small>(góra + dół) mm</small></span>
+          <input type="number" step="0.5" min="0" max="${FRONT_LIMITS.gapMax}" data-f="fronts.gapV" />
         </label>
         <span class="front-opt">${materialSelect('Materiał frontów', 'frontMaterialId', project)}</span>
         <label class="field small front-opt" title="Ozdobne frezowanie lica frontu (zwykle MDF lakierowany)">

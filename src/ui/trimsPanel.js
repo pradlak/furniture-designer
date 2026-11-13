@@ -318,7 +318,8 @@ export function createTrimsPanel(root, store, ui) {
         value = readNumberInput(input);
         if (value === undefined) return;
       }
-      updateCabinetRow(cabinetId, (c) => setSideBlendField(c, input.dataset.f, value));
+      const project = store.get(); // do szerokości nowej blendy (wolne miejsce obok korpusu)
+      updateCabinetRow(cabinetId, (c) => setSideBlendField(c, input.dataset.f, value, project));
       return;
     }
     const id = input.closest('[data-kind="trim"]')?.dataset.id;

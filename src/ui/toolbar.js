@@ -1,6 +1,8 @@
 import { createDefaultProject, normalizeProject } from '../model/project.js';
-import { cutListCsv, cutListXlsx } from '../model/cutList.js';
+import { cutListCsv, cutListXlsx, cutListMeblePl, MEBLEPL_LIMITS, MEBLEPL_CUTTING } from '../model/cutList.js';
 import { createCutListDialog } from './cutListDialog.js';
+import { createMeblePlDialog } from './meblePlDialog.js';
+import { saveFile } from './saveFile.js';
 
 const VIEWS = [
   { key: 'perspective', label: '3D' },
@@ -134,27 +136,49 @@ function track(event, data) {
 // format: 'xlsx' (Excel) albo 'csv' (tabulatory, UTF-16 — Excel otwiera go od razu w kolumnach);
 // parts / accessories — co wyeksportować (patrz cutListDialog).
 function downloadCutList(project, { format, parts, accessories }) {
+  if (format === 'meblepl') {
+    downloadMeblePl(project, parts);
+    return;
+  }
   const xlsx = format === 'xlsx';
   const options = { parts, accessories };
   const blob = xlsx
     ? new Blob([cutListXlsx(project, options)], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
     : new Blob([cutListCsv(project, options)], { type: 'text/csv;charset=utf-16le' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${safeName(project, 'projekt')}_formatki.${xlsx ? 'xlsx' : 'csv'}`;
-  a.click();
-  URL.revokeObjectURL(url);
-  track(xlsx ? 'pobranie-formatek-xlsx' : 'pobranie-formatek-csv', { korpusy: project.furniture.length, zakres: [...parts, ...(accessories ? ['akcesoria'] : [])].join(',') });
+  const fileName = `${safeName(project, 'projekt')}_formatki.${xlsx ? 'xlsx' : 'csv'}`;
+  saveFile(blob, fileName, { description: xlsx ? 'Arkusz Excel' : 'Plik CSV' }).then((saved) => {
+    if (!saved) return;
+    track(xlsx ? 'pobranie-formatek-xlsx' : 'pobranie-formatek-csv', { korpusy: project.furniture.length, zakres: [...parts, ...(accessories ? ['akcesoria'] : [])].join(',') });
+  });
+}
+
+// Rozkrój na meble.pl: płyty meblowe i HDF (plecy), po jednym pliku na płytę (dekor).
+// Pliki pobiera się w okienku — każdy osobnym kliknięciem (przeglądarka blokuje kilka pobrań naraz).
+let meblePlDialog = null;
+function downloadMeblePl(project, parts) {
+  const files = cutListMeblePl(project, { parts });
+  if (!files.length) {
+    alert('Wśród wybranych elementów nie ma płyt meblowych (laminowanych) ani HDF. Fronty i blendy z MDF lakierowanego oraz blaty trzeba zamówić na meble.pl inaczej.');
+    return;
+  }
+  meblePlDialog ??= createMeblePlDialog();
+  meblePlDialog.show({
+    files: files.map((f) => ({
+      fileName: `${safeName(project, 'projekt')}_meblepl_${f.material.replace(/[^\p{L}\p{N}_-]+/gu, '_')}.csv`,
+      label: f.material,
+      count: f.count,
+      cutting: MEBLEPL_CUTTING[f.type],
+      csv: f.csv,
+    })),
+    outOfRange: files.flatMap((f) => f.outOfRange),
+    limits: MEBLEPL_LIMITS,
+  });
+  track('pobranie-formatek-meblepl', { korpusy: project.furniture.length, pliki: files.length });
 }
 
 function exportProject(project) {
   const blob = new Blob([JSON.stringify(project, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${safeName(project, 'projekt')}.json`;
-  a.click();
-  URL.revokeObjectURL(url);
-  track('eksport-projektu-json', { korpusy: project.furniture.length });
+  saveFile(blob, `${safeName(project, 'projekt')}.json`, { description: 'Projekt mebli (JSON)' }).then((saved) => {
+    if (saved) track('eksport-projektu-json', { korpusy: project.furniture.length });
+  });
 }

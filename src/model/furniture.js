@@ -14,6 +14,9 @@ export const LEG_INSET = 50; // odległość osi nóżki od krawędzi korpusu
 export const LEG_HEIGHTS = [50, 80, 100, 120, 150];
 export const LEG_LIMITS = { min: 10, max: 500 };
 
+// Plecy HDF nakładane są mniejsze od korpusu o tyle z każdej strony (mm).
+export const HDF_BACK_INSET = 5;
+
 export const BACK_TYPES = [
   { key: 'hdf', label: 'HDF (nakładane)' },
   { key: 'board', label: 'Z płyty (wpuszczane)' },
@@ -60,22 +63,34 @@ export function createStiffener(cabinet) {
 export const stiffenerKey = (s) => `stiff-${s.id}`;
 
 // Fronty (nakładane — płyty przed korpusem): drzwi pojedyncze, drzwi podwójne albo szuflady.
-// Szczelina `gap` — między frontami i na obwodzie (po połowie przy krawędziach korpusu, żeby
-// sąsiednie korpusy miały między frontami pełną szczelinę). Od dołu — tylko gdy pod korpusem stoi
-// inny korpus; inaczej dolny front schodzi do dołu korpusu. Pod blendą górną front kończy się
-// szczelinę pod blendą. Szuflady — na razie same fronty (bez skrzynek), równej wysokości.
+// Szczeliny frontów (dwie, ustawiane osobno):
+//  gap  — boczna (lewa + prawa razem): po połowie przy bokach korpusu (sąsiednie korpusy mają między
+//         frontami pełną szczelinę), cała między drzwiami podwójnymi; domyślnie 5 mm (2,5 + 2,5),
+//  gapV — pionowa (góra + dół razem): cała między szufladami; od dołu — tylko gdy pod korpusem stoi
+//         inny korpus (wtedy połowa), inaczej dolny front schodzi do dołu korpusu; od góry — cała
+//         (połowa, gdy na korpusie stoi inny korpus); domyślnie 3 mm.
+// Pod blendą górną front kończy się szczeliną blendy. Szuflady — na razie same fronty (bez skrzynek), równej wysokości.
 
 // Czy pod korpusem (bezpośrednio pod jego dnem, w tym samym pasie X i głębokości) stoi inny korpus.
 function hasCabinetBelow(cabinet, project) {
   if (!project?.furniture || cabinet.y <= 0.5) return false;
-  return project.furniture.some(
-    (o) =>
-      o.id !== cabinet.id &&
-      Math.abs(o.y + legHeight(o) + o.height - cabinet.y) < 1 &&
-      o.x < cabinet.x + cabinet.width - 0.5 &&
-      cabinet.x < o.x + o.width - 0.5 &&
-      o.z < cabinet.z + cabinet.depth - 0.5 &&
-      cabinet.z < o.z + o.depth - 0.5,
+  return project.furniture.some((o) => o.id !== cabinet.id && Math.abs(o.y + legHeight(o) + o.height - cabinet.y) < 1 && sameColumn(o, cabinet));
+}
+
+// Czy na korpusie (bezpośrednio na jego górze) stoi inny korpus.
+function hasCabinetAbove(cabinet, project) {
+  if (!project?.furniture) return false;
+  const top = cabinet.y + legHeight(cabinet) + cabinet.height;
+  return project.furniture.some((o) => o.id !== cabinet.id && Math.abs(o.y - top) < 1 && sameColumn(o, cabinet));
+}
+
+// Czy dwa korpusy zachodzą na siebie w rzucie z góry (pas X i głębokość).
+function sameColumn(o, cabinet) {
+  return (
+    o.x < cabinet.x + cabinet.width - 0.5 &&
+    cabinet.x < o.x + o.width - 0.5 &&
+    o.z < cabinet.z + cabinet.depth - 0.5 &&
+    cabinet.z < o.z + o.depth - 0.5
   );
 }
 export const FRONT_TYPES = [
@@ -85,7 +100,8 @@ export const FRONT_TYPES = [
   { key: 'drawers', label: 'Szuflady' },
 ];
 export const FRONT_LIMITS = { drawersMax: 10, gapMax: 20 };
-export const DEFAULT_FRONT_GAP = 3;
+export const DEFAULT_FRONT_GAP = 5; // szczelina boczna (lewa + prawa)
+export const DEFAULT_FRONT_GAP_V = 3; // szczelina pionowa (góra + dół)
 
 // Frez uchwytowy (uchwyt wyfrezowany w krawędzi frontu — zamiast uchwytu przykręcanego):
 // krawędź górna, dolna albo krawędź otwierania drzwi (przeciwna do zawiasów; w szufladach — górna).
@@ -129,6 +145,7 @@ export const defaultFronts = () => ({
   drawers: 3,
   hingeSide: 'left',
   gap: DEFAULT_FRONT_GAP,
+  gapV: DEFAULT_FRONT_GAP_V,
   groove: 'none',
   decor: 'none',
   decorMargin: 60, // ramka: odległość frezu od krawędzi frontu
@@ -570,7 +587,8 @@ export function frontSpan(cabinet, project) {
 // Szerokość blendy bocznej (0, gdy po tej stronie nie ma blendy). Ręczna — albo automatyczna:
 // wypełnia wolne miejsce od boku korpusu do ściany / sąsiedniego mebla / przeszkody,
 // pomniejszone o panel przy ścianie. Gdy po tej stronie nie ma ściany ani sąsiada — DEFAULT_FILLER_WIDTH.
-// Nowo dodana blenda boczna dostaje DEFAULT_FILLER_WIDTH jako szerokość ręczną (patrz setSideBlendField).
+// Nowo dodana blenda boczna: przy wolnym miejscu obok — automatyczna, przy korpusie dosuniętym do ściany /
+// sąsiada — DEFAULT_FILLER_WIDTH jako szerokość ręczna (patrz setSideBlendField).
 export const DEFAULT_FILLER_WIDTH = 40;
 export const DEFAULT_WALL_PANEL_DEPTH = 60;
 export function sideBlendWidth(cabinet, side, project) {
@@ -623,15 +641,18 @@ function sideGap(cabinet, side, project) {
   return limit == null ? null : limit - (cabinet.x + cabinet.width);
 }
 
-// Zmiana pola blendy bocznej, np. setSideBlendField(c, 'sideBlends.left.type', 'filler').
-// Wybranie blendy bocznej ustawia jej szerokość na DEFAULT_FILLER_WIDTH (zamiast automatycznej),
-// żeby korpusy w pełnym rzędzie mogły zrobić jej miejsce (patrz model/layout.js).
-export function setSideBlendField(cabinet, path, value) {
+// Zmiana pola blendy bocznej, np. setSideBlendField(c, 'sideBlends.left.type', 'filler', project).
+// Wybranie blendy bocznej: gdy obok korpusu jest wolne miejsce do ściany / sąsiada — szerokość
+// automatyczna (blenda wypełnia całe to miejsce); gdy korpus jest do nich dosunięty (albo nie znamy
+// projektu) — DEFAULT_FILLER_WIDTH jako szerokość ręczna, żeby korpusy w pełnym rzędzie mogły zrobić
+// jej miejsce (patrz model/layout.js).
+export function setSideBlendField(cabinet, path, value, project = null) {
   const next = setPath(cabinet, path, value);
   const [, side, field] = path.split('.');
   const wasFiller = cabinet.sideBlends?.[side]?.type === 'filler';
   if (field === 'type' && value === 'filler' && !wasFiller) {
-    return setPath(next, `sideBlends.${side}.width`, DEFAULT_FILLER_WIDTH);
+    const gap = project ? sideGap(cabinet, side, project) : null;
+    return setPath(next, `sideBlends.${side}.width`, gap != null && gap > 0.5 ? null : DEFAULT_FILLER_WIDTH);
   }
   return next;
 }
@@ -776,7 +797,9 @@ export function cabinetPanels(cabinet, project) {
     base.bottom = [bx, 0, b, bw, tB, D - b];
     base.top = [tx, H - tT, b, tw, tT, D - b];
     zTop = [b, D];
-    if (b) base.back = [0, 0, 0, W, H, b];
+    // Plecy HDF nakładane od zewnątrz: mniejsze od korpusu o HDF_BACK_INSET z każdej strony
+    // (np. korpus 600 × 720 → plecy 590 × 710), żeby nie wystawały poza obrys korpusu.
+    if (b) base.back = [HDF_BACK_INSET, HDF_BACK_INSET, 0, W - 2 * HDF_BACK_INSET, H - 2 * HDF_BACK_INSET, b];
   }
   // Płaszczyzny skosu w układzie przestrzeni: zewnętrzna (góra korpusu) i wewnętrzna
   // (spód skośnego wieńca). Wysokość płaszczyzny (bez nóżek, względem korpusu) w danym z korpusu.
@@ -909,14 +932,17 @@ export function cabinetPanels(cabinet, project) {
   const frontDefs = [];
   const fr = cabinet.fronts ?? defaultFronts();
   if (fr.type !== 'none') {
-    const g = fr.gap ?? DEFAULT_FRONT_GAP;
+    const g = fr.gap ?? DEFAULT_FRONT_GAP; // boczna (lewa + prawa)
+    const gv = fr.gapV ?? DEFAULT_FRONT_GAP_V; // pionowa (góra + dół)
     const t = mats.front.thickness;
     const x0 = g / 2;
     const x1 = W - g / 2;
-    // Od dołu szczelina tylko wtedy, gdy pod korpusem stoi inny korpus (jego front ma szczelinę od
-    // góry — razem pełna szczelina). Inaczej (na podłodze, na nóżkach) dolny front schodzi do dołu korpusu.
-    const y0 = L + (hasCabinetBelow(cabinet, project) ? g / 2 : 0);
-    const y1 = ctx.topBlendBottom != null ? L + ctx.topBlendBottom - ctx.topBlendGap : L + H - g / 2;
+    // Od dołu szczelina tylko wtedy, gdy pod korpusem stoi inny korpus (połowa — druga połowa jest
+    // przy froncie korpusu niżej). Inaczej (na podłodze, na nóżkach) dolny front schodzi do dołu korpusu.
+    const y0 = L + (hasCabinetBelow(cabinet, project) ? gv / 2 : 0);
+    // Od góry — cała szczelina pionowa (połowa, gdy na korpusie stoi inny korpus); pod blendą górną — jej szczelina.
+    const yTopGap = hasCabinetAbove(cabinet, project) ? gv / 2 : gv;
+    const y1 = ctx.topBlendBottom != null ? L + ctx.topBlendBottom - ctx.topBlendGap : L + H - yTopGap;
     // kind — do frezu uchwytowego na krawędzi otwierania: drzwi z zawiasami po lewej / prawej, szuflada
     const add = (name, x, y, w, h, kind) => {
       const key = frontKey(frontDefs.length);
@@ -945,9 +971,9 @@ export function cabinetPanels(cabinet, project) {
       add('Front drzwi prawy', x0 + w + g, y0, w, y1 - y0, 'doorRightHinge');
     } else if (fr.type === 'drawers') {
       const n = Math.max(1, Math.min(FRONT_LIMITS.drawersMax, fr.drawers ?? 1));
-      const h = (y1 - y0 - (n - 1) * g) / n;
+      const h = (y1 - y0 - (n - 1) * gv) / n; // między szufladami — szczelina pionowa
       // numeracja od góry: szuflada 1 — najwyżej
-      for (let i = 0; i < n; i++) add(`Front szuflady ${i + 1}`, x0, y1 - (i + 1) * h - i * g, x1 - x0, h, 'drawer');
+      for (let i = 0; i < n; i++) add(`Front szuflady ${i + 1}`, x0, y1 - (i + 1) * h - i * gv, x1 - x0, h, 'drawer');
     }
   }
 
@@ -1431,6 +1457,8 @@ export function normalizeCabinet(raw = {}) {
       drawers: Math.round(num(raw.fronts?.drawers, 3, 1, FRONT_LIMITS.drawersMax)),
       hingeSide: raw.fronts?.hingeSide === 'right' ? 'right' : 'left',
       gap: num(raw.fronts?.gap, DEFAULT_FRONT_GAP, 0, FRONT_LIMITS.gapMax),
+      // starsze projekty miały jedną szczelinę — pionowa domyślna
+      gapV: num(raw.fronts?.gapV, DEFAULT_FRONT_GAP_V, 0, FRONT_LIMITS.gapMax),
       groove: HANDLE_GROOVES.some((g) => g.key === raw.fronts?.groove) ? raw.fronts.groove : 'none',
       decor: FRONT_DECORS.some((d) => d.key === raw.fronts?.decor) ? raw.fronts.decor : 'none',
       decorMargin: num(raw.fronts?.decorMargin, 60, DECOR_LIMITS.min, DECOR_LIMITS.max),

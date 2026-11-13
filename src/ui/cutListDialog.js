@@ -3,7 +3,7 @@ import { escapeHtml } from './dom.js';
 
 // Okienko „Formatki”: wybór formatu (Excel / CSV) i tego, co wyeksportować (korpusy, plecy HDF,
 // fronty, blendy, blaty, akcesoria). Ostatni wybór pamiętamy w przeglądarce (tylko wygoda).
-// onExport({ format: 'xlsx' | 'csv', parts: Set, accessories: boolean })
+// onExport({ format: 'xlsx' | 'csv' | 'meblepl', parts: Set, accessories: boolean }) — przy meble.pl akcesoria pomijamy
 const STORAGE_KEY = 'furnitureDesigner.cutListExport';
 
 export function createCutListDialog({ onExport }) {
@@ -20,6 +20,8 @@ export function createCutListDialog({ onExport }) {
           <span><b>Excel (.xlsx)</b> <small>— najczytelniejszy: nagłówki, szerokie kolumny, arkusze</small></span></label>
         <label class="check"><input type="radio" name="cut-format" value="csv" />
           <span><b>CSV</b> <small>— zwykły tekst z tabulatorami, np. do programu do rozkroju</small></span></label>
+        <label class="check"><input type="radio" name="cut-format" value="meblepl" />
+          <span><b>meble.pl</b> <small>— plik do wczytania w <a href="https://www.meble.pl/rozkroj,plyty-meblowe" target="_blank" rel="noopener">rozkroju na meble.pl</a>: płyty meblowe (laminowane) i plecy HDF, osobny plik dla każdej płyty</small></span></label>
       </fieldset>
       <fieldset class="cut-list-group">
         <legend>Co wyeksportować
@@ -36,7 +38,7 @@ export function createCutListDialog({ onExport }) {
       <p class="warning cut-list-empty" hidden>Zaznacz przynajmniej jedną rzecz do eksportu.</p>
       <div class="welcome-actions">
         <button type="button" data-cut="cancel">Anuluj</button>
-        <button type="button" class="primary" data-cut="export">💾 Pobierz</button>
+        <button type="button" class="primary" data-cut="export">💾 Zapisz</button>
       </div>
     </div>`;
   document.body.appendChild(overlay);

@@ -498,7 +498,7 @@ body.resizing .viewport { pointer-events: none; }
 .welcome-note { font-size: 13px; color: var(--muted); }
 .welcome-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
 /* --- ekran powitalny: karty wyboru z obrazkami --- */
-.welcome:not(.new-project):not(.legs-dialog):not(.cut-list-dialog) { max-width: 660px; }
+.welcome:not(.new-project):not(.legs-dialog):not(.cut-list-dialog):not(.meblepl-dialog) { max-width: 660px; }
 .legs-dialog { max-width: 480px; }
 .legs-dialog-all { margin-top: 10px; font-size: 13px; }
 .legs-dialog-all[hidden] { display: none; }
@@ -634,3 +634,11 @@ button.primary:hover { color: #fff; filter: brightness(1.1); }
 .cut-list-group .check input { margin-top: 3px; }
 .cut-list-group small { color: var(--muted); }
 .link-button { border: 0; background: none; padding: 0; color: var(--accent); font-weight: 400; font-size: 12px; cursor: pointer; text-decoration: underline; }
+
+/* --- okienko plików do meble.pl --- */
+.meblepl-dialog { max-width: 520px; }
+.meblepl-files { list-style: none; padding: 0; margin: 12px 0 0; display: flex; flex-direction: column; gap: 8px; }
+.meblepl-file { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; }
+.meblepl-file small { color: var(--muted); }
+.meblepl-file button { flex-shrink: 0; }
+.meblepl-warning ul { margin: 4px 0 0; padding-left: 18px; font-size: 12px; }
