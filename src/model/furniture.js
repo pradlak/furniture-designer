@@ -320,7 +320,7 @@ export const CABINET_LIMITS = { sizeMin: 50, sizeMax: LIMITS.spaceMax };
 
 export function defaultAccessories() {
   return {
-    legs: { enabled: false, height: 100 },
+    legs: { enabled: false, height: 80 },
     sideBlends: {
       left: { ...defaultSideBlend() },
       right: { ...defaultSideBlend() },
@@ -1434,6 +1434,9 @@ export function normalizeCabinet(raw = {}) {
     legs: {
       enabled: raw.legs?.enabled === true,
       height: num(raw.legs?.height, def.legs.height, LEG_LIMITS.min, LEG_LIMITS.max),
+      // jak dodano nóżki: 'keep' — zabudowa zachowała wysokość, 'shift' — podniosła się (patrz setLegs);
+      // brak — nie wiadomo (np. starszy projekt), przy usuwaniu pytamy
+      ...(raw.legs?.enabled === true && ['keep', 'shift'].includes(raw.legs?.mode) ? { mode: raw.legs.mode } : {}),
     },
     sideBlends: {
       left: sideBlend(raw.sideBlends?.left, def.sideBlends.left),

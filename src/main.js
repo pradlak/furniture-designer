@@ -14,10 +14,18 @@ import { initPanelResizer } from './ui/resizer.js';
 import { createWelcome } from './ui/welcome.js';
 import { createNewProjectDialog } from './ui/newProject.js';
 import { createExamplesDialog } from './ui/examples.js';
+import { initMathInputs } from './ui/mathInputs.js';
+import { selectedCabinetIds } from './state/selection.js';
+import { initSizeNotices } from './ui/sizeNotices.js';
+
+// Działania w polach liczbowych (np. 1100-70 → 1030).
+initMathInputs();
 
 // Projekt (zapisywany, z historią cofania) i stan interfejsu (zaznaczenie — nie zapisywany).
 const savedProject = loadProject();
 const store = createStore(savedProject ?? createDefaultProject(), { history: true });
+// Komunikat, gdy rozmiar korpusu zmienia się przy okazji innej zmiany (np. odstęp od ściany → głębokość).
+initSizeNotices(store);
 // Pierwsze uruchomienie (brak zapisanego projektu): wybór rodzaju przestrzeni jak po „Nowy…”.
 const firstRun = !savedProject;
 const ui = createStore({ selectedId: null });
@@ -69,7 +77,7 @@ const selectedFronts = () => new Set(ui.get().selectedFronts ?? []);
 // według przełącznika „otwarte” na pasku.
 const isFrontOpen = (id) => ui.get().frontOpen?.[id] ?? store.get().view?.openFronts === true;
 const redraw = (refit = false) =>
-  viewer.setProject(store.get(), { refit, selectedId: ui.get().selectedId, selectedFronts: selectedFronts(), isFrontOpen });
+  viewer.setProject(store.get(), { refit, selectedIds: selectedCabinetIds(ui.get()), selectedFronts: selectedFronts(), isFrontOpen });
 redraw();
 
 let lastOpenFronts = store.get().view?.openFronts === true;

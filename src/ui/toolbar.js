@@ -30,6 +30,7 @@ export function createToolbar(root, store, viewer, { onHelp, onNew } = {}) {
     <div class="group">
       <span class="group-label">Pokaż:</span>
       <label class="check"><input type="checkbox" data-view-flag="showWalls" /> Ściany</label>
+      <label class="check" title="Wymiary zaznaczonego korpusu: nóżki, korpus, razem, szerokość, głębokość"><input type="checkbox" data-view-flag="showDims" /> Wymiary</label>
       <label class="check"><input type="checkbox" data-view-flag="showCountertops" /> Blaty</label>
       <label class="check"><input type="checkbox" data-view-flag="showBlends" /> Blendy</label>
       <label class="check" title="Ukryj fronty, żeby zajrzeć do wnętrza korpusów (np. przesunąć półkę)"><input type="checkbox" data-view-flag="showFronts" /> Fronty</label>

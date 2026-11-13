@@ -1,6 +1,7 @@
 import {
   BACK_TYPES,
   CABINET_LIMITS,
+  legHeight,
   fitCabinetToSpace,
   cabinetPanels,
   cabinetIssues,
@@ -46,13 +47,16 @@ import {
 const sameSize = (a, b) => ['height', 'depth'].every((k) => Math.abs(a[k] - b[k]) < 0.5);
 const sameSizeCabinets = (cabinet, project) => project.furniture.filter((c) => c.id !== cabinet.id && sameSize(c, cabinet));
 import { duplicateCabinet, slideCabinet } from '../model/placement.js';
-import { addCabinetToLayout, updateCabinetRefit } from '../model/layout.js';
+import { addCabinetToLayout, updateCabinetRefit, updateCabinetCeilingGap, setLegs } from '../model/layout.js';
 import { cabinetMaterials } from '../model/materials.js';
 import { setEye, materialSelect } from './widgets.js';
 import { sideBlendSummary } from './sideBlends.js';
 import { edgeKeys, EDGE_LABELS, projectSolids, panelEdgeSet, isManualEdgeSet, edgeCounts } from '../model/edges.js';
 
 import { escapeHtml, numberField, readNumberInput, setIfNotFocused, round1, commitEmptyAsZero } from './dom.js';
+import { createLegsDialog } from './legsDialog.js';
+import { rowOf } from '../model/trims.js';
+import { selectedCabinetIds, toggleCabinet } from '../state/selection.js';
 
 const POSITION_FIELDS = [
   { key: 'x', label: 'X od lewej' },
@@ -103,6 +107,30 @@ function setSummary(cardEl, section, text) {
 // onShowTrims(cabinetId) — przejście do zakładki „Blendy i blaty” (z karty korpusu).
 export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}) {
   let renderedKey = null;
+  const legsDialog = createLegsDialog();
+  // Łańcuszki: zmiana wysokości / nóżek dotyczy też korpusów z rzędu (stykają się bokami,
+  // wspólna linia frontu), które mają tę samą wysokość / takie same nóżki.
+  // linked[kind] — korpusy z włączonym łańcuszkiem (stan widoku, nie zapisuje się w projekcie).
+  const linked = { width: new Set(), height: new Set(), depth: new Set(), legs: new Set(), backGap: new Set() };
+  const LINK_MATCH = {
+    backGap: (a, b) => Math.abs((a.backGap ?? 0) - (b.backGap ?? 0)) < 0.5,
+    height: (a, b) => Math.abs(a.height - b.height) < 0.5,
+    depth: (a, b) => Math.abs(a.depth - b.depth) < 0.5,
+    width: (a, b) => Math.abs(a.width - b.width) < 0.5,
+    legs: (a, b) => legHeight(a) === legHeight(b),
+  };
+  const linkTwins = (kind, cabinet, project) =>
+    rowOf(cabinet.id, project)
+      .filter((cid) => cid !== cabinet.id)
+      .map((cid) => project.furniture.find((x) => x.id === cid))
+      .filter((x) => LINK_MATCH[kind](x, cabinet));
+  // Korpus + połączone z nim (gdy łańcuszek jest włączony).
+  const linkedIds = (kind, id, project) => {
+    if (!linked[kind].has(id)) return [id];
+    return [id, ...linkTwins(kind, project.furniture.find((c) => c.id === id), project).map((c) => c.id)];
+  };
+  const linkButton = (kind) =>
+    `<button type="button" class="icon tiny link-btn" data-link="${kind}" aria-pressed="false">⛓</button>`;
   // Rozwinięte sekcje kart korpusów („id:sekcja”); domyślnie otwarta jest sekcja „Korpus”.
   const sectionState = new Map();
   // podsekcje („sub:…”, np. „Front” / „Uchwyt”) są domyślnie rozwinięte
@@ -184,16 +212,20 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
         'Wymiary i położenie',
         `
       <div class="grid-3">
-        ${SIZE_FIELDS.map((f) =>
-          numberField(f.label, f.key, c[f.key], { min: CABINET_LIMITS.sizeMin, max: CABINET_LIMITS.sizeMax, small: true }),
-        ).join('')}
+        ${SIZE_FIELDS.map((f) => {
+          const field = numberField(f.label, f.key, c[f.key], { min: CABINET_LIMITS.sizeMin, max: CABINET_LIMITS.sizeMax, small: true });
+          // Wymiary: łańcuszek — zmiana dotyczy też korpusów w rzędzie o tym samym wymiarze.
+          return f.key in linked
+            ? field.replace('</span>', ` ${linkButton(f.key)}</span>`)
+            : field;
+        }).join('')}
         ${POSITION_FIELDS.map((f) =>
           numberField(f.label, f.key, c[f.key], { min: -CABINET_LIMITS.sizeMax, max: CABINET_LIMITS.sizeMax, small: true }),
         ).join('')}
       </div>
       <div class="grid-2">
         <label class="field small" title="Odstęp pleców od tylnej ściany (np. na rury). Front zostaje na miejscu — korpus robi się płytszy, blat się nie zmienia.">
-          <span>Odstęp od tylnej ściany <small>mm</small></span>
+          <span>Odstęp od tylnej ściany <small>mm</small> ${linkButton('backGap')}</span>
           <input type="number" step="1" min="0" max="${CABINET_LIMITS.sizeMax}" data-f="backGap" />
         </label>
         <label class="field small ceiling-gap-field" title="Odstęp korpusu (i blend „do sufitu”) od sufitu — dotyczy korpusów dopasowanych do sufitu. Domyślnie — luz ustawiony w zakładce „Przestrzeń”; wpisana wartość dotyczy tylko tego korpusu.">
@@ -265,7 +297,7 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
 
     const legs = `
       <div class="grid-2">
-        <label class="check"><input type="checkbox" data-f="legs.enabled" /> Nóżki</label>
+        <label class="check"><input type="checkbox" data-f="legs.enabled" /> Nóżki ${linkButton('legs')}</label>
         <label class="field small">
           <span>Wysokość nóżek <small>mm</small></span>
           <input type="number" list="leg-heights" step="1" min="${LEG_LIMITS.min}" max="${LEG_LIMITS.max}" data-f="legs.height" />
@@ -528,6 +560,25 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
       ceilInput.classList.toggle('overridden', !ceilAuto);
       el.querySelector('.ceiling-gap-field .auto-tag').hidden = !ceilAuto;
       el.querySelector('[data-reset-ceiling-gap]').hidden = ceilAuto;
+      // Łańcuszki (wysokość, nóżki) — włączone / wyłączone i z iloma korpusami łączą.
+      const LINK_TEXT = {
+        height: ['zmiana wysokości zmienia', 'Połącz wysokość z korpusami w rzędzie, które mają tę samą wysokość', 'o tej samej wysokości'],
+        width: ['zmiana szerokości zmienia', 'Połącz szerokość z korpusami w rzędzie, które mają tę samą szerokość', 'o tej samej szerokości (korpusy w rzędzie przesuwają się, żeby dalej stały bok przy boku)'],
+        depth: ['zmiana głębokości zmienia', 'Połącz głębokość z korpusami w rzędzie, które mają tę samą głębokość', 'o tej samej głębokości'],
+        backGap: ['zmiana odstępu od tylnej ściany zmienia', 'Połącz odstęp od tylnej ściany z korpusami w rzędzie, które mają ten sam odstęp', 'z tym samym odstępem'],
+        legs: ['dodanie, usunięcie i zmiana nóżek dotyczy', 'Połącz nóżki z korpusami w rzędzie, które mają takie same nóżki', 'z takimi samymi nóżkami'],
+      };
+      for (const kind of Object.keys(linked)) {
+        const btn = el.querySelector(`[data-link="${kind}"]`);
+        const on = linked[kind].has(c.id);
+        const n = linkTwins(kind, c, project).length;
+        const [what, offText, which] = LINK_TEXT[kind];
+        btn.classList.toggle('on', on);
+        btn.setAttribute('aria-pressed', String(on));
+        btn.title = on
+          ? `Połączone: ${what} też ${n} ${n === 1 ? 'korpus' : n > 1 && n < 5 ? 'korpusy' : 'korpusów'} w rzędzie ${which}. Kliknij, żeby rozłączyć.`
+          : `${offText} (teraz: ${n}).`;
+      }
       // Luz: własny korpusu albo (pusty) — ze skosu; pokazujemy wartość, która obowiązuje.
       const gapInput = el.querySelector('[data-f="slopeTop.gap"]');
       const gapAuto = c.slopeTop?.gap == null;
@@ -786,13 +837,16 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
     }
     if (field === 'backGap') {
       // Front zostaje na miejscu — zmienia się położenie pleców i głębokość korpusu.
-      const cabinet = store.get().furniture.find((c) => c.id === id);
-      const next = setBackGap(cabinet, value);
-      if (!next) {
+      // Łańcuszek — też w korpusach z rzędu, które mają ten sam odstęp; gdy w którymś się nie da
+      // (korpus byłby za płytki) — nic nie zmieniamy.
+      const p = store.get();
+      const ids = linkedIds('backGap', id, p);
+      const changed = new Map(ids.map((cid) => [cid, setBackGap(p.furniture.find((c) => c.id === cid), value)]));
+      if ([...changed.values()].some((c) => !c)) {
         input.classList.add('invalid');
         return;
       }
-      updateCabinet(id, () => next);
+      store.set((proj) => ({ ...proj, furniture: proj.furniture.map((c) => changed.get(c.id) ?? c) }));
       return;
     }
     // Przejście na „na wysokości…”: zaczynamy od miejsca, w którym poprzeczka jest teraz.
@@ -805,9 +859,69 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
       });
       return;
     }
-    if (field.startsWith('slopeTop.') || field === 'ceilingGap') {
-      // Włączenie / wyłączenie skośnej góry albo zmiana luzu — korpus o wysokości automatycznej
-      // dopasowuje się na nowo (z przodu sięga skosu albo zniża się do najniższego miejsca).
+    if (field === 'width' && linked.width.has(id)) {
+      // Łańcuszek szerokości — ta sama szerokość dla korpusów z rzędu o tej samej szerokości; korpusy
+      // rzędu na prawo od zmienionych przesuwają się o sumę zmian, żeby dalej stały bok przy boku.
+      store.set((p) => {
+        const ids = new Set(linkedIds('width', id, p));
+        const row = rowOf(id, p)
+          .map((cid) => p.furniture.find((c) => c.id === cid))
+          .sort((a, b) => a.x - b.x);
+        const moved = new Map();
+        let shift = 0;
+        for (const c of row) {
+          const width = ids.has(c.id) ? value : c.width;
+          moved.set(c.id, { ...c, x: c.x + shift, width });
+          shift += width - c.width;
+        }
+        return { ...p, furniture: p.furniture.map((c) => moved.get(c.id) ?? c) };
+      });
+      return;
+    }
+    if ((field === 'height' || field === 'depth') && linked[field].has(id)) {
+      // Łańcuszek — ten sam wymiar dla korpusów z rzędu, które miały ten sam wymiar co ten.
+      store.set((p) => {
+        const ids = new Set(linkedIds(field, id, p));
+        return { ...p, furniture: p.furniture.map((c) => (ids.has(c.id) ? { ...c, [field]: value } : c)) };
+      });
+      return;
+    }
+    if (field === 'ceilingGap') {
+      // Luz do sufitu — korpus zmniejsza się tylko wtedy, gdy z nowym luzem by się nie zmieścił.
+      store.set((p) => updateCabinetCeilingGap(p, id, (c) => setPath(c, field, value)));
+      return;
+    }
+    if (field === 'legs.enabled') {
+      // Dodanie / usunięcie nóżek — pytamy, czy zachować wysokość zabudowy, czy ją zmienić o nóżki.
+      // Przy włączonym łańcuszku — też w połączonych korpusach.
+      input.checked = !value; // zmieni się po odpowiedzi (przy następnym odświeżeniu karty)
+      const p = store.get();
+      const cabinet = p.furniture.find((c) => c.id === id);
+      const h = cabinet.legs?.height ?? 80;
+      const ids = linkedIds('legs', id, p);
+      // Usuwanie: korpusy, w których pamiętamy, jak dodano nóżki, wracają do stanu sprzed ich dodania
+      // bez pytania — pytamy tylko o te, w których tego nie wiadomo (np. starszy projekt, przykład).
+      const unknown = value ? ids : ids.filter((cid) => !p.furniture.find((c) => c.id === cid).legs?.mode);
+      if (!unknown.length) {
+        store.set((proj) => setLegs(proj, ids, false, h, null));
+        return;
+      }
+      legsDialog.ask({ legHeight: h, adding: value, count: unknown.length }).then((mode) => {
+        if (mode) store.set((proj) => setLegs(proj, ids, value, h, mode));
+      });
+      return;
+    }
+    if (field === 'legs.height' && linked.legs.has(id)) {
+      // Łańcuszek — ta sama wysokość nóżek w połączonych korpusach.
+      store.set((p) =>
+        linkedIds('legs', id, p).reduce((proj, cid) => updateCabinetRefit(proj, cid, (c) => setPath(c, field, value)), p),
+      );
+      return;
+    }
+    if (field.startsWith('slopeTop.') || field.startsWith('legs.')) {
+      // Włączenie / wyłączenie skośnej góry, zmiana luzu do skosu albo nóżek — korpus o wysokości automatycznej
+      // dopasowuje się na nowo (z przodu sięga skosu albo zniża się do najniższego miejsca);
+      // korpus z wysokością ręczną zniża się tylko wtedy, gdy przestałby się mieścić pod sufitem.
       store.set((p) => updateCabinetRefit(p, id, (c) => setPath(c, field, value)));
       return;
     }
@@ -841,7 +955,7 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
     // Wyczyszczony luz do sufitu wraca do luzu z przestrzeni.
     if (input.dataset.f === 'ceilingGap' && input.value.trim() === '' && gapCabinet) {
       input.classList.remove('invalid');
-      store.set((p) => updateCabinetRefit(p, gapCabinet, (c) => ({ ...c, ceilingGap: null })));
+      store.set((p) => updateCabinetCeilingGap(p, gapCabinet, (c) => ({ ...c, ceilingGap: null })));
       return;
     }
     if (input.dataset.f === 'slopeTop.gap' && input.value.trim() === '' && gapCabinet) {
@@ -883,9 +997,24 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
     if (id && ui.get().selectedId !== id) ui.set({ ...ui.get(), selectedId: id, selectedFronts: [] });
   };
   root.addEventListener('focusin', (e) => selectFrom(e.target));
+  // Ctrl + klik w kartę korpusu (poza polami i przyciskami) — dodaje korpus do zaznaczenia albo go
+  // z niego usuwa, jak Ctrl + klik w widoku 3D. mousedown — żeby nie przenosić fokusu (focusin
+  // zaznaczyłby wtedy tylko ten korpus).
+  root.addEventListener(
+    'mousedown',
+    (e) => {
+      if (!(e.ctrlKey || e.metaKey) || e.target.closest('input, select, textarea, button')) return;
+      const id = e.target.closest('[data-kind="cabinet"]')?.dataset.id;
+      if (!id) return;
+      e.preventDefault();
+      e.stopPropagation();
+      ui.set({ ...ui.get(), ...toggleCabinet(ui.get(), id), selectedFronts: [] });
+    },
+    true,
+  );
 
   root.addEventListener('click', (e) => {
-    selectFrom(e.target);
+    if (!(e.ctrlKey || e.metaKey)) selectFrom(e.target); // Ctrl + klik — obsłużony przy mousedown
     const {
       action, remove, resetPart, slide, removeStiff, toggleHidden, togglePartHidden,
     } = e.target.dataset ?? {};
@@ -927,8 +1056,14 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
       updateCabinet(id, (c) => spreadShelvesEvenly(c)); // równy rozkład dotyczy wszystkich półek
     } else if (e.target.closest('[data-reset-shelf-depth]') && id) {
       patchShelf({ depth: null });
+    } else if (e.target.closest('[data-link]') && id) {
+      e.preventDefault(); // przycisk w etykiecie pola — bez zaznaczania pola / przenoszenia do niego kursora
+      const set = linked[e.target.closest('[data-link]').dataset.link];
+      if (set.has(id)) set.delete(id);
+      else set.add(id);
+      updateStatus(store.get());
     } else if (e.target.closest('[data-reset-ceiling-gap]') && id) {
-      store.set((p) => updateCabinetRefit(p, id, (c) => ({ ...c, ceilingGap: null })));
+      store.set((p) => updateCabinetCeilingGap(p, id, (c) => ({ ...c, ceilingGap: null })));
     } else if (e.target.closest('[data-reset-slope-gap]') && id) {
       store.set((p) => updateCabinetRefit(p, id, (c) => setPath(c, 'slopeTop.gap', null)));
     } else if (e.target.closest('[data-collapse-card]') && id) {
@@ -984,8 +1119,9 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
   // Podświetlenie zaznaczonego korpusu; przy `reveal` przełączamy zakładkę i przewijamy do niego.
   function syncSelection(meta = {}) {
     const { selectedId } = ui.get();
+    const ids = selectedCabinetIds(ui.get());
     root.querySelectorAll('[data-kind="cabinet"]').forEach((el) => {
-      el.classList.toggle('selected', el.dataset.id === selectedId);
+      el.classList.toggle('selected', ids.has(el.dataset.id));
     });
     if (meta.reveal && selectedId) {
       tabs.activate('furniture-panel');

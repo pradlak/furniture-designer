@@ -3,6 +3,7 @@ import { MM } from './units.js';
 import { snapPosition } from '../model/placement.js';
 import { cabinetPanels, legHeight, shelfKey, setShelfY } from '../model/furniture.js';
 import { createContextMenu } from '../ui/contextMenu.js';
+import { selectedCabinetIds, toggleCabinet } from '../state/selection.js';
 
 const CLICK_TOLERANCE_PX = 4;
 
@@ -158,16 +159,23 @@ export function attachCabinetInteraction(viewer, store, ui) {
       // zaznaczenia albo z niego usuwany (bez przeciągania).
       const selectedPart = isFront(hit) ? hit.panelKey : null;
       const frontId = selectedPart ? `${hit.id}:${selectedPart}` : null;
-      if (frontId && (e.ctrlKey || e.metaKey)) {
-        const current = ui.get().selectedFronts ?? [];
-        const next = current.includes(frontId) ? current.filter((f) => f !== frontId) : [...current, frontId];
-        ui.set({ ...ui.get(), selectedId: hit.id, selectedFronts: next }, { reveal: true });
+      if (e.ctrlKey || e.metaKey) {
+        // Ctrl + klik: korpus dodawany do zaznaczenia albo z niego usuwany (wymiary liczą się dla całej
+        // grupy); kliknięty front — tak samo w zaznaczeniu frontów.
+        const state = ui.get();
+        const current = state.selectedFronts ?? [];
+        const fronts = !frontId ? current : current.includes(frontId) ? current.filter((f) => f !== frontId) : [...current, frontId];
+        // front zaznaczony / odznaczony razem z korpusem
+        const inGroup = selectedCabinetIds(state).has(hit.id);
+        const frontAdded = frontId && fronts.includes(frontId);
+        const cabinets = inGroup && frontAdded ? { selectedId: hit.id, selectedIds: [...selectedCabinetIds(state)] } : toggleCabinet(state, hit.id);
+        ui.set({ ...state, ...cabinets, selectedFronts: fronts }, { reveal: true });
         drag = { select: true }; // tylko zaznaczenie — bez obracania widoku i przesuwania
         viewer.controls.enabled = false;
         el.setPointerCapture(e.pointerId);
         return;
       }
-      ui.set({ ...ui.get(), selectedId: hit.id, selectedFronts: frontId ? [frontId] : [] }, { reveal: true });
+      ui.set({ ...ui.get(), selectedId: hit.id, selectedIds: [hit.id], selectedFronts: frontId ? [frontId] : [] }, { reveal: true });
       const project = store.get();
       const cabinet = project.furniture.find((c) => c.id === hit.id);
       const shelfHit = isShelf(hit);

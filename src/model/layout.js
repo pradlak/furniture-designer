@@ -219,6 +219,44 @@ export function updateCabinetRefit(project, cabinetId, fn) {
   return { ...next, furniture: next.furniture.map((c) => (c.id === cabinetId ? refit : c)) };
 }
 
+// Dodanie albo usunięcie nóżek (enabled; przy dodaniu — o wysokości legHeight) w korpusach `cabinetIds`.
+// mode: 'shift' — korpus zostaje, cała zabudowa jest wyższa / niższa o nóżki (o ile mieści się pod
+//                 sufitem — inaczej korpus zniża się tyle, ile trzeba),
+//       'keep'  — zabudowa zachowuje wysokość: korpus jest niższy / wyższy o wysokość nóżek.
+// Przy dodaniu wybór zapamiętujemy (legs.mode). Przy usuwaniu korpus z zapamiętanym wyborem
+// używa go (wraca do stanu sprzed dodania nóżek); `mode` dotyczy tylko korpusów bez zapamiętanego wyboru.
+export function setLegs(project, cabinetIds, enabled, legHeight, mode) {
+  const ids = new Set(cabinetIds);
+  let next = project;
+  for (const c of project.furniture) {
+    if (!ids.has(c.id)) continue;
+    const oldLegs = c.legs?.enabled ? c.legs.height : 0;
+    const { mode: remembered, ...rest } = c.legs ?? {};
+    const cabMode = !enabled && c.legs?.enabled && remembered ? remembered : (mode ?? 'keep');
+    const legs = enabled ? { ...rest, enabled: true, height: legHeight, mode: cabMode } : { ...rest, enabled: false };
+    const changed = { ...c, legs };
+    const delta = (enabled ? legHeight : 0) - oldLegs;
+    const wanted = cabMode === 'keep' ? c.height - delta : c.height;
+    const height = Math.max(CABINET_LIMITS.sizeMin, Math.min(wanted, availableHeight(changed, next)));
+    next = { ...next, furniture: next.furniture.map((x) => (x.id === c.id ? { ...changed, height } : x)) };
+  }
+  return next;
+}
+
+// Zmiana luzu do sufitu korpusu: luz uwzględniamy tylko wtedy, gdy jest taka potrzeba.
+// Korpus, który sięga sufitu / skosu, dalej do niego dochodzi (z nowym luzem). Niższy korpus
+// zostaje, jaki jest — zmniejsza się tylko wtedy, gdy z nowym luzem przestałby się mieścić
+// (np. korpus 2400 mm w pokoju 2500 mm ma już 100 mm luzu — wpisanie 10 mm go nie zmienia).
+export function updateCabinetCeilingGap(project, cabinetId, fn) {
+  const before = byId(project, cabinetId);
+  const atTop = before.height >= availableHeight(before, project) - 1;
+  const changed = fn(before);
+  const next = { ...project, furniture: project.furniture.map((c) => (c.id === cabinetId ? changed : c)) };
+  const available = availableHeight(changed, next);
+  const height = atTop ? available : Math.min(changed.height, available);
+  return { ...next, furniture: next.furniture.map((c) => (c.id === cabinetId ? { ...changed, height } : c)) };
+}
+
 // Zmiana przestrzeni (np. skosu: luz, ścianka kolankowa, długość, strona; dodanie / usunięcie skosu):
 // korpusy z wysokością automatyczną dopasowują się do nowego kształtu. Pozostałych nie zmieniamy
 // (żeby chwilowe wartości podczas wpisywania nie zmniejszały ich na stałe).

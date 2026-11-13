@@ -4,6 +4,7 @@ import { cabinetPanels, cabinetIssues, cabinetLegs, HANDLE_GROOVE_SIZE } from '.
 import { trimSegments, trimIssues, trimAllowance } from '../model/trims.js';
 import { trimMaterial, edgeColorOf, coreColorOf } from '../model/materials.js';
 import { projectSolids, panelEdgeSet, trimEdgeSet, TRIM_THICKNESS_AXIS } from '../model/edges.js';
+import { buildCabinetDimensions } from './furnitureDims.js';
 
 // Materiały ścian prostopadłościanu płyty (kolejność ścian BoxGeometry: +x, −x, +y, −y, +z, −z):
 // lica (ściany prostopadłe do osi grubości) w kolorze płyty, krawędzie — w kolorze rdzenia.
@@ -190,7 +191,7 @@ function addAllowance(group, box, min, max, space) {
 // Zaznaczony korpus ma niebieskie krawędzie, korpus z problemami — czerwone.
 // selectedFronts — zbiór zaznaczonych frontów („idKorpusu:front-N”, kliknięte w 3D) — wyróżnione na pomarańczowo.
 // isFrontOpen(id) — czy front jest otwarty; domyślnie według przełącznika „otwarte”.
-export function buildFurniture(project, selectedId = null, selectedFronts = new Set(), isFrontOpen = () => project.view?.openFronts === true) {
+export function buildFurniture(project, selectedIds = new Set(), selectedFronts = new Set(), isFrontOpen = () => project.view?.openFronts === true) {
   const group = new THREE.Group();
   const disposables = [];
   group.userData.disposables = disposables;
@@ -229,7 +230,7 @@ export function buildFurniture(project, selectedId = null, selectedFronts = new 
   let solids = null; // bryły projektu do wyznaczania widocznych krawędzi (liczone raz, gdy potrzebne)
   for (const cabinet of project.furniture.filter((c) => !c.hidden)) {
     const hasIssues = cabinetIssues(cabinet, project).length > 0;
-    const edgeColor = cabinet.id === selectedId ? EDGE_SELECTED : hasIssues ? EDGE_BAD : EDGE_OK;
+    const edgeColor = selectedIds.has(cabinet.id) ? EDGE_SELECTED : hasIssues ? EDGE_BAD : EDGE_OK;
     const edgeMat = new THREE.LineBasicMaterial({ color: edgeColor });
     disposables.push(edgeMat);
 
@@ -317,5 +318,8 @@ export function buildFurniture(project, selectedId = null, selectedFronts = new 
       addAllowance(group, box, i === 0 ? a.min : 0, i === segments.length - 1 ? a.max : 0, project.space);
     });
   }
+  // Wymiary zaznaczonych korpusów (jeden — nóżki, korpus, razem, szerokość, głębokość; kilka — dla całej grupy).
+  const selected = view.showDims !== false ? project.furniture.filter((c) => selectedIds.has(c.id) && !c.hidden) : [];
+  if (selected.length) group.add(buildCabinetDimensions(selected, project.space));
   return group;
 }

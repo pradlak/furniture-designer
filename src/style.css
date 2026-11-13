@@ -126,6 +126,8 @@ input:disabled, select:disabled { background: #f3f4f6; color: var(--muted); }
 .cab-trim-height { display: flex; align-items: center; gap: 4px; color: var(--muted); }
 .cab-trim-height input { width: 64px; padding: 2px 5px; }
 button.icon.tiny { padding: 0 4px; line-height: 14px; font-size: 11px; margin-left: 2px; }
+button.link-btn { opacity: 0.45; }
+button.link-btn.on { opacity: 1; background: var(--accent); border-color: var(--accent); color: #fff; }
 .auto-tag { color: #15803d; font-weight: 600; }
 [hidden] { display: none !important; }
 .item.trim { border-left-color: #7c6a55; }
@@ -242,6 +244,8 @@ select {
   font-weight: 500;
   white-space: nowrap;
 }
+/* wymiary mebli (zaznaczonego korpusu) — niebieskie, odróżniają się od wymiarów przestrzeni */
+.dim-label-accent { border-color: #2563eb; color: #1d4ed8; }
 
 @media (max-width: 760px) {
   .layout { flex-direction: column-reverse; }
@@ -494,7 +498,10 @@ body.resizing .viewport { pointer-events: none; }
 .welcome-note { font-size: 13px; color: var(--muted); }
 .welcome-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
 /* --- ekran powitalny: karty wyboru z obrazkami --- */
-.welcome:not(.new-project) { max-width: 660px; }
+.welcome:not(.new-project):not(.legs-dialog) { max-width: 660px; }
+.legs-dialog { max-width: 480px; }
+.legs-dialog-all { margin-top: 10px; font-size: 13px; }
+.legs-dialog-all[hidden] { display: none; }
 .welcome-choices-title { margin: 14px 0 8px; font-size: 15px; }
 .welcome-choices { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
 @media (max-width: 560px) { .welcome-choices { grid-template-columns: 1fr; } }
@@ -580,3 +587,41 @@ button.primary:hover { color: #fff; filter: brightness(1.1); }
 .edge-color-row[hidden] { display: none; }
 .edge-color-row input[type='color'] { width: 32px; height: 24px; padding: 0 2px; border: 1px solid var(--border); border-radius: 4px; background: #fff; }
 .edge-color-row input[type='color']:disabled { opacity: 0.4; }
+
+/* --- komunikaty (np. zmiana rozmiaru korpusu przy okazji innej zmiany) --- */
+.notices {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 90;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: min(380px, calc(100vw - 32px));
+  pointer-events: none;
+}
+.notice {
+  position: relative;
+  padding: 10px 30px 10px 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--accent);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  font-size: 13px;
+  line-height: 1.45;
+  pointer-events: auto;
+}
+.notice ul { margin: 4px 0 0; padding-left: 18px; }
+.notice-close {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  padding: 0 6px;
+  border: 0;
+  background: none;
+  font-size: 16px;
+  line-height: 20px;
+  cursor: pointer;
+  color: var(--muted);
+}

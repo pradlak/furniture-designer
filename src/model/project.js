@@ -10,7 +10,7 @@ const STORAGE_KEY = 'furnitureDesigner.project';
 // Widoczność w 3D: ściany i całe grupy elementów (blaty; blendy — wspólne i boczne; fronty).
 export function createDefaultView() {
   // openFronts — drzwi otwarte i szuflady wysunięte (tylko widok)
-  return { showWalls: true, showCountertops: true, showBlends: true, showFronts: true, openFronts: false };
+  return { showWalls: true, showCountertops: true, showBlends: true, showFronts: true, openFronts: false, showDims: true };
 }
 
 export function createDefaultProject() {
@@ -43,6 +43,7 @@ export function normalizeProject(raw) {
       showBlends: raw.view?.showBlends !== false,
       showFronts: raw.view?.showFronts !== false,
       openFronts: raw.view?.openFronts === true,
+      showDims: raw.view?.showDims !== false,
     },
   };
 
