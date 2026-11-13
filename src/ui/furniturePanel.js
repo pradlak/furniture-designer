@@ -119,7 +119,18 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
     width: (a, b) => Math.abs(a.width - b.width) < 0.5,
     legs: (a, b) => legHeight(a) === legHeight(b),
   };
+  // Wymiary, których łańcuszki włączają się same przy zaznaczeniu kilku korpusów (Ctrl + klik).
+  const DIM_LINKS = ['width', 'height', 'depth'];
+  let wasMulti = false; // czy przy ostatniej zmianie zaznaczenia było zaznaczonych kilka korpusów
+  // Kilka zaznaczonych korpusów, w tym ten — łańcuszek wymiaru łączy wtedy zaznaczone korpusy
+  // (bez względu na rząd i dotychczasowy wymiar); null — zwykły łańcuszek (rząd, ta sama wartość).
+  const selectionGroup = (kind, cabinet, project) => {
+    const ids = selectedCabinetIds(ui.get());
+    if (!DIM_LINKS.includes(kind) || ids.size < 2 || !ids.has(cabinet.id)) return null;
+    return project.furniture.filter((x) => ids.has(x.id) && x.id !== cabinet.id);
+  };
   const linkTwins = (kind, cabinet, project) =>
+    selectionGroup(kind, cabinet, project) ??
     rowOf(cabinet.id, project)
       .filter((cid) => cid !== cabinet.id)
       .map((cid) => project.furniture.find((x) => x.id === cid))
@@ -573,11 +584,14 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
         const on = linked[kind].has(c.id);
         const n = linkTwins(kind, c, project).length;
         const [what, offText, which] = LINK_TEXT[kind];
+        const cabs = `${n} ${n === 1 ? 'korpus' : n > 1 && n < 5 ? 'korpusy' : 'korpusów'}`;
         btn.classList.toggle('on', on);
         btn.setAttribute('aria-pressed', String(on));
-        btn.title = on
-          ? `Połączone: ${what} też ${n} ${n === 1 ? 'korpus' : n > 1 && n < 5 ? 'korpusy' : 'korpusów'} w rzędzie ${which}. Kliknij, żeby rozłączyć.`
-          : `${offText} (teraz: ${n}).`;
+        btn.title = !on
+          ? `${offText} (teraz: ${n}).`
+          : selectionGroup(kind, c, project)
+            ? `Połączone z zaznaczonymi korpusami: ${what} też ${cabs} (zaznaczone z Ctrl). Kliknij, żeby rozłączyć.`
+            : `Połączone: ${what} też ${cabs} w rzędzie ${which}. Kliknij, żeby rozłączyć.`;
       }
       // Luz: własny korpusu albo (pusty) — ze skosu; pokazujemy wartość, która obowiązuje.
       const gapInput = el.querySelector('[data-f="slopeTop.gap"]');
@@ -862,17 +876,21 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
     if (field === 'width' && linked.width.has(id)) {
       // Łańcuszek szerokości — ta sama szerokość dla korpusów z rzędu o tej samej szerokości; korpusy
       // rzędu na prawo od zmienionych przesuwają się o sumę zmian, żeby dalej stały bok przy boku.
+      // Przy zaznaczonych korpusach z kilku rzędów — każdy rząd przesuwa się osobno.
       store.set((p) => {
         const ids = new Set(linkedIds('width', id, p));
-        const row = rowOf(id, p)
-          .map((cid) => p.furniture.find((c) => c.id === cid))
-          .sort((a, b) => a.x - b.x);
         const moved = new Map();
-        let shift = 0;
-        for (const c of row) {
-          const width = ids.has(c.id) ? value : c.width;
-          moved.set(c.id, { ...c, x: c.x + shift, width });
-          shift += width - c.width;
+        for (const cid of ids) {
+          if (moved.has(cid)) continue; // rząd już przeliczony
+          const row = rowOf(cid, p)
+            .map((rid) => p.furniture.find((c) => c.id === rid))
+            .sort((a, b) => a.x - b.x);
+          let shift = 0;
+          for (const c of row) {
+            const width = ids.has(c.id) ? value : c.width;
+            moved.set(c.id, { ...c, x: c.x + shift, width });
+            shift += width - c.width;
+          }
         }
         return { ...p, furniture: p.furniture.map((c) => moved.get(c.id) ?? c) };
       });
@@ -994,7 +1012,7 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
   const selectFrom = (target) => {
     const id = target.closest?.('[data-kind="cabinet"]')?.dataset.id;
     // wybór innego korpusu w panelu czyści zaznaczenie frontów (żeby Delete nie usunął ich niechcący)
-    if (id && ui.get().selectedId !== id) ui.set({ ...ui.get(), selectedId: id, selectedFronts: [] });
+    if (id && ui.get().selectedId !== id) ui.set({ ...ui.get(), selectedId: id, selectedFronts: [], selectedBlends: [] });
   };
   root.addEventListener('focusin', (e) => selectFrom(e.target));
   // Ctrl + klik w kartę korpusu (poza polami i przyciskami) — dodaje korpus do zaznaczenia albo go
@@ -1008,7 +1026,7 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
       if (!id) return;
       e.preventDefault();
       e.stopPropagation();
-      ui.set({ ...ui.get(), ...toggleCabinet(ui.get(), id), selectedFronts: [] });
+      ui.set({ ...ui.get(), ...toggleCabinet(ui.get(), id), selectedFronts: [], selectedBlends: [] });
     },
     true,
   );
@@ -1123,6 +1141,13 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
     root.querySelectorAll('[data-kind="cabinet"]').forEach((el) => {
       el.classList.toggle('selected', ids.has(el.dataset.id));
     });
+    // Kilka zaznaczonych korpusów — łańcuszki wymiarów włączają się same (łączą zaznaczone korpusy);
+    // powrót do jednego zaznaczonego — wyłączają się.
+    const multi = ids.size > 1;
+    if (multi) DIM_LINKS.forEach((k) => ids.forEach((cid) => linked[k].add(cid)));
+    else if (wasMulti) DIM_LINKS.forEach((k) => linked[k].clear());
+    if (multi !== wasMulti || multi) updateStatus(store.get());
+    wasMulti = multi;
     if (meta.reveal && selectedId) {
       tabs.activate('furniture-panel');
       if (collapsed.has(selectedId)) setCollapsed([selectedId], false); // pokazujemy zaznaczony korpus
@@ -1141,5 +1166,16 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
       } else updateStatus(project);
     },
     syncSelection,
+    // Pokazuje sekcję karty korpusu (np. „legs” po zaznaczeniu nóżek w 3D): zakładka, rozwinięta karta
+    // i sekcja, przewinięcie do niej.
+    revealSection(cabinetId, key) {
+      tabs.activate('furniture-panel');
+      if (collapsed.has(cabinetId)) setCollapsed([cabinetId], false);
+      const section = root.querySelector(`[data-kind="cabinet"][data-id="${cabinetId}"] [data-section="${key}"]`);
+      if (!section) return;
+      sectionState.set(`${cabinetId}:${key}`, true);
+      section.open = true;
+      section.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    },
   };
 }

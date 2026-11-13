@@ -37,10 +37,11 @@ export function attachCabinetInteraction(viewer, store, ui) {
     for (const hit of hits) {
       let o = hit.object;
       let panelKey = null;
-      while (o && !o.userData.cabinetId) {
+      while (o && !o.userData.cabinetId && !o.userData.trimId) {
         panelKey ??= o.userData.panelKey ?? null;
         o = o.parent;
       }
+      if (o?.userData.trimId) return { trimId: o.userData.trimId, point: hit.point }; // blenda wspólna / blat
       if (o) return { id: o.userData.cabinetId, panelKey, point: hit.point };
     }
     return null;
@@ -48,6 +49,17 @@ export function attachCabinetInteraction(viewer, store, ui) {
 
   const isShelf = (hit) => hit?.panelKey?.startsWith('shelf-');
   const isFront = (hit) => hit?.panelKey?.startsWith('front-');
+  // Zaznaczany element (poza frontami): blenda boczna (płyta korpusu z grupy „blend”: „idKorpusu:klucz”),
+  // nóżki korpusu („idKorpusu:legs” — wszystkie naraz) albo blenda wspólna / blat („trim:id”).
+  const blendIdOf = (hit) => {
+    if (hit?.trimId) return `trim:${hit.trimId}`;
+    if (!hit?.panelKey) return null;
+    if (hit.panelKey.startsWith('leg-')) return `${hit.id}:legs`; // wszystkie nóżki korpusu naraz
+    const cabinet = store.get().furniture.find((c) => c.id === hit.id);
+    const panel = cabinet && cabinetPanels(cabinet, store.get()).find((p) => p.key === hit.panelKey);
+    return panel?.group === 'blend' ? `${hit.id}:${hit.panelKey}` : null;
+  };
+  const toggleIn = (list, id) => (list.includes(id) ? list.filter((x) => x !== id) : [...list, id]);
 
   // Otwarcie frontu („idKorpusu:front-N”): przełączone ręcznie albo według „otwarte” na pasku.
   const isFrontOpen = (frontId) => ui.get().frontOpen?.[frontId] ?? store.get().view?.openFronts === true;
@@ -159,6 +171,27 @@ export function attachCabinetInteraction(viewer, store, ui) {
       // zaznaczenia albo z niego usuwany (bez przeciągania).
       const selectedPart = isFront(hit) ? hit.panelKey : null;
       const frontId = selectedPart ? `${hit.id}:${selectedPart}` : null;
+      const blendId = blendIdOf(hit);
+      const selectOnly = () => {
+        drag = { select: true }; // tylko zaznaczenie — bez obracania widoku i przesuwania
+        viewer.controls.enabled = false;
+        el.setPointerCapture(e.pointerId);
+      };
+      if (hit.trimId) {
+        // Blenda wspólna (dolna, górna) albo blat: klik zaznacza ją (z Ctrl — dodaje / usuwa z zaznaczenia).
+        const state = ui.get();
+        const blends = e.ctrlKey || e.metaKey ? toggleIn(state.selectedBlends ?? [], blendId) : [blendId];
+        const keepCabinets = e.ctrlKey || e.metaKey ? {} : { selectedId: null, selectedIds: [], selectedFronts: [] };
+        ui.set({ ...state, ...keepCabinets, selectedBlends: blends });
+        selectOnly();
+        return;
+      }
+      if (blendId && (e.ctrlKey || e.metaKey)) {
+        // Ctrl + klik w blendę boczną — dodaje ją do zaznaczenia blend albo z niego usuwa.
+        ui.set({ ...ui.get(), selectedBlends: toggleIn(ui.get().selectedBlends ?? [], blendId) });
+        selectOnly();
+        return;
+      }
       if (e.ctrlKey || e.metaKey) {
         // Ctrl + klik: korpus dodawany do zaznaczenia albo z niego usuwany (wymiary liczą się dla całej
         // grupy); kliknięty front — tak samo w zaznaczeniu frontów.
@@ -175,7 +208,10 @@ export function attachCabinetInteraction(viewer, store, ui) {
         el.setPointerCapture(e.pointerId);
         return;
       }
-      ui.set({ ...ui.get(), selectedId: hit.id, selectedIds: [hit.id], selectedFronts: frontId ? [frontId] : [] }, { reveal: true });
+      ui.set(
+        { ...ui.get(), selectedId: hit.id, selectedIds: [hit.id], selectedFronts: frontId ? [frontId] : [], selectedBlends: blendId ? [blendId] : [] },
+        { reveal: true },
+      );
       const project = store.get();
       const cabinet = project.furniture.find((c) => c.id === hit.id);
       const shelfHit = isShelf(hit);
@@ -222,7 +258,7 @@ export function attachCabinetInteraction(viewer, store, ui) {
     setRay(e);
     if (!drag) {
       const hover = pickCabinet();
-      el.style.cursor = isShelf(hover) ? 'ns-resize' : isFront(hover) ? 'pointer' : hover ? 'grab' : '';
+      el.style.cursor = isShelf(hover) ? 'ns-resize' : isFront(hover) || hover?.trimId ? 'pointer' : hover ? 'grab' : '';
       return;
     }
     if (drag.select) return; // Ctrl + klik na froncie — tylko zaznaczanie
@@ -263,7 +299,7 @@ export function attachCabinetInteraction(viewer, store, ui) {
       viewer.controls.enabled = true;
       el.releasePointerCapture(e.pointerId);
     } else if (down && !moved && e.button === 0) {
-      ui.set({ ...ui.get(), selectedId: null, selectedFronts: [] }); // klik w puste miejsce
+      ui.set({ ...ui.get(), selectedId: null, selectedFronts: [], selectedBlends: [] }); // klik w puste miejsce
     }
     down = null;
   });

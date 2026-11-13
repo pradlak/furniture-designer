@@ -31,6 +31,10 @@ export function initShortcuts(store, ui) {
       return;
     }
 
+    if (key === 'escape') {
+      ui.set({ ...ui.get(), selectedId: null, selectedFronts: [], selectedBlends: [] });
+      return;
+    }
     const id = ui.get().selectedId;
     if (!id) return;
     const step = e.shiftKey ? 100 : 10;
@@ -66,11 +70,11 @@ export function initShortcuts(store, ui) {
           furniture: p.furniture.map((c) => (byCabinet.has(c.id) ? removeFronts(c, byCabinet.get(c.id)) : c)),
         }));
         ui.set({ ...ui.get(), selectedFronts: [] });
+      } else if ((ui.get().selectedBlends ?? []).length) {
+        // zaznaczona blenda — Delete nie usuwa całego korpusu (blendę usuwa się w zakładce „Blendy i blaty”)
       } else {
         store.set((p) => ({ ...p, furniture: p.furniture.filter((c) => c.id !== id) }));
       }
-    } else if (key === 'escape') {
-      ui.set({ ...ui.get(), selectedId: null, selectedFronts: [] });
     }
   });
 }

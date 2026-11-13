@@ -83,7 +83,7 @@ export function createTrimsPanel(root, store, ui) {
       <p class="hint">Po bokach korpusu: blenda boczna — pas z przodu przy ścianie (opcjonalnie z panelem przy ścianie),
         panel na pełną wysokość albo cokół boczny. Każdy korpus ma swoją kartę.</p>
       <div class="items">
-        ${project.furniture.map(renderSideBlendCard).join('') || '<p class="empty">Brak korpusów.</p>'}
+        ${project.furniture.map((c) => renderSideBlendCard(c, project)).join('') || '<p class="empty">Brak korpusów.</p>'}
       </div>
       ${GROUPS.map(
         (g) => `
@@ -280,12 +280,15 @@ export function createTrimsPanel(root, store, ui) {
   function syncSelection() {
     const project = store.get();
     const selected = project.furniture.find((c) => c.id === ui.get().selectedId);
+    // zaznaczone w 3D blendy (wspólne „trim:id”, boczne „idKorpusu:klucz”) — ich karty też podświetlone
+    const picked = ui.get().selectedBlends ?? [];
     root.querySelectorAll('[data-kind="trim"]').forEach((el) => {
       const t = project.trims.find((x) => x.id === el.dataset.id);
-      el.classList.toggle('related', !!(selected && t?.cabinetIds.includes(selected.id)));
+      el.classList.toggle('related', !!(selected && t?.cabinetIds.includes(selected.id)) || picked.includes(`trim:${el.dataset.id}`));
     });
     root.querySelectorAll('[data-kind="side-blends"]').forEach((el) => {
-      el.classList.toggle('related', el.dataset.id === selected?.id);
+      const sidePicked = picked.some((id) => id.startsWith(`${el.dataset.id}:`) && !id.endsWith(':legs'));
+      el.classList.toggle('related', el.dataset.id === selected?.id || sidePicked);
     });
     const target = root.querySelector('.add-target');
     if (!target) return;
@@ -415,6 +418,13 @@ export function createTrimsPanel(root, store, ui) {
       syncSelection();
       const card = root.querySelector(`[data-kind="side-blends"][data-id="${cabinetId}"]`);
       cardCollapse.expand(card); // karta mogła być zwinięta
+      card?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    },
+    // Przewija do karty blendy wspólnej / blatu (po zaznaczeniu jej w 3D) i ją rozwija.
+    revealTrim(trimId) {
+      syncSelection();
+      const card = root.querySelector(`[data-kind="trim"][data-id="${trimId}"]`);
+      cardCollapse.expand(card);
       card?.scrollIntoView({ block: 'start', behavior: 'smooth' });
     },
   };

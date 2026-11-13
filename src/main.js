@@ -71,8 +71,8 @@ attachCabinetInteraction(viewer, store, ui);
 initShortcuts(store, ui);
 initPanelResizer(document.getElementById('panel-resizer'), document.querySelector('.panel'));
 
-// Zaznaczone fronty (kliknięte w 3D, z Ctrl — kilka) — wyróżnione: zbiór „idKorpusu:front-N”.
-const selectedFronts = () => new Set(ui.get().selectedFronts ?? []);
+// Zaznaczone elementy (wyróżnione na pomarańczowo, z wymiarami): fronty i blendy (boczne „idKorpusu:klucz”, wspólne „trim:id”).
+const selectedFronts = () => new Set([...(ui.get().selectedFronts ?? []), ...(ui.get().selectedBlends ?? [])]);
 // Otwarcie frontów: pojedynczy front przełączony przeciągnięciem (ui.frontOpen), a domyślnie —
 // według przełącznika „otwarte” na pasku.
 const isFrontOpen = (id) => ui.get().frontOpen?.[id] ?? store.get().view?.openFronts === true;
@@ -101,8 +101,30 @@ store.subscribe((project, meta) => {
   saveProject(project); // autozapis w przeglądarce
 });
 
-ui.subscribe((_state, meta) => {
+// Po zaznaczeniu w 3D blendy albo nóżek — w panelu po lewej pokazujemy ich ustawienia:
+// blenda wspólna / blat → karta w „Blendy i blaty”, blenda boczna → karta blend bocznych korpusu,
+// nóżki → sekcja „Nóżki” w karcie korpusu.
+let lastPicked = null;
+function revealPicked(id) {
+  if (id.startsWith('trim:')) {
+    tabs.activate('trims-panel');
+    trimsPanel.revealTrim(id.slice(5));
+    return;
+  }
+  const [cabinetId, key] = id.split(':');
+  if (key === 'legs') furniturePanel.revealSection(cabinetId, 'legs');
+  else {
+    tabs.activate('trims-panel');
+    trimsPanel.reveal(cabinetId);
+  }
+}
+
+ui.subscribe((state, meta) => {
   redraw();
   furniturePanel.syncSelection(meta);
   trimsPanel.syncSelection();
+  // ostatnio dodany do zaznaczenia element (klik albo Ctrl + klik)
+  const newest = (state.selectedBlends ?? []).at(-1) ?? null;
+  if (newest && newest !== lastPicked) revealPicked(newest);
+  lastPicked = newest;
 });

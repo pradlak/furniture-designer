@@ -1,10 +1,10 @@
 import * as THREE from 'three';
 import { MM, toScene } from './units.js';
-import { cabinetPanels, cabinetIssues, cabinetLegs, HANDLE_GROOVE_SIZE } from '../model/furniture.js';
-import { trimSegments, trimIssues, trimAllowance } from '../model/trims.js';
+import { cabinetPanels, cabinetIssues, cabinetLegs, legHeight, HANDLE_GROOVE_SIZE } from '../model/furniture.js';
+import { trimSegments, trimIssues, trimAllowance, trimBox } from '../model/trims.js';
 import { trimMaterial, edgeColorOf, coreColorOf } from '../model/materials.js';
 import { projectSolids, panelEdgeSet, trimEdgeSet, TRIM_THICKNESS_AXIS } from '../model/edges.js';
-import { buildCabinetDimensions } from './furnitureDims.js';
+import { buildCabinetDimensions, buildPartDimensions, buildTotalDimensions } from './furnitureDims.js';
 
 // Materiały ścian prostopadłościanu płyty (kolejność ścian BoxGeometry: +x, −x, +y, −y, +z, −z):
 // lica (ściany prostopadłe do osi grubości) w kolorze płyty, krawędzie — w kolorze rdzenia.
@@ -187,8 +187,48 @@ function addAllowance(group, box, min, max, space) {
   }
 }
 
+// Zaznaczony element (front, blenda): kolor przesunięty w stronę pomarańczowego.
+function pickedMaterial(material) {
+  // obrzeże w tym samym kolorze co zaznaczona płyta (edgeColor: null)
+  return { ...material, color: `#${new THREE.Color(material.color).lerp(new THREE.Color(PICKED_COLOR), 0.45).getHexString()}`, edgeColor: null };
+}
+
+// Zaznaczone elementy („idKorpusu:klucz” — front albo blenda boczna, „trim:id” — blenda wspólna / blat)
+// → ich prostopadłościany (w mm, układ przestrzeni) i nazwy — do wymiarów w 3D.
+function selectedPartBoxes(project, ids) {
+  const parts = [];
+  for (const id of ids) {
+    if (id.startsWith('trim:')) {
+      const trim = project.trims?.find((t) => t.id === id.slice(5));
+      const box = trim && !trim.hidden && trimBox(trim, project);
+      if (box) parts.push({ box, name: trim.name });
+      continue;
+    }
+    const [cabinetId, key] = id.split(':');
+    const cabinet = project.furniture.find((c) => c.id === cabinetId && !c.hidden);
+    if (cabinet && key === 'legs') {
+      // nóżki korpusu (wszystkie takie same) — wymiary przy przedniej lewej; walec jako prostopadłościan
+      // opisany na nim (szerokość = średnica)
+      const legs = cabinetLegs(cabinet, project);
+      const l = legs.reduce((best, x) => (!best || x.z > best.z + 0.5 || (Math.abs(x.z - best.z) <= 0.5 && x.x < best.x) ? x : best), null);
+      if (l) {
+        const box = { x: l.x - l.diameter / 2, y: l.y, z: l.z - l.diameter / 2, width: l.diameter, height: l.height, depth: l.diameter };
+        parts.push({ box, name: `Nóżki ${cabinet.name} (${legs.length} szt.)`, round: true, owner: cabinet.id });
+      }
+      continue;
+    }
+    const panel = cabinet && cabinetPanels(cabinet, project).find((p) => p.key === key && p.valid && !p.hidden);
+    if (panel) parts.push({ box: panel, name: panel.name, owner: cabinet.id });
+  }
+  return parts;
+}
+
+// Prostopadłościan korpusu do wymiarów całości: sam korpus razem z nóżkami (bez frontów i blend).
+const cabinetBox = (c) => ({ x: c.x, y: c.y, z: c.z, width: c.width, height: legHeight(c) + c.height, depth: c.depth });
+
 // Buduje meble projektu: każda płyta korpusu to osobny prostopadłościan z obrysem krawędzi.
-// Zaznaczony korpus ma niebieskie krawędzie, korpus z problemami — czerwone.
+// Zaznaczony korpus jest pomarańczowy (jak zaznaczone fronty i blendy); korpus, którego element jest
+// zaznaczony — niebieskie krawędzie; korpus z problemami — czerwone krawędzie.
 // selectedFronts — zbiór zaznaczonych frontów („idKorpusu:front-N”, kliknięte w 3D) — wyróżnione na pomarańczowo.
 // isFrontOpen(id) — czy front jest otwarty; domyślnie według przełącznika „otwarte”.
 export function buildFurniture(project, selectedIds = new Set(), selectedFronts = new Set(), isFrontOpen = () => project.view?.openFronts === true) {
@@ -228,8 +268,15 @@ export function buildFurniture(project, selectedIds = new Set(), selectedFronts 
     !t.hidden && (t.type === 'countertop' ? view.showCountertops !== false : view.showBlends !== false);
 
   let solids = null; // bryły projektu do wyznaczania widocznych krawędzi (liczone raz, gdy potrzebne)
+  // Korpusy, których element (front, blenda boczna, nóżki) jest zaznaczony — wyróżniony jest wtedy
+  // sam element, a korpus ma tylko niebieskie krawędzie.
+  const partOwners = new Set([...selectedFronts].filter((id) => !id.startsWith('trim:')).map((id) => id.split(':')[0]));
   for (const cabinet of project.furniture.filter((c) => !c.hidden)) {
     const hasIssues = cabinetIssues(cabinet, project).length > 0;
+    // zaznaczony korpus (sam, bez swojego elementu) — cały na pomarańczowo, jak zaznaczone blendy
+    const cabinetPicked = selectedIds.has(cabinet.id) && !partOwners.has(cabinet.id);
+    // (blendy boczne, panele boczne i cokoły boczne to osobne elementy — nie świecą razem z korpusem)
+    const isPicked = (id, panel) => (cabinetPicked && panel?.group !== 'blend') || selectedFronts.has(id);
     const edgeColor = selectedIds.has(cabinet.id) ? EDGE_SELECTED : hasIssues ? EDGE_BAD : EDGE_OK;
     const edgeMat = new THREE.LineBasicMaterial({ color: edgeColor });
     disposables.push(edgeMat);
@@ -241,9 +288,10 @@ export function buildFurniture(project, selectedIds = new Set(), selectedFronts 
     for (const p of cabinetPanels(cabinet, project).filter(panelVisible)) {
       if (p.solid) {
         // Płyta docięta pod skos — rysujemy jej bryłę (lica i krawędzie w jednym kolorze płyty).
+        const pickedSolid = isPicked(`${cabinet.id}:${p.key}`, p);
         const geometry = solidGeometry(p.solid, project.space);
-        const mesh = new THREE.Mesh(geometry, solidMaterialFor(p.material.color));
-        mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geometry, 20), edgeMat));
+        const mesh = new THREE.Mesh(geometry, solidMaterialFor((pickedSolid ? pickedMaterial(p.material) : p.material).color));
+        mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geometry, 20), pickedSolid ? pickedEdgeMat : edgeMat));
         mesh.userData.panelKey = p.key;
         cabinetGroup.add(mesh);
         continue;
@@ -254,11 +302,9 @@ export function buildFurniture(project, selectedIds = new Set(), selectedFronts 
         ? frontPivotGroup(p, cabinet, cabinetGroup, project.space, isFrontOpen(`${cabinet.id}:${p.key}`))
         : cabinetGroup;
       const geometry = new THREE.BoxGeometry(p.width * MM, p.height * MM, p.depth * MM);
-      const picked = selectedFronts.has(`${cabinet.id}:${p.key}`);
+      const picked = isPicked(`${cabinet.id}:${p.key}`, p);
       // zaznaczona płyta: kolor przesunięty w stronę pomarańczowego i pomarańczowe krawędzie
-      const material = picked
-        ? { ...p.material, color: `#${new THREE.Color(p.material.color).lerp(new THREE.Color(PICKED_COLOR), 0.45).getHexString()}` }
-        : p.material;
+      const material = picked ? pickedMaterial(p.material) : p.material;
       const mesh = new THREE.Mesh(geometry, panelFaceMaterials(material, p.thicknessAxis, materialFor));
       mesh.position.set(...toScene(p.x + p.width / 2, p.y + p.height / 2, p.z + p.depth / 2, project.space));
       mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geometry), picked ? pickedEdgeMat : edgeMat));
@@ -269,20 +315,24 @@ export function buildFurniture(project, selectedIds = new Set(), selectedFronts 
       addAllowance(target, p, p.allowanceMin, p.allowanceMax, project.space);
       if (p.material.edgeBanding) {
         const keys = panelEdgeSet(p, cabinet, project, solids);
-        addEdgeBanding(target, p, keys, p.material.edgeBanding, edgeColorOf(p.material), materialFor, project.space, p.key);
+        addEdgeBanding(target, p, keys, p.material.edgeBanding, edgeColorOf(material), materialFor, project.space, p.key);
       }
     }
 
     const legs = cabinetLegs(cabinet, project);
     if (legs.length) {
       const legMat = new THREE.MeshLambertMaterial({ color: LEG_COLOR });
-      disposables.push(legMat);
-      for (const l of legs) {
+      const pickedLegMat = new THREE.MeshLambertMaterial({ color: PICKED_COLOR }); // zaznaczona nóżka
+      disposables.push(legMat, pickedLegMat);
+      legs.forEach((l, i) => {
         const r = (l.diameter / 2) * MM;
-        const mesh = new THREE.Mesh(new THREE.CylinderGeometry(r, r, l.height * MM, 20), legMat);
+        const key = `leg-${i}`;
+        const picked = isPicked(`${cabinet.id}:legs`); // nóżki zaznaczają się wszystkie naraz
+        const mesh = new THREE.Mesh(new THREE.CylinderGeometry(r, r, l.height * MM, 20), picked ? pickedLegMat : legMat);
         mesh.position.set(...toScene(l.x, l.y + l.height / 2, l.z, project.space));
+        mesh.userData.panelKey = key; // do zaznaczania nóżki myszką
         cabinetGroup.add(mesh);
-      }
+      });
     }
     group.add(cabinetGroup);
   }
@@ -291,35 +341,53 @@ export function buildFurniture(project, selectedIds = new Set(), selectedFronts 
   for (const trim of (project.trims ?? []).filter(trimVisible)) {
     const segments = trimSegments(trim, project);
     if (!segments.length) continue;
-    const mat = panelFaceMaterials(trimMaterial(trim, project), TRIM_THICKNESS_AXIS[trim.type], materialFor);
-    const edgeMat = new THREE.LineBasicMaterial({ color: trimIssues(trim, project).length ? EDGE_BAD : EDGE_OK });
-    disposables.push(edgeMat);
+    const picked = selectedFronts.has(`trim:${trim.id}`); // zaznaczona (klik w 3D) — na pomarańczowo
+    const tm = picked ? pickedMaterial(trimMaterial(trim, project)) : trimMaterial(trim, project);
+    const mat = panelFaceMaterials(tm, TRIM_THICKNESS_AXIS[trim.type], materialFor);
+    const edgeMat = picked ? pickedEdgeMat : new THREE.LineBasicMaterial({ color: trimIssues(trim, project).length ? EDGE_BAD : EDGE_OK });
+    if (!picked) disposables.push(edgeMat);
     const a = trimAllowance(trim, project);
-    const tm = trimMaterial(trim, project);
     if (tm.edgeBanding) solids ??= projectSolids(project);
+    const trimGroup = new THREE.Group();
+    trimGroup.userData.trimId = trim.id; // do wybierania myszką
     segments.forEach((box, i) => {
       if (box.solid) {
         // Blenda docięta pod skos (np. blenda górna do skosu).
         const geometry = solidGeometry(box.solid, project.space);
         const mesh = new THREE.Mesh(geometry, solidMaterialFor(tm.color));
         mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geometry, 20), edgeMat));
-        group.add(mesh);
+        trimGroup.add(mesh);
         return;
       }
       if (tm.edgeBanding) {
-        addEdgeBanding(group, box, trimEdgeSet(trim, box, i, solids), tm.edgeBanding, edgeColorOf(tm), materialFor, project.space);
+        addEdgeBanding(trimGroup, box, trimEdgeSet(trim, box, i, solids), tm.edgeBanding, edgeColorOf(tm), materialFor, project.space);
       }
       const geometry = new THREE.BoxGeometry(box.width * MM, box.height * MM, box.depth * MM);
       const mesh = new THREE.Mesh(geometry, mat);
       mesh.position.set(...toScene(box.x + box.width / 2, box.y + box.height / 2, box.z + box.depth / 2, project.space));
       mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geometry), edgeMat));
-      group.add(mesh);
+      trimGroup.add(mesh);
       // zapas: z lewej na pierwszym odcinku, z prawej na ostatnim
-      addAllowance(group, box, i === 0 ? a.min : 0, i === segments.length - 1 ? a.max : 0, project.space);
+      addAllowance(trimGroup, box, i === 0 ? a.min : 0, i === segments.length - 1 ? a.max : 0, project.space);
     });
+    group.add(trimGroup);
   }
-  // Wymiary zaznaczonych korpusów (jeden — nóżki, korpus, razem, szerokość, głębokość; kilka — dla całej grupy).
-  const selected = view.showDims !== false ? project.furniture.filter((c) => selectedIds.has(c.id) && !c.hidden) : [];
-  if (selected.length) group.add(buildCabinetDimensions(selected, project.space));
+
+  // Wymiary w 3D:
+  //  - zaznaczone elementy (fronty, blendy, nóżki) — wymiary każdego,
+  //  - zaznaczone korpusy — wymiary korpusu / grupy korpusów; korpus, którego element jest zaznaczony
+  //    (klik we front / blendę boczną / nóżki zaznacza też korpus), liczy się jako ten element,
+  //  - kilka różnych obiektów (np. korpus i blenda górna) — dodatkowo wymiary całości („razem”).
+  if (view.showDims !== false) {
+    const parts = selectedPartBoxes(project, selectedFronts);
+    const owners = new Set(parts.map((p) => p.owner).filter(Boolean));
+    const cabinets = project.furniture.filter((c) => selectedIds.has(c.id) && !c.hidden && !owners.has(c.id));
+    if (parts.length) group.add(buildPartDimensions(parts, project.space));
+    if (cabinets.length) group.add(buildCabinetDimensions(cabinets, project.space));
+    if (parts.length && parts.length + cabinets.length > 1) {
+      const boxes = [...parts.map((p) => p.box), ...cabinets.map(cabinetBox)];
+      group.add(buildTotalDimensions(boxes, project.space));
+    }
+  }
   return group;
 }

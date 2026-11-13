@@ -56,4 +56,53 @@ export function buildCabinetDimensions(cabinets, space) {
   return group;
 }
 
+// Wymiary zaznaczonych elementów (front, blenda boczna, blenda dolna / górna, blat) — każdy osobno:
+// wysokość przy lewej krawędzi przodu (wysunięta przed element), szerokość nad górną krawędzią przodu,
+// głębokość (przy płytach w płaszczyźnie frontu to grubość) nad prawą górną krawędzią.
+// parts: [{ box: { x, y, z, width, height, depth } (mm), name, round? }] — round: element okrągły (nóżka).
+// Przy kilku elementach — z nazwą.
+export function buildPartDimensions(parts, space) {
+  const group = new THREE.Group();
+  const p = (px, py, pz) => new THREE.Vector3(...toScene(px, py, pz, space));
+  const off = (dx, dy, dz) => p(dx, dy, dz).sub(p(0, 0, 0));
+  const add = (a, b, o, text) => group.add(createDimension(a, b, o, text, 'accent'));
+  const named = parts.length > 1;
+  for (const { box, name, round } of parts) {
+    const { x, y, z, width: W, height: H, depth: D } = box;
+    const front = z + D;
+    const top = y + H;
+    const prefix = named ? `${name}: ` : '';
+    add(p(x, y, front), p(x, top, front), off(0, 0, NEAR), `${prefix}wys. ${fmt(H)}`);
+    if (round) {
+      // element okrągły (nóżka) — sama średnica, pod spodem przed elementem
+      add(p(x, y, front), p(x + W, y, front), off(0, 0, NEAR / 2), `${prefix}Ø ${fmt(W)}`);
+      continue;
+    }
+    add(p(x, top, front), p(x + W, top, front), off(0, NEAR, 0), `${prefix}szer. ${fmt(W)}`);
+    add(p(x + W, top, z), p(x + W, top, front), off(0, NEAR, 0), `${prefix}gł. ${fmt(D)}`);
+  }
+  return group;
+}
+
+// Wymiary całości kilku zaznaczonych obiektów (np. korpus + blenda górna): prostopadłościan obejmujący
+// wszystkie — szerokość, wysokość i głębokość „razem”, odsunięte dalej niż wymiary pojedynczych obiektów.
+// boxes: [{ x, y, z, width, height, depth }] (mm).
+const TOTAL = 400; // mm — odsunięcie linii wymiarów całości
+export function buildTotalDimensions(boxes, space) {
+  const group = new THREE.Group();
+  const x0 = Math.min(...boxes.map((b) => b.x));
+  const x1 = Math.max(...boxes.map((b) => b.x + b.width));
+  const y0 = Math.min(...boxes.map((b) => b.y));
+  const y1 = Math.max(...boxes.map((b) => b.y + b.height));
+  const z0 = Math.min(...boxes.map((b) => b.z));
+  const z1 = Math.max(...boxes.map((b) => b.z + b.depth));
+  const p = (px, py, pz) => new THREE.Vector3(...toScene(px, py, pz, space));
+  const off = (dx, dy, dz) => p(dx, dy, dz).sub(p(0, 0, 0));
+  const add = (a, b, o, text) => group.add(createDimension(a, b, o, text, 'accent'));
+  add(p(x0, y0, z1), p(x0, y1, z1), off(0, 0, TOTAL), `razem wys. ${fmt(y1 - y0)}`);
+  add(p(x0, y1, z1), p(x1, y1, z1), off(0, TOTAL, 0), `razem szer. ${fmt(x1 - x0)}`);
+  add(p(x1, y1, z0), p(x1, y1, z1), off(0, TOTAL, 0), `razem gł. ${fmt(z1 - z0)}`);
+  return group;
+}
+
 const fmt = (v) => `${Math.round(v * 10) / 10} mm`;

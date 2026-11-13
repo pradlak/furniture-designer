@@ -2,6 +2,7 @@ import { cabinetPanels, cabinetLegs, panelCutSize, describeCuts, describeMilling
 import { projectSolids, panelEdgeSet, trimEdgeSet, edgeCounts, TRIM_THICKNESS_AXIS, EDGE_LABELS } from './edges.js';
 import { trimSegments, trimAllowance, TRIM_TYPES } from './trims.js';
 import { trimMaterial } from './materials.js';
+import { buildXlsx } from './xlsx.js';
 
 // Lista formatek do rozkroju: wszystkie płyty projektu (korpusy, blendy boczne, blendy dolne i górne,
 // blaty). Jednakowe formatki (ten sam materiał, wymiary, obrzeże i zapas) łączone są w jeden wiersz.
@@ -9,11 +10,25 @@ import { trimMaterial } from './materials.js';
 
 const round = (v) => Math.round(v * 10) / 10;
 
-export function buildCutList(project) {
+// Co można wyeksportować (okienko „Formatki”): rodzaje płyt i akcesoria.
+//  body — korpusy (boki, wieńce, półki, wzmocnienia, plecy z płyty), hdf — plecy HDF, front — fronty,
+//  blend — blendy (boczne, panele boczne, cokoły boczne, blendy dolne i górne), countertop — blaty.
+export const CUT_LIST_PARTS = [
+  { key: 'body', label: 'Korpusy', hint: 'boki, wieńce, półki, wzmocnienia' },
+  { key: 'hdf', label: 'Plecy HDF' },
+  { key: 'front', label: 'Fronty', hint: 'drzwi, szuflady — z frezami i otworami pod uchwyty' },
+  { key: 'blend', label: 'Blendy', hint: 'boczne, panele boczne, dolne, górne' },
+  { key: 'countertop', label: 'Blaty' },
+];
+export const ALL_PARTS = new Set(CUT_LIST_PARTS.map((p) => p.key));
+
+// parts — które rodzaje płyt (klucze z CUT_LIST_PARTS); domyślnie wszystkie.
+export function buildCutList(project, parts = ALL_PARTS) {
   const rows = [];
   const solids = projectSolids(project);
   // milling — opis frezów frontu (uchwytowy / dekoracyjny), dopisywany do kolumny cięć
-  const add = (name, owner, material, cut, edgeSet, milling = '') => {
+  const add = (category, name, owner, material, cut, edgeSet, milling = '') => {
+    if (!parts.has(category)) return;
     rows.push({
       name,
       owner,
@@ -37,11 +52,12 @@ export function buildCutList(project) {
     for (const p of cabinetPanels(c, project).filter((x) => x.valid)) {
       const set = panelEdgeSet(p, c, project, solids);
       const work = [describeMilling(p), describeHandle(p)].filter(Boolean).join('; '); // frezy i otwory frontu
-      add(p.name, c.name, p.material, panelCutSize({ ...p, edges: edgeCounts(p, p.thicknessAxis, set) }), set, work);
+      add(p.group, p.name, c.name, p.material, panelCutSize({ ...p, edges: edgeCounts(p, p.thicknessAxis, set) }), set, work);
     }
   }
 
   for (const t of project.trims ?? []) {
+    if (!parts.has(t.type === 'countertop' ? 'countertop' : 'blend')) continue;
     const material = trimMaterial(t, project);
     const a = trimAllowance(t, project);
     const segments = trimSegments(t, project);
@@ -49,7 +65,7 @@ export function buildCutList(project) {
       const box = { ...seg, allowanceMin: i === 0 ? a.min : 0, allowanceMax: i === segments.length - 1 ? a.max : 0 };
       const set = trimEdgeSet(t, seg, i, solids);
       const cut = panelCutSize({ ...box, material, edges: edgeCounts(box, TRIM_THICKNESS_AXIS[t.type], set) });
-      add(t.name || TRIM_TYPES[t.type].label, 'wspólne', material, cut, set);
+      add(t.type === 'countertop' ? 'countertop' : 'blend', t.name || TRIM_TYPES[t.type].label, 'wspólne', material, cut, set);
     });
   }
 
@@ -98,62 +114,102 @@ export function buildAccessories(project) {
   ];
 }
 
-// CSV dla Excela: separator średnik, przecinek dziesiętny, BOM (polskie znaki).
-export function cutListCsv(project) {
-  const num = (v) => String(v).replace('.', ',');
+// Tabela formatek dla ludzi (wspólna dla CSV i XLSX): kolumny z jednostkami w nagłówkach,
+// najpierw to, co potrzebne przy zamawianiu cięcia (materiał, wymiary do cięcia, ilość, okleina).
+// Liczby zostają liczbami (w XLSX — prawdziwe liczby, w CSV — z przecinkiem dziesiętnym).
+export const CUT_LIST_COLUMNS = [
+  { key: 'lp', title: 'Lp.', width: 5 },
+  { key: 'material', title: 'Materiał', width: 30 },
+  { key: 'thickness', title: 'Grubość [mm]', width: 9 },
+  { key: 'cutLength', title: 'Długość do cięcia [mm]', width: 12 },
+  { key: 'cutWidth', title: 'Szerokość do cięcia [mm]', width: 12 },
+  { key: 'qty', title: 'Ilość [szt.]', width: 8 },
+  { key: 'edgesL', title: 'Okleina na długości [szt.]', width: 12 },
+  { key: 'edgesW', title: 'Okleina na szerokości [szt.]', width: 12 },
+  { key: 'band', title: 'Grubość okleiny [mm]', width: 10 },
+  { key: 'edgeNames', title: 'Oklejone krawędzie', width: 30 },
+  { key: 'length', title: 'Długość gotowa [mm]', width: 11 },
+  { key: 'width', title: 'Szerokość gotowa [mm]', width: 11 },
+  { key: 'allowance', title: 'Zapas na docięcie [mm] (wliczony)', width: 13 },
+  { key: 'names', title: 'Element', width: 34 },
+  { key: 'owners', title: 'Mebel', width: 20 },
+  { key: 'shape', title: 'Obróbka (cięcia skośne, frezy, otwory)', width: 60 },
+];
+
+export const CUT_LIST_NOTES = [
+  'Wymiary w mm.',
+  '„Do cięcia” — wymiar formatki do zamówienia (pomniejszony o grubość okleiny); „gotowa” — wymiar po oklejeniu.',
+  'Okleina na długości / szerokości — ile krawędzi danego boku trzeba okleić (0, 1 albo 2).',
+  'Płyty pod skos: wymiar to prostokąt, z którego wycina się formatkę; „ścięty róg A × B” — odcinany trójkąt, A wzdłuż długości, B wzdłuż szerokości.',
+  'Otwory pod uchwyty: współrzędne (poziomo; pionowo) środków otworów w mm od lewego dolnego narożnika frontu, patrząc na front od przodu.',
+];
+
+// Wiersze tabeli formatek: obiekty z kluczami jak w CUT_LIST_COLUMNS (puste komórki — '').
+export function cutListRows(project, parts = ALL_PARTS) {
+  return buildCutList(project, parts).map((r, i) => ({
+    lp: i + 1,
+    material: r.material,
+    thickness: r.thickness,
+    cutLength: r.cutLength,
+    cutWidth: r.cutWidth,
+    qty: r.qty,
+    edgesL: r.edgesL,
+    edgesW: r.edgesW,
+    band: r.band || '',
+    edgeNames: r.edgeNames,
+    length: r.length,
+    width: r.width,
+    allowance: r.allowance || '',
+    names: r.names.join(', '),
+    owners: r.owners.join(', '),
+    shape: r.shape,
+  }));
+}
+
+// CSV: kolumny oddzielone tabulatorami (w Notatniku widać kolumny), przecinek dziesiętny.
+// Kodowanie UTF-16 LE z BOM — Excel otwiera taki plik od razu w kolumnach (niezależnie od ustawień
+// regionalnych) i z polskimi znakami. Zwraca Uint8Array gotowy do zapisu.
+// options: { parts — rodzaje płyt (domyślnie wszystkie), accessories — czy dołączyć akcesoria (domyślnie tak) }.
+export function cutListCsv(project, { parts = ALL_PARTS, accessories: withAccessories = true } = {}) {
+  const num = (v) => (typeof v === 'number' ? String(v).replace('.', ',') : String(v ?? ''));
   const cell = (v) => {
-    const s = String(v ?? '');
-    return /[;"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    const s = num(v).replace(/(\d)\.(\d)/g, '$1,$2');
+    return /[\t"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
-  const header = [
-    'Lp.',
-    'Element',
-    'Mebel',
-    'Materiał',
-    'Grubość',
-    'Długość',
-    'Szerokość',
-    'Ilość',
-    'Długość do cięcia',
-    'Szerokość do cięcia',
-    'Obrzeże dł. (szt.)',
-    'Obrzeże kr. (szt.)',
-    'Grubość obrzeża',
-    'Oklejone krawędzie',
-    'Zapas na docięcie',
-    'Obróbka (cięcia skośne, frezy, otwory)',
-  ];
-  const lines = [header.join(';')];
-  buildCutList(project).forEach((r, i) => {
-    lines.push(
-      [
-        i + 1,
-        r.names.join(', '),
-        r.owners.join(', '),
-        r.material,
-        num(r.thickness),
-        num(r.length),
-        num(r.width),
-        r.qty,
-        num(r.cutLength),
-        num(r.cutWidth),
-        r.edgesL,
-        r.edgesW,
-        r.band ? num(r.band) : '',
-        r.edgeNames,
-        r.allowance ? `${num(r.allowance)} (wliczony)` : '',
-        r.shape.replace(/(\d)\.(\d)/g, '$1,$2'),
-      ]
-        .map(cell)
-        .join(';'),
-    );
-  });
-  const accessories = buildAccessories(project);
+  const row = (cells) => cells.map(cell).join('\t');
+  const lines = [row(CUT_LIST_COLUMNS.map((c) => c.title))];
+  const rows = cutListRows(project, parts);
+  for (const r of rows) lines.push(row(CUT_LIST_COLUMNS.map((c) => r[c.key])));
+  if (!rows.length) lines.pop(); // same akcesoria — bez pustej tabeli formatek
+  const accessories = withAccessories ? buildAccessories(project) : [];
   if (accessories.length) {
-    lines.push('', 'Akcesoria;Ilość', ...accessories.map((a) => `${cell(a.name)};${a.qty}`));
+    if (lines.length) lines.push('');
+    lines.push(row(['Akcesoria', 'Ilość [szt.]']), ...accessories.map((a) => row([a.name, a.qty])));
   }
-  lines.push('', 'Wymiary w mm. Długość i szerokość — gotowy element (z obrzeżem); „do cięcia” — pomniejszone o obrzeże.');
-  lines.push('Płyty pod skos: wymiar to prostokąt, z którego wycina się formatkę; „ścięty róg A × B” — odcinany trójkąt, A wzdłuż długości, B wzdłuż szerokości.');
-  lines.push('Otwory pod uchwyty: współrzędne (poziomo; pionowo) środków otworów w mm od lewego dolnego narożnika frontu, patrząc na front od przodu.');
-  return '﻿' + lines.join('\r\n');
+  lines.push('', ...CUT_LIST_NOTES.map((n) => row([n])));
+  return utf16le('\uFEFF' + lines.join('\r\n'));
+}
+
+function utf16le(text) {
+  const bytes = new Uint8Array(text.length * 2);
+  for (let i = 0; i < text.length; i++) {
+    const code = text.charCodeAt(i);
+    bytes[i * 2] = code & 0xff;
+    bytes[i * 2 + 1] = code >> 8;
+  }
+  return bytes;
+}
+
+// XLSX: arkusze „Formatki” (z pogrubionym, zamrożonym nagłówkiem i szerokimi kolumnami),
+// „Akcesoria” i „Objaśnienia”. Zwraca Uint8Array (plik .xlsx). options — jak w cutListCsv.
+export function cutListXlsx(project, { parts = ALL_PARTS, accessories: withAccessories = true } = {}) {
+  const header = CUT_LIST_COLUMNS.map((c) => c.title);
+  const rows = cutListRows(project, parts).map((r) => CUT_LIST_COLUMNS.map((c) => r[c.key]));
+  const sheets = rows.length ? [{ name: 'Formatki', header, rows, widths: CUT_LIST_COLUMNS.map((c) => c.width) }] : [];
+  const accessories = withAccessories ? buildAccessories(project) : [];
+  if (accessories.length) {
+    sheets.push({ name: 'Akcesoria', header: ['Akcesoria', 'Ilość [szt.]'], rows: accessories.map((a) => [a.name, a.qty]), widths: [50, 12] });
+  }
+  sheets.push({ name: 'Objaśnienia', header: ['Objaśnienia'], rows: CUT_LIST_NOTES.map((n) => [n]), widths: [140] });
+  return buildXlsx(sheets);
 }

@@ -61,8 +61,23 @@ export const stiffenerKey = (s) => `stiff-${s.id}`;
 
 // Fronty (nakładane — płyty przed korpusem): drzwi pojedyncze, drzwi podwójne albo szuflady.
 // Szczelina `gap` — między frontami i na obwodzie (po połowie przy krawędziach korpusu, żeby
-// sąsiednie korpusy miały między frontami pełną szczelinę). Pod blendą górną front kończy się
+// sąsiednie korpusy miały między frontami pełną szczelinę). Od dołu — tylko gdy pod korpusem stoi
+// inny korpus; inaczej dolny front schodzi do dołu korpusu. Pod blendą górną front kończy się
 // szczelinę pod blendą. Szuflady — na razie same fronty (bez skrzynek), równej wysokości.
+
+// Czy pod korpusem (bezpośrednio pod jego dnem, w tym samym pasie X i głębokości) stoi inny korpus.
+function hasCabinetBelow(cabinet, project) {
+  if (!project?.furniture || cabinet.y <= 0.5) return false;
+  return project.furniture.some(
+    (o) =>
+      o.id !== cabinet.id &&
+      Math.abs(o.y + legHeight(o) + o.height - cabinet.y) < 1 &&
+      o.x < cabinet.x + cabinet.width - 0.5 &&
+      cabinet.x < o.x + o.width - 0.5 &&
+      o.z < cabinet.z + cabinet.depth - 0.5 &&
+      cabinet.z < o.z + o.depth - 0.5,
+  );
+}
 export const FRONT_TYPES = [
   { key: 'none', label: 'Brak' },
   { key: 'door', label: 'Drzwi pojedyncze' },
@@ -898,7 +913,9 @@ export function cabinetPanels(cabinet, project) {
     const t = mats.front.thickness;
     const x0 = g / 2;
     const x1 = W - g / 2;
-    const y0 = L + g / 2;
+    // Od dołu szczelina tylko wtedy, gdy pod korpusem stoi inny korpus (jego front ma szczelinę od
+    // góry — razem pełna szczelina). Inaczej (na podłodze, na nóżkach) dolny front schodzi do dołu korpusu.
+    const y0 = L + (hasCabinetBelow(cabinet, project) ? g / 2 : 0);
     const y1 = ctx.topBlendBottom != null ? L + ctx.topBlendBottom - ctx.topBlendGap : L + H - g / 2;
     // kind — do frezu uchwytowego na krawędzi otwierania: drzwi z zawiasami po lewej / prawej, szuflada
     const add = (name, x, y, w, h, kind) => {

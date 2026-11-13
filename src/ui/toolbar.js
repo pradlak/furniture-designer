@@ -1,5 +1,6 @@
 import { createDefaultProject, normalizeProject } from '../model/project.js';
-import { cutListCsv } from '../model/cutList.js';
+import { cutListCsv, cutListXlsx } from '../model/cutList.js';
+import { createCutListDialog } from './cutListDialog.js';
 
 const VIEWS = [
   { key: 'perspective', label: '3D' },
@@ -13,11 +14,11 @@ export function createToolbar(root, store, viewer, { onHelp, onNew } = {}) {
   root.innerHTML = `
     <div class="brand">Projektant mebli</div>
     <div class="group">
-      <button type="button" data-action="new" title="Nowy projekt — wnęka prostokątna albo poddasze ze skosem">Nowy…</button>
-      <button type="button" data-action="import">Importuj…</button>
-      <button type="button" data-action="export">Eksportuj</button>
+      <button type="button" data-action="new" title="Nowy projekt — wnęka prostokątna albo poddasze ze skosem">📄 Nowy…</button>
+      <button type="button" data-action="import" title="Wczytaj projekt z pliku (.json)">📂 Importuj…</button>
+      <button type="button" data-action="export" title="Zapisz projekt do pliku (.json) — żeby go zachować albo przenieść na inny komputer">📤 Eksportuj</button>
       <input type="file" accept="application/json,.json" hidden />
-      <button type="button" data-action="cut-list" title="Lista płyt do rozkroju — plik CSV (Excel)">⬇ Formatki (CSV)</button>
+      <button type="button" data-action="cut-list" title="Lista płyt do rozkroju — do wyboru Excel albo CSV oraz co wyeksportować (korpusy, fronty, blendy, blaty, akcesoria)">💾 Formatki…</button>
     </div>
     <div class="group">
       <button type="button" data-action="undo" title="Cofnij (Ctrl+Z)">↶ Cofnij</button>
@@ -42,6 +43,8 @@ export function createToolbar(root, store, viewer, { onHelp, onNew } = {}) {
   `;
 
   const fileInput = root.querySelector('input[type="file"]');
+  // okienko „Formatki”: format i zakres eksportu
+  const cutListDialog = createCutListDialog({ onExport: (options) => downloadCutList(store.get(), options) });
   const viewFlags = [...root.querySelectorAll('[data-view-flag]')];
 
   root.addEventListener('click', (e) => {
@@ -55,7 +58,10 @@ export function createToolbar(root, store, viewer, { onHelp, onNew } = {}) {
     if (action === 'redo') store.redo();
     if (action === 'export') exportProject(store.get());
     if (action === 'import') fileInput.click();
-    if (action === 'cut-list') downloadCutList(store.get());
+    if (action === 'cut-list') {
+      if (!store.get().furniture.length) alert('Projekt nie ma jeszcze żadnych mebli — dodaj korpus w zakładce „Meble”.');
+      else cutListDialog.open();
+    }
     if (action === 'help') onHelp?.();
   });
 
@@ -125,19 +131,21 @@ function track(event, data) {
   }
 }
 
-function downloadCutList(project) {
-  if (!project.furniture.length) {
-    alert('Projekt nie ma jeszcze żadnych mebli — dodaj korpus w zakładce „Meble”.');
-    return;
-  }
-  const blob = new Blob([cutListCsv(project)], { type: 'text/csv;charset=utf-8' });
+// format: 'xlsx' (Excel) albo 'csv' (tabulatory, UTF-16 — Excel otwiera go od razu w kolumnach);
+// parts / accessories — co wyeksportować (patrz cutListDialog).
+function downloadCutList(project, { format, parts, accessories }) {
+  const xlsx = format === 'xlsx';
+  const options = { parts, accessories };
+  const blob = xlsx
+    ? new Blob([cutListXlsx(project, options)], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+    : new Blob([cutListCsv(project, options)], { type: 'text/csv;charset=utf-16le' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `${safeName(project, 'projekt')}_formatki.csv`;
+  a.download = `${safeName(project, 'projekt')}_formatki.${xlsx ? 'xlsx' : 'csv'}`;
   a.click();
   URL.revokeObjectURL(url);
-  track('pobranie-formatek-csv', { korpusy: project.furniture.length });
+  track(xlsx ? 'pobranie-formatek-xlsx' : 'pobranie-formatek-csv', { korpusy: project.furniture.length, zakres: [...parts, ...(accessories ? ['akcesoria'] : [])].join(',') });
 }
 
 function exportProject(project) {

@@ -1,6 +1,6 @@
 import { SIDE_BLEND_TYPES, CABINET_LIMITS, sidePanelExtension, sideBlendWidth, getPath, cabinetReachesTop } from '../model/furniture.js';
 import { escapeHtml, setIfNotFocused, round1 } from './dom.js';
-import { setEye } from './widgets.js';
+import { setEye, materialSelect } from './widgets.js';
 import { COLLAPSE_BUTTON } from './collapsible.js';
 
 // Blendy boczne korpusu (lewa i prawa): blenda boczna (przy ścianie), panel na pełną wysokość, cokół boczny.
@@ -86,7 +86,7 @@ function sideFields(side) {
     </div>`;
 }
 
-export function renderSideBlendCard(cabinet) {
+export function renderSideBlendCard(cabinet, project) {
   return `
     <div class="item side-blends" data-kind="side-blends" data-id="${cabinet.id}">
       <div class="item-head">
@@ -94,6 +94,7 @@ export function renderSideBlendCard(cabinet) {
         <span class="side-blends-name">${escapeHtml(cabinet.name)}</span>
         <span class="side-blends-sum"></span>
       </div>
+      <div class="side-blend-material" title="Materiał blend bocznych, paneli bocznych i cokołów bocznych tego korpusu (ten sam co „Materiał blend” w karcie korpusu)">${materialSelect('Materiał blend', 'blendMaterialId', project)}</div>
       <div class="side-blend-pair">${sideFields('left')}${sideFields('right')}</div>
     </div>`;
 }

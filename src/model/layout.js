@@ -270,6 +270,22 @@ export function updateSpaceRefit(project, fn) {
   };
 }
 
+// Przesunięcie rzędu w bok tak, żeby po zmianie mieścił się między ścianami i sąsiednimi elementami
+// (granice — sprzed zmiany). Zwraca projekt z przesuniętym rzędem albo null, gdy się nie da.
+function shiftRowIntoSpace(before, next, row) {
+  const [oldLeft, oldRight] = rowExtent(before, row);
+  const others = blockersAround(before, row);
+  const leftLimit = Math.max(0, ...others.filter((o) => o.x + o.width <= oldLeft + EPS).map((o) => o.x + o.width));
+  const rightLimit = Math.min(before.space.width, ...others.filter((o) => o.x >= oldRight - EPS).map((o) => o.x));
+  const [left, right] = rowExtent(next, row);
+  if (right - left > rightLimit - leftLimit + EPS) return null; // nie mieści się nawet po przesunięciu
+  const shift = left < leftLimit ? leftLimit - left : right > rightLimit ? rightLimit - right : 0;
+  if (!shift) return null;
+  const ids = new Set(row);
+  const shifted = { ...next, furniture: next.furniture.map((c) => (ids.has(c.id) ? { ...c, x: c.x + shift } : c)) };
+  return rowCollides(shifted, row) ? null : shifted;
+}
+
 // Zmiana korpusu, która może zmienić jego szerokość z blendami (blenda / panel boczny).
 // Jeśli rząd był pełny albo po zmianie korpusy nachodzą na siebie / wychodzą poza wnękę —
 // korpusy rzędu zwężają się (lub poszerzają) proporcjonalnie, a rząd zajmuje to samo miejsce co przed zmianą.
@@ -279,6 +295,12 @@ export function updateCabinetKeepingRow(project, cabinetId, fn) {
   const wasFull = rowIsFull(project, row);
   const next = { ...project, furniture: project.furniture.map((c) => (c.id === cabinetId ? fn(c) : c)) };
   if (!wasFull && !rowCollides(next, row)) return next;
+  // Najpierw próbujemy przesunąć cały rząd w wolne miejsce (korpusy zachowują szerokość), np. panel
+  // dodany przy ścianie — rząd odsuwa się od niej, jeśli z drugiej strony jest miejsce.
+  if (!wasFull) {
+    const shifted = shiftRowIntoSpace(project, next, row);
+    if (shifted) return shifted;
+  }
   const shares = Object.fromEntries(row.map((id) => [id, byId(project, id).width]));
   const fitted = Object.fromEntries(row.map((id) => [id, isFittedHeight(byId(project, id), project)]));
   return distributeRow(next, row, extent, shares, fitted) ?? next;

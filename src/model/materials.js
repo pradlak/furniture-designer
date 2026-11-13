@@ -27,6 +27,7 @@ export function defaultMaterials() {
   return [
     { id: 'mat-white', name: 'Płyta biała 18', type: 'chipboard', thickness: 18, color: '#f2f2ef', edgeBanding: DEFAULT_EDGE_BANDING, edgeColor: null },
     { id: 'mat-mdf-green', name: 'MDF lakierowany zielony 18', type: 'mdf', thickness: 18, color: '#5f7f5c', edgeBanding: 0 },
+    { id: 'mat-mdf-cashmere', name: 'MDF lakierowany kaszmirowy 18', type: 'mdf', thickness: 18, color: '#d6cbbd', edgeBanding: 0 },
     { id: 'mat-hdf', name: 'HDF biały 3', type: 'hdf', thickness: 3, color: '#ecebe6', edgeBanding: 0 },
     { ...DEFAULT_WORKTOP },
   ];
