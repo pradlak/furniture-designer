@@ -13,7 +13,7 @@
     "run_worker_first": ["/api/*"]
   },
   // Wysyłanie uwag: na jeden, stały adres (nie można wysłać nigdzie indziej).
-  // Wymaga: adresu docelowego zweryfikowanego w Cloudflare i domeny meblesamemu.pl włączonej do wysyłki maili.
+  // Wymaga: Email Routing włączonego dla meblesamemu.pl i adresu docelowego zweryfikowanego w Email Routing.
   "send_email": [
     {
       "name": "FEEDBACK",
