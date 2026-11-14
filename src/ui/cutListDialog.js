@@ -21,7 +21,9 @@ export function createCutListDialog({ onExport }) {
         <label class="check"><input type="radio" name="cut-format" value="csv" />
           <span><b>CSV</b> <small>— zwykły tekst z tabulatorami, np. do programu do rozkroju</small></span></label>
         <label class="check"><input type="radio" name="cut-format" value="meblepl" />
-          <span><b>meble.pl</b> <small>— plik do wczytania w <a href="https://www.meble.pl/rozkroj,plyty-meblowe" target="_blank" rel="noopener">rozkroju na meble.pl</a>: płyty meblowe (laminowane) i plecy HDF, osobny plik dla każdej płyty</small></span></label>
+          <span><b>meble.pl</b> <small>— plik do wczytania w <a href="https://www.meble.pl/rozkroj,plyty-meblowe" target="_blank" rel="noopener">rozkroju na meble.pl</a>: wszystko z płyty meblowej (korpusy, a także fronty i blendy, jeśli są z płyty meblowej) i plecy HDF; osobny plik dla każdej płyty</small></span></label>
+        <label class="check"><input type="radio" name="cut-format" value="mdf" />
+          <span><b>Fronty i blendy MDF</b> <small>— elementy z MDF lakierowanego (np. do zamówienia w <a href="https://smartfronty.pl/" target="_blank" rel="noopener">smartfronty.pl</a>): lista w Excelu i rysunek każdego elementu z otworami pod uchwyty i zawiasy</small></span></label>
       </fieldset>
       <fieldset class="cut-list-group">
         <legend>Co wyeksportować

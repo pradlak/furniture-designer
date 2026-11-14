@@ -1,4 +1,4 @@
-import { cabinetPanels, cabinetLegs, panelCutSize, describeCuts, describeMilling, describeHandle, hingesFor } from './furniture.js';
+import { cabinetPanels, cabinetLegs, panelCutSize, describeCuts, describeMilling, describeHandle, describeHinges, hingesFor } from './furniture.js';
 import { projectSolids, panelEdgeSet, trimEdgeSet, edgeCounts, TRIM_THICKNESS_AXIS, EDGE_LABELS } from './edges.js';
 import { trimSegments, trimAllowance, TRIM_TYPES } from './trims.js';
 import { trimMaterial } from './materials.js';
@@ -52,7 +52,7 @@ export function buildCutList(project, parts = ALL_PARTS) {
   for (const c of project.furniture) {
     for (const p of cabinetPanels(c, project).filter((x) => x.valid)) {
       const set = panelEdgeSet(p, c, project, solids);
-      const work = [describeMilling(p), describeHandle(p)].filter(Boolean).join('; '); // frezy i otwory frontu
+      const work = [describeMilling(p), describeHandle(p), describeHinges(p)].filter(Boolean).join('; '); // frezy i otwory frontu
       add(p.group, p.name, c.name, p.material, panelCutSize({ ...p, edges: edgeCounts(p, p.thicknessAxis, set) }), set, work);
     }
   }

@@ -34,11 +34,14 @@ import {
   HANDLE_GROOVES,
   FRONT_DECORS,
   DECOR_LIMITS,
+  DECOR_GAP_LIMITS,
   describeMilling,
   HANDLE_TYPES,
   HANDLE_POSITIONS,
   HANDLE_SPACINGS,
   HANDLE_LIMITS,
+  defaultHandle,
+  handleOffsets,
   describeHandle,
 } from '../model/furniture.js';
 
@@ -49,12 +52,13 @@ const sameSizeCabinets = (cabinet, project) => project.furniture.filter((c) => c
 import { duplicateCabinet, slideCabinet } from '../model/placement.js';
 import { addCabinetToLayout, updateCabinetRefit, updateCabinetCeilingGap, setLegs } from '../model/layout.js';
 import { cabinetMaterials } from '../model/materials.js';
-import { setEye, materialSelect } from './widgets.js';
+import { setEye, materialSelect, colorPicker, readColorInput, syncColorPicker } from './widgets.js';
 import { sideBlendSummary } from './sideBlends.js';
 import { edgeKeys, EDGE_LABELS, projectSolids, panelEdgeSet, isManualEdgeSet, edgeCounts } from '../model/edges.js';
 
 import { escapeHtml, numberField, readNumberInput, setIfNotFocused, round1, commitEmptyAsZero } from './dom.js';
 import { createLegsDialog } from './legsDialog.js';
+import { decorInfo, decorPreviewSvg } from '../model/decor.js';
 import { rowOf } from '../model/trims.js';
 import { selectedCabinetIds, toggleCabinet } from '../state/selection.js';
 
@@ -193,7 +197,6 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
       </div>
 
       <datalist id="leg-heights">${LEG_HEIGHTS.map((h) => `<option value="${h}"></option>`).join('')}</datalist>
-      <datalist id="handle-spacings">${HANDLE_SPACINGS.map((s) => `<option value="${s}"></option>`).join('')}</datalist>
     `;
     renderedKey = structureKey(project);
     root.querySelectorAll('[data-kind="cabinet"]').forEach(applyCollapsed);
@@ -265,7 +268,9 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
         `
       <div class="grid-2">
         ${materialSelect('Materiał korpusu', 'materialId', project)}
+        ${colorPicker('Kolor korpusu', 'colors.body')}
         ${materialSelect('Materiał blend', 'blendMaterialId', project)}
+        ${colorPicker('Kolor blend', 'colors.blend')}
         <label class="field small">
           <span>Plecy</span>
           <select data-f="backType">
@@ -378,19 +383,27 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
           <input type="number" step="0.5" min="0" max="${FRONT_LIMITS.gapMax}" data-f="fronts.gapV" />
         </label>
         <span class="front-opt">${materialSelect('Materiał frontów', 'frontMaterialId', project)}</span>
-        <label class="field small front-opt" title="Ozdobne frezowanie lica frontu (zwykle MDF lakierowany)">
-          <span>Frez dekoracyjny</span>
-          <select data-f="fronts.decor">
-            ${FRONT_DECORS.map((d) => `<option value="${d.key}">${d.label}</option>`).join('')}
-          </select>
-        </label>
-        <label class="field small front-decor-margin" title="Odległość frezu ramki od krawędzi frontu">
-          <span>Ramka od krawędzi <small>mm</small></span>
+        <span class="front-opt">${colorPicker('Kolor frontów', 'colors.front')}</span>
+        <div class="front-opt front-decor-row" title="Ozdobne frezowanie lica frontu (zwykle MDF lakierowany)">
+          <label class="field small">
+            <span>Frez dekoracyjny</span>
+            <select data-f="fronts.decor">
+              ${FRONT_DECORS.map((d) => `<option value="${d.key}">${d.label}</option>`).join('')}
+            </select>
+          </label>
+          <span class="front-decor-preview" aria-hidden="true"></span>
+        </div>
+        <label class="field small front-decor-param" data-decor-field="decorMargin">
+          <span><span class="param-label">Odległość od krawędzi</span> <small>mm</small></span>
           <input type="number" step="1" min="${DECOR_LIMITS.min}" max="${DECOR_LIMITS.max}" data-f="fronts.decorMargin" />
         </label>
-        <label class="field small front-decor-spacing" title="Odstęp między poziomymi rowkami (od dołu frontu)">
-          <span>Rozstaw rowków <small>mm</small></span>
+        <label class="field small front-decor-param" data-decor-field="decorSpacing">
+          <span><span class="param-label">Rozstaw rowków</span> <small>mm</small></span>
           <input type="number" step="1" min="${DECOR_LIMITS.min}" max="${DECOR_LIMITS.max}" data-f="fronts.decorSpacing" />
+        </label>
+        <label class="field small front-decor-param" data-decor-field="decorGap">
+          <span><span class="param-label">Odstęp między liniami</span> <small>mm</small></span>
+          <input type="number" step="1" min="${DECOR_GAP_LIMITS.min}" max="${DECOR_GAP_LIMITS.max}" data-f="fronts.decorGap" />
         </label>
       </div>
       </div>
@@ -415,7 +428,13 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
         </label>
         <label class="field small handle-spacing" title="Odległość między otworami (osiami śrub) — z opisu uchwytu, np. 128 mm. Wybierz z listy albo wpisz własną.">
           <span>Rozstaw otworów <small>mm</small></span>
-          <input type="number" list="handle-spacings" step="1" min="${HANDLE_LIMITS.spacingMin}" max="${HANDLE_LIMITS.spacingMax}" data-f="fronts.handle.spacing" />
+          <span class="spacing-row">
+            <input type="number" step="1" min="${HANDLE_LIMITS.spacingMin}" max="${HANDLE_LIMITS.spacingMax}" data-f="fronts.handle.spacing" />
+            <select data-spacing-preset title="Typowe rozstawy uchwytów">
+              <option value="">typowe ▾</option>
+              ${HANDLE_SPACINGS.map((v) => `<option value="${v}">${v} mm</option>`).join('')}
+            </select>
+          </span>
         </label>
         <label class="field small handle-opt" title="Średnica otworu pod śrubę uchwytu (zwykle 5 mm pod M4)">
           <span>Średnica otworu <small>mm</small></span>
@@ -427,10 +446,17 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
             ${HANDLE_POSITIONS.map((p) => `<option value="${p.key}">${p.label}</option>`).join('')}
           </select>
         </label>
-        <label class="field small handle-opt" title="Odległość osi otworów od krawędzi: w drzwiach — od krawędzi otwierania; przy położeniu „góra” / „dół” — także od górnej / dolnej krawędzi">
-          <span>Od krawędzi <small>mm</small></span>
-          <input type="number" step="1" min="${HANDLE_LIMITS.offsetMin}" max="${HANDLE_LIMITS.offsetMax}" data-f="fronts.handle.edgeOffset" />
+        <label class="field small handle-opt handle-offset-x">
+          <span><span class="param-label">Od krawędzi otwierania</span> <small>mm</small></span>
+          <input type="number" step="1" min="-${HANDLE_LIMITS.shiftMax}" max="${HANDLE_LIMITS.shiftMax}" data-f="fronts.handle.offsetX" />
         </label>
+        <label class="field small handle-opt handle-offset-y">
+          <span><span class="param-label">Od górnej krawędzi</span> <small>mm</small>
+            <button type="button" class="icon tiny" data-reset-handle title="Przywróć domyślne położenie uchwytu">↺</button>
+          </span>
+          <input type="number" step="1" min="-${HANDLE_LIMITS.shiftMax}" max="${HANDLE_LIMITS.shiftMax}" data-f="fronts.handle.offsetY" />
+        </label>
+        <p class="hint handle-hint handle-opt">Uchwyt możesz też przeciągnąć myszką w widoku 3D.</p>
       </div>
       </div>
       </details>
@@ -615,7 +641,12 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
             : 'Korpus nie sięga skosu — zwykła, prosta góra.';
 
       // Podsumowania w nagłówkach sekcji.
-      const bodyMat = cabinetMaterials(c, project).body;
+      const mats = cabinetMaterials(c, project);
+      const bodyMat = mats.body;
+      // Kolory: wybrany kolor albo „jak w materiale” (próbnik pokazuje wtedy kolor materiału).
+      syncColorPicker(el, 'colors.body', c.colors?.body, mats.body.color);
+      syncColorPicker(el, 'colors.blend', c.colors?.blend, mats.blend.color);
+      syncColorPicker(el, 'colors.front', c.colors?.front, mats.front.color);
       setSummary(el, 'body', `${c.width} × ${c.height} × ${c.depth} mm · ${bodyMat.name}${c.topType === 'rails' ? ' · trawersy' : ''}${c.backGap ? ` · odstęp ${c.backGap}` : ''}`);
       setSummary(el, 'legs', c.legs?.enabled ? `${c.legs.height} mm` : 'brak');
       const nStiff = c.stiffeners?.length ?? 0;
@@ -631,9 +662,40 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
       el.querySelector('.front-handle-box').hidden = fr.type === 'none' || groove;
       el.querySelector('.handle-spacing').hidden = handleType !== 'bar';
       el.querySelectorAll('.handle-opt').forEach((x) => (x.hidden = handleType === 'none'));
-      el.querySelector('.front-decor-margin').hidden = fr.type === 'none' || fr.decor !== 'frame';
-      el.querySelector('.front-decor-spacing').hidden = fr.type === 'none' || fr.decor !== 'lines';
+      // Położenie uchwytu — dwa wymiary (ustawione albo domyślne) z nazwami zależnymi od frontu i położenia.
+      {
+        const spec = fr.handle ?? defaultHandle();
+        const door = fr.type === 'door' || fr.type === 'doubleDoor';
+        const off = handleOffsets(spec, door);
+        const xLabel = door ? 'Od krawędzi otwierania' : 'Przesunięcie od środka (w prawo +)';
+        const yLabel = { top: 'Od górnej krawędzi', bottom: 'Od dolnej krawędzi', center: 'Przesunięcie od środka (w górę +)' }[spec.position];
+        const xEl = el.querySelector('.handle-offset-x');
+        const yEl = el.querySelector('.handle-offset-y');
+        xEl.querySelector('.param-label').textContent = xLabel;
+        yEl.querySelector('.param-label').textContent = yLabel;
+        xEl.title = door ? 'Odległość osi uchwytu od krawędzi drzwi po stronie otwierania' : 'Przesunięcie uchwytu od środka szerokości szuflady';
+        yEl.title = spec.position === 'center' ? 'Przesunięcie środka uchwytu od środka wysokości frontu' : 'Odległość skrajnego otworu od krawędzi frontu';
+        const xIn = xEl.querySelector('input');
+        const yIn = yEl.querySelector('input');
+        if (!xIn.classList.contains('invalid')) setIfNotFocused(xIn, off.x);
+        if (!yIn.classList.contains('invalid')) setIfNotFocused(yIn, off.y);
+        // ↺ — tylko gdy położenie różni się od domyślnego
+        const d = defaultHandle();
+        el.querySelector('[data-reset-handle]').hidden = spec.offsetX == null && spec.offsetY == null && spec.position === d.position && spec.edgeOffset === d.edgeOffset;
+      }
       const frontPanels = cabinetPanels(c, project).filter((p) => p.key.startsWith('front-') && p.valid);
+      // Frez dekoracyjny: pola parametrów wybranego wzoru (z ich nazwami) i podgląd na pierwszym froncie.
+      const decor = decorInfo(fr.decor ?? 'none');
+      el.querySelectorAll('.front-decor-param').forEach((label) => {
+        const param = decor.params.find((x) => x.field === label.dataset.decorField);
+        label.hidden = fr.type === 'none' || !param;
+        if (param) label.querySelector('.param-label').textContent = param.label;
+      });
+      const sample = frontPanels[0];
+      el.querySelector('.front-decor-preview').innerHTML =
+        sample && decor.key !== 'none'
+          ? decorPreviewSvg(decor.key, sample.width, sample.height, { margin: fr.decorMargin, spacing: fr.decorSpacing, gap: fr.decorGap }, 72)
+          : '';
       const sizes = [...new Set(frontPanels.map((p) => `${round1(p.width)} × ${round1(p.height)}`))];
       const frontLabel = FRONT_TYPES.find((t) => t.key === fr.type)?.label.toLowerCase();
       setSummary(
@@ -765,6 +827,16 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
     if (!cabinetEl) return;
     const id = cabinetEl.dataset.id;
 
+    // Kolor (niezależny od materiału): korpus, blendy, fronty — przy zaznaczonych kilku korpusach
+    // (Ctrl + klik) zmienia się we wszystkich zaznaczonych.
+    const color = readColorInput(input);
+    if (color) {
+      const ids = selectedCabinetIds(ui.get());
+      const targets = ids.has(id) && ids.size > 1 ? ids : new Set([id]);
+      store.set((p) => ({ ...p, furniture: p.furniture.map((c) => (targets.has(c.id) ? setPath(c, color.path, color.value) : c)) }));
+      return;
+    }
+
     const part = input.closest('[data-part]')?.dataset.part;
 
     // Przełącznik „Niezależny”: po ponownym powiązaniu płyta wraca do wymiarów z korpusu.
@@ -842,6 +914,13 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
       return;
     }
 
+    // Typowy rozstaw z listy — wpisujemy go w pole rozstawu (lista wraca do „typowe ▾”).
+    if (input.dataset.spacingPreset !== undefined) {
+      const v = Number(input.value);
+      input.value = '';
+      if (v) updateCabinet(id, (c) => setPath(c, 'fronts.handle.spacing', v));
+      return;
+    }
     const field = input.dataset.f;
     if (!field) return;
     let value = input.value;
@@ -906,6 +985,11 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
         const ids = new Set(linkedIds(field, id, p));
         return { ...p, furniture: p.furniture.map((c) => (ids.has(c.id) ? { ...c, [field]: value } : c)) };
       });
+      return;
+    }
+    if (field === 'fronts.handle.position') {
+      // Inne położenie (góra / środek / dół) — wymiar w pionie znaczy co innego, wraca do domyślnego.
+      updateCabinet(id, (c) => setPath(setPath(c, field, value), 'fronts.handle.offsetY', null));
       return;
     }
     if (field === 'ceilingGap') {
@@ -1084,6 +1168,14 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
       if (set.has(id)) set.delete(id);
       else set.add(id);
       updateStatus(store.get());
+    } else if (e.target.closest('[data-reset-handle]') && id) {
+      e.preventDefault(); // przycisk w etykiecie pola
+      // domyślne położenie uchwytu (zostają rodzaj, rozstaw i średnica otworów)
+      const d = defaultHandle();
+      updateCabinet(id, (c) => ({
+        ...c,
+        fronts: { ...c.fronts, handle: { ...c.fronts.handle, position: d.position, edgeOffset: d.edgeOffset, offsetX: null, offsetY: null } },
+      }));
     } else if (e.target.closest('[data-reset-ceiling-gap]') && id) {
       store.set((p) => updateCabinetCeilingGap(p, id, (c) => ({ ...c, ceilingGap: null })));
     } else if (e.target.closest('[data-reset-slope-gap]') && id) {

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { MM, toScene } from './units.js';
 import { createDimension } from './dimensions.js';
+import { formatLength } from '../state/settings.js';
 import { boxPolyhedron, clipPolyhedron, facesToPositions, facesToEdgePositions } from './polyhedron.js';
 import { isObstacleOutside, slopePlanes } from '../model/space.js';
 
@@ -53,9 +54,9 @@ export function buildSpace(space, view = { showWalls: true }) {
   // Wymiary.
   const gap = Math.max(0.12, Math.max(w, h, d) * 0.06);
   const v = (x, y, z) => new THREE.Vector3(x, y, z);
-  group.add(createDimension(v(0, 0, 0), v(w, 0, 0), v(0, 0, gap), `${space.width} mm`));
-  group.add(createDimension(v(0, 0, 0), v(0, h, 0), v(-gap, 0, 0), `${space.height} mm`));
-  group.add(createDimension(v(w, 0, 0), v(w, 0, -d), v(gap, 0, 0), `${space.depth} mm`));
+  group.add(createDimension(v(0, 0, 0), v(w, 0, 0), v(0, 0, gap), formatLength(space.width)));
+  group.add(createDimension(v(0, 0, 0), v(0, h, 0), v(-gap, 0, 0), formatLength(space.height)));
+  group.add(createDimension(v(w, 0, 0), v(w, 0, -d), v(gap, 0, 0), formatLength(space.depth)));
 
   return group;
 }

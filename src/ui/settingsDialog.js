@@ -1,0 +1,75 @@
+import { HIGHLIGHT_PRESETS, UNITS, DEFAULT_SETTINGS, getSettings, setSettings } from '../state/settings.js';
+import { escapeHtml } from './dom.js';
+
+// Okienko „Ustawienia” (koło zębate na pasku): kolor zaznaczenia w 3D i jednostki wymiarów w 3D.
+// Zmiany działają od razu i zapisują się w tej przeglądarce (nie w projekcie).
+export function createSettingsDialog() {
+  const overlay = document.createElement('div');
+  overlay.className = 'welcome-overlay';
+  overlay.hidden = true;
+  overlay.innerHTML = `
+    <div class="welcome settings-dialog" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+      <h2 id="settings-title">Ustawienia</h2>
+      <p class="welcome-note">Dotyczą tej przeglądarki — nie zmieniają projektu.</p>
+
+      <fieldset class="settings-group">
+        <legend>Kolor zaznaczenia w 3D</legend>
+        <p class="welcome-note">Kolor, na który podświetlają się zaznaczone korpusy, fronty, blendy i nóżki.</p>
+        <div class="swatches">
+          ${HIGHLIGHT_PRESETS.map(
+            (c) => `<button type="button" class="swatch" data-highlight="${c.hex}" title="${escapeHtml(c.name)}" aria-label="${escapeHtml(c.name)}" style="--swatch:${c.hex}"></button>`,
+          ).join('')}
+          <label class="swatch-custom" title="Własny kolor">własny <input type="color" data-highlight-custom /></label>
+        </div>
+      </fieldset>
+
+      <fieldset class="settings-group">
+        <legend>Jednostki</legend>
+        <label class="field small">
+          <span>Wymiary na widoku 3D</span>
+          <select data-units>
+            ${UNITS.map((u) => `<option value="${u.key}">${escapeHtml(u.label)}</option>`).join('')}
+          </select>
+        </label>
+        <p class="welcome-note">Pola w panelach i lista formatek są zawsze w milimetrach.</p>
+      </fieldset>
+
+      <div class="welcome-actions">
+        <button type="button" data-settings="reset">Przywróć domyślne</button>
+        <button type="button" class="primary" data-settings="close">Gotowe</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  const sync = () => {
+    const s = getSettings();
+    overlay.querySelectorAll('[data-highlight]').forEach((b) => b.classList.toggle('selected', b.dataset.highlight === s.highlight));
+    overlay.querySelector('[data-highlight-custom]').value = s.highlight;
+    overlay.querySelector('[data-units]').value = s.units;
+  };
+  const close = () => (overlay.hidden = true);
+
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay || e.target.closest('[data-settings="close"]')) close();
+    const swatch = e.target.closest('[data-highlight]');
+    if (swatch) setSettings({ highlight: swatch.dataset.highlight });
+    if (e.target.closest('[data-settings="reset"]')) setSettings({ ...DEFAULT_SETTINGS });
+    sync();
+  });
+  overlay.addEventListener('input', (e) => {
+    if (e.target.matches('[data-highlight-custom]')) setSettings({ highlight: e.target.value });
+    if (e.target.matches('[data-units]')) setSettings({ units: e.target.value });
+    sync();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !overlay.hidden) close();
+  });
+
+  return {
+    open() {
+      sync();
+      overlay.hidden = false;
+      overlay.querySelector('[data-settings="close"]').focus();
+    },
+  };
+}

@@ -6,7 +6,7 @@
     <title>Projektant mebli online — darmowe projektowanie szafek i zabudów 3D</title>
     <meta
       name="description"
-      content="Darmowy projektant mebli w przeglądarce: odwzoruj wnękę lub poddasze ze skosami, zaprojektuj korpusy, blendy i blat w 3D, a potem pobierz listę formatek do rozkroju (CSV). Bez rejestracji."
+      content="Darmowy projektant mebli w przeglądarce: odwzoruj wnękę lub poddasze ze skosami, zaprojektuj korpusy, fronty, blendy i blat w 3D, a potem pobierz listę formatek do rozkroju (Excel, CSV, plik do rozkroju na meble.pl). Bez rejestracji."
     />
     <meta name="theme-color" content="#2563eb" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
@@ -21,7 +21,7 @@
     <meta property="og:title" content="Projektant mebli online — zaprojektuj szafkę lub zabudowę wnęki w 3D" />
     <meta
       property="og:description"
-      content="Odwzoruj wnękę, zaprojektuj korpusy z blendami i blatem, pobierz listę formatek do rozkroju. Za darmo, w przeglądarce."
+      content="Odwzoruj wnękę, zaprojektuj korpusy z frontami, blendami i blatem, pobierz listę formatek do rozkroju (Excel, CSV, meble.pl). Za darmo, w przeglądarce."
     />
     <meta name="twitter:card" content="summary" />
 
@@ -32,7 +32,7 @@
         "@type": "WebApplication",
         "name": "Projektant mebli",
         "url": "https://meblesamemu.pl/",
-        "description": "Darmowy projektant mebli w przeglądarce: wnęki i skosy, korpusy, blendy, blat, lista formatek do rozkroju.",
+        "description": "Darmowy projektant mebli w przeglądarce: wnęki i skosy, korpusy, fronty, blendy, blat, lista formatek do rozkroju w Excelu, CSV i dla rozkroju na meble.pl.",
         "applicationCategory": "DesignApplication",
         "operatingSystem": "Dowolny (przeglądarka internetowa)",
         "inLanguage": "pl",
@@ -67,8 +67,40 @@
           <b>Strzałki</b> — o 10 mm (Shift: 100 mm) · <b>PgUp/PgDn</b> — w pionie · <b>Ctrl+D</b> — duplikuj ·
           <b>Del</b> — usuń (zaznaczone fronty — tylko fronty) · <b>Ctrl+Z</b> — cofnij
         </div>
+        <!-- Menu ze stronami z treścią (o programie, poradniki) — w rogu podglądu 3D; rozwijane, linki
+             są w HTML (widoczne dla wyszukiwarek także po zwinięciu) -->
+        <nav class="site-menu" aria-label="Menu">
+          <details class="site-menu-root">
+            <summary>☰ Menu</summary>
+            <ul>
+              <li><a href="/o-programie">O programie</a></li>
+              <li><button type="button" class="site-menu-action" data-open-feedback>💬 Zgłoś uwagę lub propozycję</button></li>
+              <li>
+                <details class="site-menu-sub" open>
+                  <summary>Poradniki</summary>
+                  <ul>
+                    <li><a href="/poradniki/szafa-do-wneki">Szafa do wnęki krok po kroku</a></li>
+                    <li><a href="/poradniki/zabudowa-poddasza-skos">Zabudowa poddasza ze skosem</a></li>
+                    <li><a href="/poradniki/formatki-rozkroj-plyt">Formatki i rozkrój płyt</a></li>
+                    <li><a href="/poradniki/rozkroj-meble-pl-csv">Rozkrój na meble.pl z pliku CSV</a></li>
+                    <li><a href="/poradniki/">Wszystkie poradniki</a></li>
+                  </ul>
+                </details>
+              </li>
+            </ul>
+          </details>
+        </nav>
       </section>
     </main>
+    <noscript>
+      <div class="noscript">
+        <h1>Darmowy projektant mebli online</h1>
+        <p>Zaprojektuj szafę do wnęki, zabudowę poddasza ze skosem albo szafki kuchenne w 3D i pobierz listę formatek
+          do rozkroju płyt (Excel, CSV, plik do rozkroju na meble.pl). Projektant działa w przeglądarce i wymaga
+          włączonego JavaScriptu.</p>
+        <p><a href="/o-programie">O programie</a> · <a href="/poradniki/">Poradniki</a></p>
+      </div>
+    </noscript>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>

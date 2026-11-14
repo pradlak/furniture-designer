@@ -1,10 +1,26 @@
-// Konfiguracja Cloudflare Workers: strona statyczna (wynik `npm run build` w katalogu dist/).
+// Konfiguracja Cloudflare Workers: strona statyczna (wynik `npm run build` w katalogu dist/)
+// i mały Worker (worker/index.js) do formularza uwag — POST /api/uwagi wysyła maila.
 // "name" musi być taka sama jak nazwa Workera w panelu Cloudflare.
 {
   "name": "furniture-designer",
   "compatibility_date": "2026-10-01",
+  "main": "worker/index.js",
   "assets": {
     "directory": "./dist",
-    "not_found_handling": "single-page-application"
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    // Worker obsługuje tylko /api/* — resztę Cloudflare serwuje prosto z dist/
+    "run_worker_first": ["/api/*"]
+  },
+  // Wysyłanie uwag: na jeden, stały adres (nie można wysłać nigdzie indziej).
+  // Wymaga: adresu docelowego zweryfikowanego w Cloudflare i domeny meblesamemu.pl włączonej do wysyłki maili.
+  "send_email": [
+    {
+      "name": "FEEDBACK",
+      "destination_address": "p.radlak@gmail.com"
+    }
+  ],
+  "vars": {
+    "FEEDBACK_TO": "p.radlak@gmail.com"
   }
 }

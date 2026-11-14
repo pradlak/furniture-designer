@@ -17,6 +17,9 @@ import { createExamplesDialog } from './ui/examples.js';
 import { initMathInputs } from './ui/mathInputs.js';
 import { selectedCabinetIds } from './state/selection.js';
 import { initSizeNotices } from './ui/sizeNotices.js';
+import { createFeedbackDialog } from './ui/feedbackDialog.js';
+import { createSettingsDialog } from './ui/settingsDialog.js';
+import { onSettingsChange } from './state/settings.js';
 
 // Działania w polach liczbowych (np. 1100-70 → 1030).
 initMathInputs();
@@ -63,9 +66,19 @@ const welcome = createWelcome(store, {
 });
 // Okienko powitalne już kiedyś zamknięte — wybór przestrzeni od razu.
 if (!welcome.isOpen()) offerTemplate();
+// Uwagi i propozycje (formularz → mail do autora) — z paska i z menu w rogu podglądu 3D.
+const feedback = createFeedbackDialog();
+// Ustawienia programu (kolor zaznaczenia, jednostki) — po zmianie widok 3D rysuje się na nowo.
+const settingsDialog = createSettingsDialog();
+document.querySelector('[data-open-feedback]')?.addEventListener('click', () => {
+  document.querySelector('.site-menu-root')?.removeAttribute('open');
+  feedback.open();
+});
 const toolbar = createToolbar(document.getElementById('toolbar'), store, viewer, {
   onHelp: () => welcome.open(),
   onNew: () => newProject.open(),
+  onFeedback: () => feedback.open(),
+  onSettings: () => settingsDialog.open(),
 });
 attachCabinetInteraction(viewer, store, ui);
 initShortcuts(store, ui);
@@ -78,6 +91,7 @@ const selectedFronts = () => new Set([...(ui.get().selectedFronts ?? []), ...(ui
 const isFrontOpen = (id) => ui.get().frontOpen?.[id] ?? store.get().view?.openFronts === true;
 const redraw = (refit = false) =>
   viewer.setProject(store.get(), { refit, selectedIds: selectedCabinetIds(ui.get()), selectedFronts: selectedFronts(), isFrontOpen });
+onSettingsChange(() => redraw());
 redraw();
 
 let lastOpenFronts = store.get().view?.openFronts === true;
@@ -101,10 +115,11 @@ store.subscribe((project, meta) => {
   saveProject(project); // autozapis w przeglądarce
 });
 
-// Po zaznaczeniu w 3D blendy albo nóżek — w panelu po lewej pokazujemy ich ustawienia:
-// blenda wspólna / blat → karta w „Blendy i blaty”, blenda boczna → karta blend bocznych korpusu,
-// nóżki → sekcja „Nóżki” w karcie korpusu.
+// Po zaznaczeniu w 3D frontu, blendy albo nóżek — w panelu po lewej pokazujemy ich ustawienia:
+// front → sekcja „Fronty” w karcie korpusu, blenda wspólna / blat → karta w „Blendy i blaty”,
+// blenda boczna → karta blend bocznych korpusu, nóżki → sekcja „Nóżki” w karcie korpusu.
 let lastPicked = null;
+let lastFront = null;
 function revealPicked(id) {
   if (id.startsWith('trim:')) {
     tabs.activate('trims-panel');
@@ -127,4 +142,19 @@ ui.subscribe((state, meta) => {
   const newest = (state.selectedBlends ?? []).at(-1) ?? null;
   if (newest && newest !== lastPicked) revealPicked(newest);
   lastPicked = newest;
+  // zaznaczony front („idKorpusu:front-N”) — sekcja „Fronty” w karcie jego korpusu
+  const front = (state.selectedFronts ?? []).at(-1) ?? null;
+  if (front && front !== lastFront) furniturePanel.revealSection(front.split(':')[0], 'fronts');
+  lastFront = front;
 });
+
+// Menu w rogu podglądu 3D (o programie, poradniki): zamyka się po kliknięciu obok albo Esc.
+const siteMenu = document.querySelector('.site-menu-root');
+if (siteMenu) {
+  document.addEventListener('pointerdown', (e) => {
+    if (siteMenu.open && !siteMenu.contains(e.target)) siteMenu.open = false;
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && siteMenu.open) siteMenu.open = false;
+  });
+}

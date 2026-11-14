@@ -2,7 +2,8 @@ import { escapeHtml } from './dom.js';
 
 // Małe menu z akcjami dla klikniętego elementu w widoku 3D (np. frontu): pokazuje się przy kursorze,
 // znika po wybraniu akcji, kliknięciu obok, Esc albo przewinięciu.
-// items: [{ label, icon?, run }]
+// items: [{ label, icon?, run }] albo [{ label, icon?, submenu: () => ({ title, items }) }] — podlista
+// (np. kolory) pokazuje się w tym samym miejscu zamiast menu. icon — tekst albo HTML (np. kółko koloru).
 export function createContextMenu(container) {
   const menu = document.createElement('div');
   menu.className = 'context-menu';
@@ -10,6 +11,7 @@ export function createContextMenu(container) {
   menu.setAttribute('role', 'menu');
   container.appendChild(menu);
   let actions = [];
+  let at = { x: 0, y: 0 }; // miejsce otwarcia (dla podlisty)
 
   const hide = () => {
     menu.hidden = true;
@@ -18,12 +20,13 @@ export function createContextMenu(container) {
 
   function show(clientX, clientY, title, items) {
     actions = items;
+    at = { x: clientX, y: clientY };
     menu.innerHTML =
       (title ? `<div class="context-menu-title">${escapeHtml(title)}</div>` : '') +
       items
         .map(
           (it, i) =>
-            `<button type="button" role="menuitem" data-menu-item="${i}">${it.icon ? `<span class="context-menu-icon">${it.icon}</span>` : ''}${escapeHtml(it.label)}</button>`,
+            `<button type="button" role="menuitem" data-menu-item="${i}">${it.icon ? `<span class="context-menu-icon">${it.icon}</span>` : ''}${escapeHtml(it.label)}${it.submenu ? '<span class="context-menu-more">›</span>' : ''}</button>`,
         )
         .join('');
     menu.hidden = false;
@@ -41,6 +44,11 @@ export function createContextMenu(container) {
     const i = e.target.closest('[data-menu-item]')?.dataset.menuItem;
     if (i == null) return;
     const action = actions[Number(i)];
+    if (action?.submenu) {
+      const sub = action.submenu();
+      show(at.x, at.y, sub.title, sub.items);
+      return;
+    }
     hide();
     action?.run();
   });

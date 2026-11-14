@@ -47,7 +47,7 @@ export function createMaterialsPanel(root, store) {
     return `
       <div class="item material" data-id="${m.id}">
         <div class="item-head">
-          <input type="color" data-f="color" title="Kolor" />
+          <input type="color" data-f="color" title="Kolor domyślny — używany tam, gdzie przy korpusie, blendzie czy froncie wybrano „jak w materiale”" />
           <input type="text" data-f="name" value="${escapeHtml(m.name)}" aria-label="Nazwa materiału" />
           <button type="button" class="danger" data-remove-material="${m.id}" title="Usuń">✕</button>
         </div>

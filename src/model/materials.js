@@ -26,8 +26,8 @@ export const coreColorOf = (material) => CORE_COLORS[material.type] ?? material.
 export function defaultMaterials() {
   return [
     { id: 'mat-white', name: 'Płyta biała 18', type: 'chipboard', thickness: 18, color: '#f2f2ef', edgeBanding: DEFAULT_EDGE_BANDING, edgeColor: null },
-    { id: 'mat-mdf-green', name: 'MDF lakierowany zielony 18', type: 'mdf', thickness: 18, color: '#5f7f5c', edgeBanding: 0 },
-    { id: 'mat-mdf-cashmere', name: 'MDF lakierowany kaszmirowy 18', type: 'mdf', thickness: 18, color: '#d6cbbd', edgeBanding: 0 },
+    // kolor MDF wybiera się osobno przy blendach i frontach (np. kaszmirowy) — tu tylko kolor domyślny
+    { id: 'mat-mdf-green', name: 'MDF lakierowany 18', type: 'mdf', thickness: 18, color: '#5f7f5c', edgeBanding: 0 },
     { id: 'mat-hdf', name: 'HDF biały 3', type: 'hdf', thickness: 3, color: '#ecebe6', edgeBanding: 0 },
     { ...DEFAULT_WORKTOP },
   ];
@@ -70,21 +70,65 @@ export function resolveMaterial(project, id, type) {
   return materialById(project, id) ?? firstOfType(project, type) ?? FALLBACK[type];
 }
 
+// --- Kolor niezależny od materiału ---
+// Materiał (rodzaj, grubość, okleina) wybiera się osobno, a kolor osobno — przy każdym użyciu:
+// korpus, blendy, fronty (cabinet.colors.body / blend / front), blenda wspólna i blat (trim.color).
+// Kolor: { hex, name } albo null — jak w materiale. Nazwa koloru trafia do nazwy materiału na liście
+// formatek („MDF lakierowany 18 — kaszmirowy”), więc różne kolory to osobne pozycje (i osobne pliki rozkroju).
+export const COLOR_PRESETS = [
+  { hex: '#f4f4f1', name: 'biały' },
+  { hex: '#efe8d8', name: 'kremowy' },
+  { hex: '#d6cbbd', name: 'kaszmirowy' },
+  { hex: '#cdb89c', name: 'beżowy' },
+  { hex: '#a99582', name: 'cappuccino' },
+  { hex: '#c9cbcb', name: 'jasnoszary' },
+  { hex: '#8f9396', name: 'szary' },
+  { hex: '#3d4247', name: 'antracytowy' },
+  { hex: '#1f1f1f', name: 'czarny' },
+  { hex: '#9fae98', name: 'szałwiowy' },
+  { hex: '#5f7f5c', name: 'zielony' },
+  { hex: '#2f4f3e', name: 'butelkowa zieleń' },
+  { hex: '#26334d', name: 'granatowy' },
+  { hex: '#c8a27a', name: 'dąb naturalny' },
+  { hex: '#7a5537', name: 'orzech' },
+];
+
+const HEX = /^#[0-9a-f]{6}$/i;
+// Kolor z pliku projektu → { hex, name } albo null.
+export function normalizeColor(raw) {
+  if (!raw || typeof raw !== 'object' || !HEX.test(raw.hex ?? '')) return null;
+  const hex = raw.hex.toLowerCase();
+  const name = typeof raw.name === 'string' && raw.name.trim() ? raw.name.trim().slice(0, 60) : `własny ${hex}`;
+  return { hex, name };
+}
+
+// Materiał w wybranym kolorze: kolor płyty i obrzeża, nazwa z kolorem; bez koloru — materiał bez zmian.
+export function withColor(material, color) {
+  if (!color) return material;
+  return { ...material, color: color.hex, edgeColor: null, colorName: color.name, name: `${material.name} — ${color.name}` };
+}
+
 // Materiały korpusu: body — korpus, blend — blendy boczne, front — fronty (domyślnie jak blendy), hdf — plecy HDF.
+// Każdy w kolorze wybranym dla korpusu (cabinet.colors), jeśli jest wybrany.
 export function cabinetMaterials(cabinet, project) {
   const body = resolveMaterial(project, cabinet.materialId, 'chipboard');
   const blend = materialById(project, cabinet.blendMaterialId) ?? firstOfType(project, 'mdf') ?? body;
+  const front = materialById(project, cabinet.frontMaterialId) ?? blend;
+  const colors = cabinet.colors ?? {};
   return {
-    body,
-    blend,
-    front: materialById(project, cabinet.frontMaterialId) ?? blend,
+    body: withColor(body, colors.body),
+    blend: withColor(blend, colors.blend),
+    front: withColor(front, colors.front),
+    frontBase: front, // materiał frontów bez koloru korpusu — pod kolor pojedynczego frontu
+    blendBase: blend, // materiał blend bez koloru korpusu — pod kolor pojedynczej blendy bocznej
+
     hdf: resolveMaterial(project, null, 'hdf'),
   };
 }
 
-// Materiał blendy wspólnej (dolnej / górnej) albo blatu.
+// Materiał blendy wspólnej (dolnej / górnej) albo blatu — w kolorze wybranym dla niej (trim.color).
 export const trimMaterial = (trim, project) =>
-  resolveMaterial(project, trim.materialId, trim.type === 'countertop' ? 'worktop' : 'mdf');
+  withColor(resolveMaterial(project, trim.materialId, trim.type === 'countertop' ? 'worktop' : 'mdf'), trim.color);
 
 export function normalizeMaterials(raw) {
   if (!Array.isArray(raw) || !raw.length) return defaultMaterials();

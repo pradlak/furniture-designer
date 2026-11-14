@@ -1,9 +1,10 @@
 import * as THREE from 'three';
 import { MM } from './units.js';
 import { snapPosition } from '../model/placement.js';
-import { cabinetPanels, legHeight, shelfKey, setShelfY } from '../model/furniture.js';
+import { cabinetPanels, legHeight, shelfKey, setShelfY, handleOffsetsFor } from '../model/furniture.js';
 import { createContextMenu } from '../ui/contextMenu.js';
 import { selectedCabinetIds, toggleCabinet } from '../state/selection.js';
+import { COLOR_PRESETS } from '../model/materials.js';
 
 const CLICK_TOLERANCE_PX = 4;
 
@@ -37,12 +38,13 @@ export function attachCabinetInteraction(viewer, store, ui) {
     for (const hit of hits) {
       let o = hit.object;
       let panelKey = null;
+      const handle = !!o.userData.handle; // trafiony uchwyt frontu
       while (o && !o.userData.cabinetId && !o.userData.trimId) {
         panelKey ??= o.userData.panelKey ?? null;
         o = o.parent;
       }
       if (o?.userData.trimId) return { trimId: o.userData.trimId, point: hit.point }; // blenda wspólna / blat
-      if (o) return { id: o.userData.cabinetId, panelKey, point: hit.point };
+      if (o) return { id: o.userData.cabinetId, panelKey, point: hit.point, handle };
     }
     return null;
   }
@@ -76,6 +78,100 @@ export function attachCabinetInteraction(viewer, store, ui) {
     return cabinet ? cabinetPanels(cabinet, project).find((p) => p.key === key) ?? null : null;
   };
 
+  // Kolor wybranych elementów: fronty i blendy boczne („idKorpusu:klucz”) — przy płycie
+  // (panelOverrides[klucz].color), blendy wspólne i blaty („trim:id”) — trim.color.
+  // null — element wraca do koloru ustawionego w korpusie / materiale.
+  function setPartsColor(partIds, color) {
+    const trimIds = partIds.filter((id) => id.startsWith('trim:')).map((id) => id.slice(5));
+    const frontIds = partIds.filter((id) => !id.startsWith('trim:'));
+    store.set((p) => ({
+      ...p,
+      trims: (p.trims ?? []).map((t) => (trimIds.includes(t.id) ? { ...t, color } : t)),
+      furniture: p.furniture.map((c) => {
+        const keys = frontIds.filter((id) => id.startsWith(`${c.id}:`)).map((id) => id.split(':')[1]);
+        if (!keys.length) return c;
+        const overrides = { ...c.panelOverrides };
+        for (const k of keys) {
+          const { color: _old, ...rest } = overrides[k] ?? {};
+          overrides[k] = color ? { ...rest, color } : rest;
+          if (!Object.keys(overrides[k]).length) delete overrides[k];
+        }
+        return { ...c, panelOverrides: overrides };
+      }),
+    }));
+  }
+
+  // Własny kolor — systemowy próbnik kolorów (otwierany kliknięciem z menu).
+  const colorInput = document.createElement('input');
+  colorInput.type = 'color';
+  colorInput.className = 'context-color-input';
+  colorInput.tabIndex = -1;
+  viewer.container.appendChild(colorInput);
+  let onCustomColor = null;
+  colorInput.addEventListener('change', () => {
+    const hex = colorInput.value.toLowerCase();
+    const preset = COLOR_PRESETS.find((c) => c.hex === hex);
+    onCustomColor?.(preset ? { ...preset } : { hex, name: `własny ${hex}` });
+    onCustomColor = null;
+  });
+  function pickCustomColor(done) {
+    onCustomColor = done;
+    colorInput.click();
+  }
+
+// Wszystkie zaznaczone elementy, którym można zmienić kolor: fronty i blendy (bez nóżek).
+  const selectedParts = () => [
+    ...(ui.get().selectedFronts ?? []),
+    ...(ui.get().selectedBlends ?? []).filter((id) => !id.endsWith(':legs')),
+  ];
+  const partsLabel = (parts) => {
+    const fronts = parts.filter((id) => id.includes(':front-')).length;
+    const blends = parts.length - fronts;
+    return [fronts && `${fronts} ${fronts === 1 ? 'front' : fronts < 5 ? 'fronty' : 'frontów'}`, blends && `${blends} ${blends === 1 ? 'blenda' : blends < 5 ? 'blendy' : 'blend'}`]
+      .filter(Boolean)
+      .join(' + ');
+  };
+
+  // Pozycja menu „Zmień kolor…” z podlistą kolorów dla elementów partIds.
+  function colorItem(label, title, resetLabel, partIds) {
+    return {
+      icon: '🎨',
+      label,
+      submenu: () => ({
+        title,
+        items: [
+          { icon: '↺', label: resetLabel, run: () => setPartsColor(partIds, null) },
+          ...COLOR_PRESETS.map((c) => ({
+            icon: `<span class="context-menu-swatch" style="background:${c.hex}"></span>`,
+            label: c.name,
+            run: () => setPartsColor(partIds, { ...c }),
+          })),
+          { icon: '…', label: 'własny kolor', run: () => pickCustomColor((c) => setPartsColor(partIds, c)) },
+        ],
+      }),
+    };
+  }
+
+  // Menu dla zaznaczonych blend (boczne „idKorpusu:klucz”, wspólne i blaty „trim:id”): zmiana koloru.
+  function showBlendMenu(blendIds, clientX, clientY) {
+    const project = store.get();
+    const nameOf = (id) => {
+      if (id.startsWith('trim:')) return project.trims?.find((t) => t.id === id.slice(5))?.name;
+      const [cabId, key] = id.split(':');
+      const cab = project.furniture.find((c) => c.id === cabId);
+      return cab && cabinetPanels(cab, project).find((p) => p.key === key)?.name;
+    };
+    const ids = blendIds.filter((id) => !id.endsWith(':legs') && nameOf(id));
+    if (!ids.length) return;
+    // kolor — dla wszystkich zaznaczonych elementów (blendy i fronty razem)
+    const parts = [...new Set([...ids, ...selectedParts()])];
+    const multi = parts.length > 1;
+    const title = multi ? `Zaznaczone: ${partsLabel(parts)}` : nameOf(ids[0]);
+    menu.show(clientX, clientY, title, [
+      colorItem(`Zmień kolor${multi ? ' wszystkich' : ''}…`, multi ? `Kolor: ${partsLabel(parts)}` : `Kolor: ${nameOf(ids[0])}`, 'jak w korpusie / materiale', parts),
+    ]);
+  }
+
   // Menu akcji dla zaznaczonych frontów (jednego albo kilku, z Ctrl): otwórz / zamknij (wysuń / wsuń), ukryj.
   // Gdy część jest otwarta, a część zamknięta — obie akcje.
   const menu = createContextMenu(viewer.container);
@@ -106,6 +202,18 @@ export function attachCabinetInteraction(viewer, store, ui) {
           }),
         })),
     });
+    // Kolor zaznaczonych frontów (podlista): „jak w korpusie” zdejmuje własny kolor frontu.
+    // kolor — dla wszystkich zaznaczonych elementów (fronty i blendy razem)
+    const parts = [...new Set([...ids, ...selectedParts()])];
+    const multi = parts.length > 1;
+    items.push(
+      colorItem(
+        `Zmień kolor${multi ? ` (${partsLabel(parts)})` : ''}…`,
+        multi ? `Kolor: ${partsLabel(parts)}` : `Kolor: ${fronts[0].panel.name}`,
+        'jak w korpusie / materiale',
+        parts,
+      ),
+    );
     const title = many ? `Zaznaczone fronty: ${fronts.length}` : fronts[0].panel.name;
     menu.show(clientX, clientY, title, items);
   }
@@ -143,6 +251,19 @@ export function attachCabinetInteraction(viewer, store, ui) {
     if (moved) return;
     setRay(e);
     const hit = pickCabinet();
+    // Prawy klik na blendzie (bocznej, wspólnej, blacie): menu dla zaznaczonych blend, a gdy kliknięta
+    // nie jest zaznaczona — zaznaczamy tylko ją.
+    const blendId = blendIdOf(hit);
+    if (blendId && !blendId.endsWith(':legs')) {
+      let blends = ui.get().selectedBlends ?? [];
+      if (!blends.includes(blendId)) {
+        blends = [blendId];
+        const cabinetSel = hit.trimId ? { selectedId: null, selectedIds: [] } : { selectedId: hit.id, selectedIds: [hit.id] };
+        ui.set({ ...ui.get(), ...cabinetSel, selectedFronts: [], selectedBlends: blends });
+      }
+      showBlendMenu(blends, e.clientX, e.clientY);
+      return;
+    }
     if (!isFront(hit)) return;
     // Prawy klik na jednym z zaznaczonych frontów — menu dla wszystkich zaznaczonych;
     // na innym froncie — zaznaczamy tylko ten.
@@ -150,7 +271,7 @@ export function attachCabinetInteraction(viewer, store, ui) {
     let selected = ui.get().selectedFronts ?? [];
     if (!selected.includes(frontId)) {
       selected = [frontId];
-      ui.set({ ...ui.get(), selectedId: hit.id, selectedFronts: selected }, { reveal: true });
+      ui.set({ ...ui.get(), selectedId: hit.id, selectedIds: [hit.id], selectedFronts: selected, selectedBlends: [] }, { reveal: true });
     }
     showFrontMenu(selected, e.clientX, e.clientY);
   });
@@ -219,7 +340,19 @@ export function attachCabinetInteraction(viewer, store, ui) {
       const start = raycaster.ray.intersectPlane(plane, new THREE.Vector3());
       if (!cabinet || !start) return;
 
-      if (frontId && !e.shiftKey) {
+      if (frontId && hit.handle && !e.shiftKey && !isFrontOpen(frontId)) {
+        // Uchwyt zamkniętego frontu: przeciąganie przesuwa uchwyt po licu (oba wymiary położenia uchwytu
+        // w karcie korpusu); dotyczy wszystkich frontów korpusu, jak ustawienie w panelu.
+        const panel = cabinetPanels(cabinet, project).find((p) => p.key === hit.panelKey);
+        const faceZ = (panel.z + panel.depth - project.space.depth) * MM;
+        const facePlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -faceZ);
+        const hold = raycaster.ray.intersectPlane(facePlane, new THREE.Vector3());
+        if (!hold) return;
+        // przesunięcie kursora względem środka uchwytu — uchwyt nie „skacze” do kursora
+        const holes = panel.handle?.holes ?? [];
+        const mid = holes.reduce((a, h) => ({ x: a.x + h.x / holes.length, y: a.y + h.y / holes.length }), { x: 0, y: 0 });
+        drag = { handleOf: { cabinetId: cabinet.id, key: hit.panelKey }, plane: facePlane, grab: { x: hold.x / MM - mid.x, y: hold.y / MM - mid.y } };
+      } else if (frontId && !e.shiftKey) {
         // Front: przeciągnięcie otwiera albo zamyka go (zamiast przesuwać korpus); samo kliknięcie — tylko zaznacza.
         drag = { frontId, x: e.clientX, y: e.clientY, toggled: false };
       } else if (shelfHit) {
@@ -258,10 +391,29 @@ export function attachCabinetInteraction(viewer, store, ui) {
     setRay(e);
     if (!drag) {
       const hover = pickCabinet();
-      el.style.cursor = isShelf(hover) ? 'ns-resize' : isFront(hover) || hover?.trimId ? 'pointer' : hover ? 'grab' : '';
+      el.style.cursor = hover?.handle ? 'move' : isShelf(hover) ? 'ns-resize' : isFront(hover) || hover?.trimId ? 'pointer' : hover ? 'grab' : '';
       return;
     }
     if (drag.select) return; // Ctrl + klik na froncie — tylko zaznaczanie
+    if (drag.handleOf) {
+      el.style.cursor = 'move';
+      const pt = raycaster.ray.intersectPlane(drag.plane, new THREE.Vector3());
+      if (!pt) return;
+      store.set((prj) => ({
+        ...prj,
+        furniture: prj.furniture.map((c) => {
+          if (c.id !== drag.handleOf.cabinetId) return c;
+          const panel = cabinetPanels(c, prj).find((p) => p.key === drag.handleOf.key);
+          if (!panel) return c;
+          // nowy środek uchwytu (względem lewego dolnego narożnika frontu), w granicach frontu
+          const cx = Math.min(panel.width, Math.max(0, pt.x / MM - drag.grab.x - panel.x));
+          const cy = Math.min(panel.height, Math.max(0, pt.y / MM - drag.grab.y - panel.y));
+          const off = handleOffsetsFor(c.fronts.handle, panel, cx, cy);
+          return { ...c, fronts: { ...c.fronts, handle: { ...c.fronts.handle, ...off } } };
+        }),
+      }));
+      return;
+    }
     if (drag.frontId) {
       // pierwszy wyraźny ruch przełącza front (raz na jedno przeciągnięcie)
       if (!drag.toggled && Math.hypot(e.clientX - drag.x, e.clientY - drag.y) > CLICK_TOLERANCE_PX * 2) {

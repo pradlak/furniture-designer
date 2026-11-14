@@ -15,7 +15,7 @@ import {
 } from '../model/trims.js';
 import { trimMaterial } from '../model/materials.js';
 import { escapeHtml, numberField, readNumberInput, setIfNotFocused, round1, commitEmptyAsZero } from './dom.js';
-import { setEye, materialSelect } from './widgets.js';
+import { setEye, materialSelect, colorPicker, readColorInput, syncColorPicker } from './widgets.js';
 import { renderSideBlendCard, updateSideBlendCard } from './sideBlends.js';
 import { createCardCollapse, COLLAPSE_BUTTON, COLLAPSE_ALL_BUTTONS } from './collapsible.js';
 import { setPath, setSideBlendField, cabinetReachesTop, describeCuts } from '../model/furniture.js';
@@ -164,6 +164,7 @@ export function createTrimsPanel(root, store, ui) {
         <div class="grid-3">
           ${fields.join('')}
           ${materialSelect('Materiał', 'materialId', project)}
+          ${colorPicker('Kolor', 'color')}
         </div>
         <p class="trim-size"></p>
         <p class="allowance-note trim-allowance"></p>
@@ -181,6 +182,7 @@ export function createTrimsPanel(root, store, ui) {
     for (const t of project.trims) {
       const el = root.querySelector(`[data-kind="trim"][data-id="${t.id}"]`);
       if (!el) continue;
+      syncColorPicker(el, 'color', t.color, trimMaterial(t, project).color);
       el.querySelectorAll('[data-f]').forEach((input) => {
         if (input.type === 'checkbox') {
           input.checked = !!t[input.dataset.f];
@@ -310,6 +312,15 @@ export function createTrimsPanel(root, store, ui) {
 
   root.addEventListener('input', (e) => {
     const input = e.target;
+    // Kolor (niezależny od materiału): blendy boczne korpusu albo blenda wspólna / blat.
+    const color = readColorInput(input);
+    if (color) {
+      const sideId = input.closest('[data-kind="side-blends"]')?.dataset.id;
+      const trimId = input.closest('[data-kind="trim"]')?.dataset.id;
+      if (sideId) updateCabinet(sideId, (c) => setPath(c, color.path, color.value));
+      else if (trimId) updateTrim(trimId, (t) => setPath(t, color.path, color.value));
+      return;
+    }
     const cabinetId = input.closest('[data-kind="side-blends"]')?.dataset.id;
     if (cabinetId && input.dataset.f) {
       let value = input.value;

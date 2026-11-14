@@ -20,8 +20,10 @@ export function createWelcome(store, { onNew, onStart, onExamples } = {}) {
         <li><b>Meble</b> — dodaj korpus, ustaw wymiary, nóżki i wzmocnienia. Korpus przesuniesz też myszką w podglądzie 3D.</li>
         <li><b>Blendy i blaty</b> — blendy boczne, blenda dolna (cokół), blenda górna i blat.</li>
         <li><b>Materiały</b> — płyty, grubości, kolory i obrzeże.</li>
-        <li><b>Formatki (CSV)</b> na górnym pasku — lista płyt do zamówienia rozkroju (otwiera się w Excelu).</li>
+        <li><b>💾 Formatki…</b> na górnym pasku — lista płyt do zamówienia rozkroju: Excel, CSV albo plik do rozkroju na meble.pl.</li>
       </ol>
+      <p class="welcome-note">Krok po kroku: <a href="/poradniki/szafa-do-wneki" target="_blank" rel="noopener">jak zaprojektować szafę do wnęki</a>
+        · <a href="/poradniki/" target="_blank" rel="noopener">wszystkie poradniki</a>.</p>
       <p class="welcome-note">Projekt zapisuje się automatycznie w tej przeglądarce. Żeby go zachować na dłużej
         albo przenieść na inny komputer, użyj <b>Eksportuj</b> i <b>Importuj</b>.</p>
       <h3 class="welcome-choices-title">Od czego zaczynasz?</h3>

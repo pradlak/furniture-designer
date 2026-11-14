@@ -1,4 +1,4 @@
-import { trimMaterial } from './materials.js';
+import { trimMaterial, normalizeColor } from './materials.js';
 import {
   legHeight,
   trimCabinets,
@@ -69,6 +69,8 @@ export function createTrim(type, cabinetIds, project) {
       type === 'countertop'
         ? (project.materials?.find((m) => m.type === 'worktop')?.id ?? null)
         : (first?.blendMaterialId ?? project.materials?.find((m) => m.type === 'mdf')?.id ?? null),
+    // kolor — jak blendy pierwszego objętego korpusu (blat — jak w materiale)
+    color: type === 'countertop' ? null : (first?.colors?.blend ?? null),
     ...TRIM_DEFAULTS[type],
   };
 }
@@ -283,6 +285,7 @@ export function normalizeTrim(raw = {}, cabinetIds) {
     hidden: raw.hidden === true,
     cabinetIds: Array.isArray(raw.cabinetIds) ? raw.cabinetIds.filter((id) => cabinetIds.includes(id)) : [],
     materialId: typeof raw.materialId === 'string' ? raw.materialId : null,
+    color: normalizeColor(raw.color), // kolor niezależny od materiału (null — jak w materiale)
   };
   if (raw.type === 'plinth') {
     trim.height = raw.height == null ? null : num(raw.height, null, 1, 2000);

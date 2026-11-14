@@ -95,6 +95,56 @@ button.danger:hover { border-color: var(--danger); color: var(--danger); }
   pointer-events: none;
 }
 .viewport-help b { color: var(--text); font-weight: 600; }
+/* menu ze stronami z treścią (o programie, poradniki) — prawy górny róg podglądu 3D */
+.site-menu {
+  position: absolute;
+  right: 12px;
+  top: 12px;
+  z-index: 2;
+  font-size: 13px;
+}
+.site-menu summary {
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.site-menu summary::-webkit-details-marker { display: none; }
+.site-menu-root > summary {
+  padding: 4px 12px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-weight: 600;
+  color: var(--text);
+}
+.site-menu-root[open] > summary { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.site-menu-root > ul {
+  position: absolute;
+  right: 0;
+  min-width: 260px;
+  max-width: calc(100vw - 32px);
+  margin: 0;
+  padding: 6px 0;
+  list-style: none;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px 0 6px 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+.site-menu ul ul { list-style: none; margin: 0; padding: 0 0 4px; }
+.site-menu a,
+.site-menu-sub > summary {
+  display: block;
+  padding: 6px 14px;
+  color: var(--text);
+  text-decoration: none;
+}
+.site-menu ul ul a { padding-left: 28px; color: var(--accent); }
+.site-menu a:hover,
+.site-menu-sub > summary:hover { background: var(--bg); }
+.site-menu-sub > summary::after { content: ' ▸'; color: var(--muted); }
+.site-menu-sub[open] > summary::after { content: ' ▾'; }
+.noscript { max-width: 640px; margin: 40px auto; padding: 0 16px; }
 
 button:disabled { opacity: 0.4; cursor: default; pointer-events: none; }
 
@@ -335,7 +385,12 @@ button.eye.off { opacity: 0.35; text-decoration: line-through; }
   box-shadow: 0 6px 20px rgba(15, 23, 42, 0.18);
   display: flex;
   flex-direction: column;
+  max-height: calc(100% - 12px); /* długa lista (np. kolory) przewija się */
+  overflow-y: auto;
 }
+.context-menu-swatch { display: inline-block; width: 14px; height: 14px; border-radius: 50%; border: 1px solid rgba(0, 0, 0, 0.2); vertical-align: middle; }
+.context-menu-more { margin-left: auto; padding-left: 12px; color: var(--muted); }
+.context-color-input { position: absolute; left: 12px; top: 12px; width: 1px; height: 1px; opacity: 0; pointer-events: none; border: 0; padding: 0; }
 .context-menu-title { font-size: 11px; color: var(--muted); padding: 4px 8px 6px; border-bottom: 1px solid var(--border); margin-bottom: 4px; }
 .context-menu button {
   display: flex;
@@ -470,6 +525,23 @@ body.resizing .viewport { pointer-events: none; }
 /* --- „Jak zacząć” --- */
 .help-group { margin-left: auto; }
 .help-group button { width: 30px; height: 30px; padding: 0; border-radius: 50%; font-weight: 700; }
+/* „Zgłoś uwagę” — wyróżniony przycisk w kształcie pigułki (nie okrągła ikonka jak „?”) */
+.help-group { gap: 8px; }
+.help-group .feedback-btn {
+  width: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 14px 0 11px;
+  border-radius: 15px;
+  border-color: var(--accent);
+  background: #eff4ff;
+  color: var(--accent);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.help-group .feedback-btn:hover { background: var(--accent); color: #fff; }
+.help-group .feedback-btn svg { flex-shrink: 0; }
 .welcome-overlay {
   position: fixed;
   inset: 0;
@@ -498,7 +570,7 @@ body.resizing .viewport { pointer-events: none; }
 .welcome-note { font-size: 13px; color: var(--muted); }
 .welcome-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
 /* --- ekran powitalny: karty wyboru z obrazkami --- */
-.welcome:not(.new-project):not(.legs-dialog):not(.cut-list-dialog):not(.meblepl-dialog) { max-width: 660px; }
+.welcome:not(.new-project):not(.legs-dialog):not(.cut-list-dialog):not(.files-dialog):not(.feedback-dialog):not(.settings-dialog) { max-width: 660px; }
 .legs-dialog { max-width: 480px; }
 .legs-dialog-all { margin-top: 10px; font-size: 13px; }
 .legs-dialog-all[hidden] { display: none; }
@@ -635,10 +707,60 @@ button.primary:hover { color: #fff; filter: brightness(1.1); }
 .cut-list-group small { color: var(--muted); }
 .link-button { border: 0; background: none; padding: 0; color: var(--accent); font-weight: 400; font-size: 12px; cursor: pointer; text-decoration: underline; }
 
-/* --- okienko plików do meble.pl --- */
-.meblepl-dialog { max-width: 520px; }
-.meblepl-files { list-style: none; padding: 0; margin: 12px 0 0; display: flex; flex-direction: column; gap: 8px; }
-.meblepl-file { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; }
-.meblepl-file small { color: var(--muted); }
-.meblepl-file button { flex-shrink: 0; }
-.meblepl-warning ul { margin: 4px 0 0; padding-left: 18px; font-size: 12px; }
+/* --- frez dekoracyjny: wybór wzoru z podglądem --- */
+.front-decor-row { display: flex; align-items: flex-end; gap: 8px; grid-column: 1 / -1; }
+.front-decor-row .field { flex: 1; min-width: 0; }
+.front-decor-preview:empty { display: none; }
+.decor-preview { display: block; }
+.decor-preview-front { fill: var(--panel); stroke: var(--border); stroke-width: 1; }
+.decor-preview-lines line { stroke: var(--muted); stroke-width: 1.2; stroke-linecap: round; }
+
+/* --- wybór koloru (niezależny od materiału) --- */
+.color-row { display: flex; gap: 4px; align-items: center; }
+.color-row select { flex: 1; min-width: 0; }
+.color-row input[type='color'] { width: 34px; height: 28px; padding: 1px 2px; border: 1px solid var(--border); border-radius: 4px; background: var(--panel); cursor: pointer; flex-shrink: 0; }
+.side-blend-material { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+/* --- okienko „Uwagi i propozycje” --- */
+.feedback-dialog { max-width: 520px; }
+.feedback-dialog .field { display: flex; flex-direction: column; gap: 4px; margin-top: 12px; }
+.feedback-dialog textarea, .feedback-dialog input[type='email'] { width: 100%; font: inherit; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); color: var(--text); }
+.feedback-dialog textarea { resize: vertical; min-height: 120px; }
+.feedback-count { margin: 4px 0 0; text-align: right; font-size: 12px; }
+.feedback-trap { position: absolute; left: -10000px; width: 1px; height: 1px; opacity: 0; }
+.feedback-status { min-height: 1.4em; margin: 10px 0 0; font-size: 13px; }
+.feedback-status.ok { color: #15803d; }
+.feedback-status.error { color: var(--danger); }
+/* pozycja-przycisk w menu w rogu podglądu 3D (wygląda jak link) */
+.site-menu-action { display: block; width: 100%; padding: 6px 14px; border: 0; background: none; text-align: left; font: inherit; color: var(--text); cursor: pointer; }
+.site-menu-action:hover { background: var(--bg); }
+
+/* --- koło zębate i okienko „Ustawienia” --- */
+.help-group .settings-btn { display: inline-flex; align-items: center; justify-content: center; color: var(--muted); }
+.help-group .settings-btn:hover { color: var(--accent); }
+.settings-dialog { max-width: 480px; }
+.settings-group { border: 1px solid var(--border); border-radius: 8px; margin: 12px 0 0; padding: 8px 12px 12px; }
+.settings-group legend { font-weight: 600; font-size: 13px; padding: 0 4px; }
+.settings-group .welcome-note { margin: 4px 0 8px; }
+.swatches { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.swatch { width: 30px; height: 30px; padding: 0; border-radius: 50%; border: 2px solid var(--panel); background: var(--swatch); box-shadow: 0 0 0 1px var(--border); cursor: pointer; }
+.swatch.selected { box-shadow: 0 0 0 2px var(--text); }
+.swatch-custom { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+.swatch-custom input { width: 34px; height: 28px; padding: 1px 2px; border: 1px solid var(--border); border-radius: 4px; background: var(--panel); cursor: pointer; }
+
+/* --- okienko z listą plików do zapisania (meble.pl, fronty MDF) --- */
+.files-dialog { max-width: 560px; }
+.files-list { list-style: none; padding: 0; margin: 12px 0 0; display: flex; flex-direction: column; gap: 8px; max-height: 50vh; overflow-y: auto; }
+.files-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; }
+.files-item small { color: var(--muted); }
+.files-item .files-name { font-family: ui-monospace, monospace; font-size: 11px; }
+.files-item button { flex-shrink: 0; }
+.files-warning ul { margin: 4px 0 0; padding-left: 18px; font-size: 12px; }
+.files-all { margin: 12px 0 0; }
+.files-all button { width: 100%; padding: 8px 12px; }
+.files-all[hidden] { display: none; }
+
+/* rozstaw otworów uchwytu: pole do wpisania + lista typowych rozstawów */
+.spacing-row { display: flex; gap: 4px; align-items: center; }
+.spacing-row input { flex: 1; min-width: 0; }
+.spacing-row select { flex: 0 0 auto; width: auto; }

@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Rozkrój na meble.pl z pliku CSV — jak przygotować listę formatek | Meble Samemu</title>
+    <meta
+      name="description"
+      content="Jak wczytać listę formatek z pliku CSV w rozkroju płyt na meble.pl: format pliku, oklejanie (= i -), słoje, plecy HDF w rozkroju płyt budowlanych. Gotowy plik z darmowego projektanta mebli."
+    />
+    <link rel="canonical" href="https://meblesamemu.pl/poradniki/rozkroj-meble-pl-csv" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/strony.css" />
+    <meta property="og:type" content="article" />
+    <meta property="og:locale" content="pl_PL" />
+    <meta property="og:site_name" content="Meble Samemu" />
+    <meta property="og:url" content="https://meblesamemu.pl/poradniki/rozkroj-meble-pl-csv" />
+    <meta property="og:title" content="Rozkrój na meble.pl z pliku CSV" />
+    <meta property="og:description" content="Gotowa lista formatek do wczytania w rozkroju na meble.pl — z projektu 3D." />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="wrap">
+        <a class="brand" href="/">Meble Samemu</a>
+        <nav class="site-nav" aria-label="Menu">
+          <a href="/">Projektant</a>
+          <a href="/o-programie">O programie</a>
+          <a href="/poradniki/">Poradniki</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <p class="updated"><a href="/poradniki/">Poradniki</a> › Rozkrój na meble.pl z pliku CSV</p>
+      <h1>Rozkrój na meble.pl z pliku CSV</h1>
+      <p class="lead">
+        Rozkrój płyt na meble.pl pozwala wczytać listę formatek z pliku zamiast wpisywać każdą ręcznie.
+        Projektant mebli zapisuje taki plik prosto z projektu 3D — wystarczy go wczytać.
+      </p>
+
+      <h2>Jak zapisać plik dla meble.pl</h2>
+      <ol class="steps">
+        <li>Zaprojektuj meble w <a href="/">projektancie</a>.</li>
+        <li>Kliknij <b>💾 Formatki…</b>, wybierz format <b>meble.pl</b> i zaznacz, co eksportować (np. korpusy i plecy HDF).</li>
+        <li>W okienku z plikami kliknij <b>💾 Zapisz</b> przy każdej płycie — każda płyta (dekor) to osobny plik.</li>
+        <li>Na meble.pl otwórz właściwy rozkrój, wybierz płytę i kliknij <b>„Wczytaj listę formatek z CSV”</b>. Sprawdź dane po wczytaniu.</li>
+      </ol>
+
+      <h2>Który rozkrój na meble.pl wybrać</h2>
+      <table>
+        <thead><tr><th>Płyta w projekcie</th><th>Rozkrój na meble.pl</th></tr></thead>
+        <tbody>
+          <tr><td>Płyta meblowa (laminowana) — boki, wieńce, półki, trawersy</td><td><a href="https://www.meble.pl/rozkroj,plyty-meblowe" rel="noopener">Płyty meblowe</a></td></tr>
+          <tr><td>HDF — plecy</td><td><a href="https://www.meble.pl/rozkroj,plyty" rel="noopener">Płyty budowlane</a></td></tr>
+        </tbody>
+      </table>
+      <p>
+        Fronty i blendy z MDF lakierowanego oraz blaty zamawia się inaczej — nie trafiają do plików dla meble.pl,
+        ale są w liście formatek w Excelu.
+      </p>
+
+      <h2>Format pliku</h2>
+      <p>
+        Plik ma średniki jako separator i kolumny w takiej kolejności, jak w pliku eksportowanym przez sam meble.pl:
+      </p>
+      <table>
+        <thead><tr><th>Kolumna</th><th>Co oznacza</th></tr></thead>
+        <tbody>
+          <tr><td>Nazwa</td><td>element i mebel, np. „Bok lewy (Szafka lewa)” — nie wpływa na rozkrój</td></tr>
+          <tr><td>Szerokość / Wysokość</td><td>krótszy / dłuższy bok formatki w mm</td></tr>
+          <tr><td>Oklejanie szerokości / wysokości</td><td><code>=</code> obie krawędzie danego boku, <code>-</code> jedna, puste — bez okleiny</td></tr>
+          <tr><td>Grubość płyty</td><td>w mm, np. <code>18.00</code></td></tr>
+          <tr><td>Ilość sztuk</td><td>jednakowe formatki są złączone</td></tr>
+          <tr><td>Słoje</td><td><code>1</code> — wzdłuż wysokości (płyty meblowe), <code>0</code> — bez znaczenia (HDF)</td></tr>
+        </tbody>
+      </table>
+      <p>
+        Przykład wiersza: <code>Plecy (Korpus 1);500;;500;;3.00;1;0;</code> — plecy HDF 500 × 500 mm, bez okleiny,
+        1 sztuka, słoje bez znaczenia.
+      </p>
+
+      <h2>Na co uważać</h2>
+      <ul>
+        <li><b>Limity formatek</b> — meble.pl tnie formatki od 240 × 100 do 2500 × 1200 mm. Projektant wypisze te, które się nie mieszczą.</li>
+        <li><b>Wymiar z okleiną</b> — w pliku jest wymiar gotowej formatki. Przy pierwszym zamówieniu porównaj jedną oklejaną formatkę po wczytaniu z listą w Excelu.</li>
+        <li><b>Płyta jednobarwna</b> — przy białej płycie możesz w meble.pl ustawić słoje „bez znaczenia”; rozkrój obróci formatki i zużyje mniej płyty.</li>
+      </ul>
+      <p><a class="cta" href="/">Przygotuj listę formatek →</a></p>
+
+      <h2>Zobacz też</h2>
+      <ul>
+        <li><a href="/poradniki/formatki-rozkroj-plyt">Formatki do rozkroju płyt — jak je policzyć</a></li>
+        <li><a href="/poradniki/szafa-do-wneki">Jak zaprojektować szafę do wnęki</a></li>
+      </ul>
+      <p class="updated">Meble Samemu nie jest powiązane z meble.pl — to niezależny, darmowy projektant mebli, który zapisuje pliki w formacie ich rozkroju.</p>
+    </main>
+
+    <footer class="site-footer">
+      <div class="wrap">
+        <a href="/">Projektant mebli</a> · <a href="/o-programie">O programie</a> · <a href="/poradniki/">Poradniki</a>
+      </div>
+    </footer>
+  </body>
+</html>

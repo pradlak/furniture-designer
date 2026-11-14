@@ -1,5 +1,6 @@
 import { LIMITS, isPointInside, slopePlanes, DEFAULT_SLOPE_GAP, DEFAULT_CEILING_GAP } from './space.js';
-import { cabinetMaterials, trimMaterial } from './materials.js';
+import { FRONT_DECORS, DECOR_LIMITS, DECOR_GAP_LIMITS, describeDecor } from './decor.js';
+import { cabinetMaterials, trimMaterial, normalizeColor, withColor } from './materials.js';
 import { boxSolid, clipSolid, isClippedBy, solidBounds, extentAlong, solidsOverlap, vertices, outline2d } from './solid.js';
 
 // Mebel (na razie: prosty korpus) — wymiary w mm, w układzie współrzędnych przestrzeni.
@@ -113,18 +114,16 @@ export const HANDLE_GROOVES = [
 ];
 export const HANDLE_GROOVE_SIZE = 20; // mm — szerokość frezu od krawędzi (do widoku)
 
-// Frez dekoracyjny lica frontu: ramka (margines od krawędzi) albo poziome rowki (rozstaw).
-export const FRONT_DECORS = [
-  { key: 'none', label: 'Brak' },
-  { key: 'frame', label: 'Ramka' },
-  { key: 'lines', label: 'Poziome rowki' },
-];
-export const DECOR_LIMITS = { min: 10, max: 500 };
+// Frezy dekoracyjne lica frontu (ramki, rowki, łuk, romby…) — wzory w model/decor.js.
+export { FRONT_DECORS, DECOR_LIMITS, DECOR_GAP_LIMITS } from './decor.js';
 
 // Uchwyty: listwowy (dwa otwory w rozstawie) albo gałka (jeden otwór). W drzwiach — pionowo przy
 // krawędzi otwierania, w szufladach — poziomo na środku szerokości. Położenie na wysokości frontu:
-// góra / środek / dół; edgeOffset — odległość osi otworów od krawędzi (otwierania w drzwiach,
-// górnej / dolnej przy położeniu „góra” / „dół”).
+// góra / środek / dół. Dwa wymiary, każdy osobno (null — domyślny, patrz handleOffsets):
+//  offsetX — drzwi: odległość osi uchwytu od krawędzi otwierania; szuflady: przesunięcie od środka (w prawo +),
+//  offsetY — „góra” / „dół”: odległość skrajnego otworu od górnej / dolnej krawędzi; „środek”: przesunięcie
+//            od środka wysokości (w górę +).
+// edgeOffset — dawny jeden wymiar (domyślna odległość od krawędzi), zostaje jako wartość domyślna.
 export const HANDLE_TYPES = [
   { key: 'none', label: 'Brak' },
   { key: 'bar', label: 'Uchwyt listwowy (2 otwory)' },
@@ -137,8 +136,28 @@ export const HANDLE_POSITIONS = [
 ];
 // Standardowe rozstawy otworów uchwytów meblowych (mm).
 export const HANDLE_SPACINGS = [32, 64, 96, 128, 160, 192, 224, 256, 288, 320, 352, 416, 448, 480, 512, 640, 800];
-export const HANDLE_LIMITS = { spacingMin: 16, spacingMax: 2000, holeMin: 2, holeMax: 20, offsetMin: 10, offsetMax: 1000 };
-export const defaultHandle = () => ({ type: 'bar', spacing: 128, hole: 5, position: 'center', edgeOffset: 40 });
+export const HANDLE_LIMITS = { spacingMin: 16, spacingMax: 2000, holeMin: 2, holeMax: 20, offsetMin: 10, offsetMax: 1000, shiftMax: 2000 };
+export const defaultHandle = () => ({ type: 'bar', spacing: 128, hole: 5, position: 'center', edgeOffset: 40, offsetX: null, offsetY: null });
+
+// Obowiązujące wymiary uchwytu (ustawione albo domyślne). door — front z zawiasami (drzwi).
+export function handleOffsets(spec, door) {
+  const def = spec.edgeOffset ?? 40;
+  return {
+    x: spec.offsetX ?? (door ? def : 0),
+    y: spec.offsetY ?? (spec.position === 'center' ? 0 : def),
+  };
+}
+
+// Wymiary uchwytu, które dają podany środek uchwytu (cx, cy — względem lewego dolnego narożnika frontu
+// w × h) — do przeciągania uchwytu myszką w widoku 3D.
+export function handleOffsetsFor(spec, front, cx, cy) {
+  const { width: w, height: h } = front;
+  const hinge = front.opening?.hinge;
+  const half = spec.type === 'bar' && hinge ? spec.spacing / 2 : 0; // w drzwiach uchwyt jest pionowy
+  const x = hinge === 'left' ? w - cx : hinge === 'right' ? cx : cx - w / 2;
+  const y = spec.position === 'top' ? h - cy - half : spec.position === 'bottom' ? cy - half : cy - h / 2;
+  return { offsetX: Math.round(x), offsetY: Math.round(y) };
+}
 
 export const defaultFronts = () => ({
   type: 'none',
@@ -148,8 +167,9 @@ export const defaultFronts = () => ({
   gapV: DEFAULT_FRONT_GAP_V,
   groove: 'none',
   decor: 'none',
-  decorMargin: 60, // ramka: odległość frezu od krawędzi frontu
-  decorSpacing: 100, // rowki: odstęp między rowkami
+  decorMargin: 60, // odległość frezu od krawędzi frontu
+  decorSpacing: 100, // rozstaw rowków
+  decorGap: 20, // odstęp między liniami ramki podwójnej / potrójnej, ścięcie albo promień narożnika
   handle: defaultHandle(),
 });
 
@@ -159,18 +179,13 @@ function placeHandle(panel, spec) {
   const { x, y, width: w, height: h } = panel;
   const hinge = panel.opening?.hinge; // drzwi: zawiasy po lewej → uchwyt przy prawej krawędzi
   const vertical = !!hinge;
-  const off = spec.edgeOffset;
+  const off = handleOffsets(spec, vertical);
   const half = spec.type === 'bar' ? spec.spacing / 2 : 0;
-  // środek uchwytu
-  let cx;
-  let cy;
-  if (vertical) {
-    cx = hinge === 'left' ? x + w - off : x + off;
-    cy = { top: y + h - off - half, center: y + h / 2, bottom: y + off + half }[spec.position];
-  } else {
-    cx = x + w / 2;
-    cy = { top: y + h - off, center: y + h / 2, bottom: y + off }[spec.position];
-  }
+  // środek uchwytu: w drzwiach — przy krawędzi otwierania, w szufladach — od środka szerokości;
+  // w pionie — od górnej / dolnej krawędzi (do skrajnego otworu) albo od środka wysokości
+  const halfV = vertical ? half : 0;
+  const cx = vertical ? (hinge === 'left' ? x + w - off.x : x + off.x) : x + w / 2 + off.x;
+  const cy = { top: y + h - off.y - halfV, center: y + h / 2 + off.y, bottom: y + off.y + halfV }[spec.position];
   const holes =
     spec.type === 'knob'
       ? [{ x: cx, y: cy }]
@@ -209,8 +224,7 @@ export function describeMilling(panel) {
   const edge = { yMax: 'górna krawędź', yMin: 'dolna krawędź', xMin: 'lewa krawędź', xMax: 'prawa krawędź' }[m.groove];
   return [
     edge && `frez uchwytowy: ${edge}`,
-    m.decor === 'frame' && `frez dekoracyjny: ramka ${m.decorMargin} mm od krawędzi`,
-    m.decor === 'lines' && `frez dekoracyjny: poziome rowki co ${m.decorSpacing} mm`,
+    describeDecor(m),
   ]
     .filter(Boolean)
     .join('; ');
@@ -240,6 +254,32 @@ export function removeFronts(cabinet, keys) {
 
 // Liczba zawiasów puszkowych na drzwi o danej wysokości (typowe zalecenia producentów).
 export const hingesFor = (height) => (height <= 900 ? 2 : height <= 1600 ? 3 : height <= 2000 ? 4 : 5);
+
+// Otwory pod zawiasy puszkowe w drzwiach (wiercone od tyłu frontu): puszka Ø35 mm, głębokość 12 mm,
+// środek 22,5 mm od krawędzi z zawiasami; skrajne zawiasy 100 mm od górnej i dolnej krawędzi,
+// pozostałe — równo między nimi. Liczba zawiasów — hingesFor(wysokość).
+export const HINGE_CUP = { diameter: 35, depth: 12, edgeDistance: 22.5, endDistance: 100 };
+export function hingeHoles(panel) {
+  const side = panel.opening?.hinge;
+  if (!side) return [];
+  const { x, y, width: w, height: h } = panel;
+  const n = hingesFor(h);
+  const { edgeDistance: e, endDistance: d } = HINGE_CUP;
+  const span = Math.max(0, h - 2 * d);
+  const cx = side === 'left' ? x + e : x + w - e;
+  return Array.from({ length: n }, (_, i) => ({ x: cx, y: y + d + (n > 1 ? (span * i) / (n - 1) : span / 2) }));
+}
+
+// Opis otworów pod zawiasy do listy formatek: strona i wysokości środków od dolnej krawędzi (odległość od
+// krawędzi bocznej jest standardowa dla zawiasu — wierci ją producent frontów).
+export function describeHinges(panel) {
+  if (!panel.hinges?.length) return '';
+  const r = (v) => Math.round(v * 10) / 10;
+  const ys = panel.hinges.map((p) => r(p.y - panel.y)).join(', ');
+  const { diameter, depth } = HINGE_CUP;
+  const side = panel.opening?.hinge === 'right' ? 'prawej' : 'lewej';
+  return `otwory pod zawiasy (od tyłu): ${panel.hinges.length} × Ø${diameter} mm, gł. ${depth} mm, przy ${side} krawędzi (od przodu), odległość od krawędzi standardowa — wysokości od dołu: ${ys} mm`;
+}
 
 // Półki: position 'even' — równo rozłożone (domyślnie), 'at' — na wysokości y (od dołu korpusu);
 // depth: null = pełna głębokość wnętrza (od pleców do przodu), liczba — półka płytsza (skrócona od przodu).
@@ -539,6 +579,8 @@ export function createCabinet(project, overrides = {}) {
     materialId: project.materials?.find((m) => m.type === 'chipboard')?.id ?? null,
     blendMaterialId: project.materials?.find((m) => m.type === 'mdf')?.id ?? null,
     frontMaterialId: project.materials?.find((m) => m.type === 'mdf')?.id ?? null,
+    // kolory niezależne od materiału (null — jak w materiale), patrz model/materials.js
+    colors: { body: null, blend: null, front: null },
     fronts: defaultFronts(),
     backType: 'hdf',
     bottomJoint: 'inset',
@@ -952,6 +994,7 @@ export function cabinetPanels(cabinet, project) {
         decor: fr.decor ?? 'none',
         decorMargin: fr.decorMargin ?? 60,
         decorSpacing: fr.decorSpacing ?? 100,
+        decorGap: fr.decorGap ?? 20,
       };
       const hasMilling = milling.groove || milling.decor !== 'none';
       // jak się otwiera (do widoku „otwarte”): drzwi — obrót na zawiasach po lewej / prawej, szuflada — wysunięcie
@@ -1007,7 +1050,9 @@ export function cabinetPanels(cabinet, project) {
         : def.key === 'back' && backType === 'hdf'
           ? 'hdf'
           : 'body';
-    const material = mats[group];
+    // front / blenda boczna z własnym kolorem (panelOverrides[klucz].color) — materiał w tym kolorze
+    const material =
+      o.color && group === 'front' ? withColor(mats.frontBase, o.color) : o.color && group === 'blend' ? withColor(mats.blendBase, o.color) : mats[group];
     const panel = {
       key: def.key,
       name: def.name,
@@ -1039,6 +1084,7 @@ export function cabinetPanels(cabinet, project) {
     panel.valid = panel.width > 0 && panel.height > 0 && panel.depth > 0;
     // uchwyt frontu (otwory na licu) — liczony z gotowego położenia płyty
     if (def.handleSpec && panel.valid) panel.handle = placeHandle(panel, def.handleSpec);
+    if (panel.opening?.hinge && panel.valid) panel.hinges = hingeHoles(panel);
 
     // Płaszczyzny, które docinają płytę: skośna góra korpusu i (dla blend do sufitu) skosy przestrzeni.
     const clips = [];
@@ -1397,6 +1443,12 @@ export function normalizeCabinet(raw = {}) {
     }
     if (src.free === true) o.free = true;
     if (src.hidden === true) o.hidden = true;
+    // kolor pojedynczego frontu albo blendy bocznej (wybrany z menu prawego przycisku) — ważniejszy
+    // niż kolor frontów / blend korpusu
+    if (key.startsWith('front-') || BLEND_KEYS.includes(key)) {
+      const color = normalizeColor(src.color);
+      if (color) o.color = color;
+    }
     // Ręcznie wybrane oklejone krawędzie (np. ['zMax', 'yMax']); dawny zapis liczbowy pomijamy —
     // takie płyty wracają do obrzeża automatycznego (na krawędziach widocznych).
     if (Array.isArray(src.edgeSet)) {
@@ -1444,6 +1496,7 @@ export function normalizeCabinet(raw = {}) {
       gap: raw.slopeTop?.gap == null ? null : num(raw.slopeTop.gap, null, 0, 500),
     },
     materialId: typeof raw.materialId === 'string' ? raw.materialId : null,
+    colors: { body: normalizeColor(raw.colors?.body), blend: normalizeColor(raw.colors?.blend), front: normalizeColor(raw.colors?.front) },
     blendMaterialId: typeof raw.blendMaterialId === 'string' ? raw.blendMaterialId : null,
     // starsze projekty nie miały frontów — materiał frontów jak blendy
     frontMaterialId:
@@ -1463,6 +1516,7 @@ export function normalizeCabinet(raw = {}) {
       decor: FRONT_DECORS.some((d) => d.key === raw.fronts?.decor) ? raw.fronts.decor : 'none',
       decorMargin: num(raw.fronts?.decorMargin, 60, DECOR_LIMITS.min, DECOR_LIMITS.max),
       decorSpacing: num(raw.fronts?.decorSpacing, 100, DECOR_LIMITS.min, DECOR_LIMITS.max),
+      decorGap: num(raw.fronts?.decorGap, 20, DECOR_GAP_LIMITS.min, DECOR_GAP_LIMITS.max),
       hidden: raw.fronts?.hidden === true, // fronty tego korpusu ukryte w widoku 3D
       handle: (() => {
         const h = raw.fronts?.handle ?? {};
@@ -1473,6 +1527,8 @@ export function normalizeCabinet(raw = {}) {
           hole: num(h.hole, d.hole, HANDLE_LIMITS.holeMin, HANDLE_LIMITS.holeMax),
           position: HANDLE_POSITIONS.some((p) => p.key === h.position) ? h.position : d.position,
           edgeOffset: num(h.edgeOffset, d.edgeOffset, HANDLE_LIMITS.offsetMin, HANDLE_LIMITS.offsetMax),
+          offsetX: h.offsetX == null ? null : num(h.offsetX, null, -HANDLE_LIMITS.shiftMax, HANDLE_LIMITS.shiftMax),
+          offsetY: h.offsetY == null ? null : num(h.offsetY, null, -HANDLE_LIMITS.shiftMax, HANDLE_LIMITS.shiftMax),
         };
       })(),
     },

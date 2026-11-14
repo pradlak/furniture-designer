@@ -131,7 +131,8 @@ function crc32(bytes) {
   return (c ^ 0xffffffff) >>> 0;
 }
 
-function zipStored(files) {
+// files: [[nazwa, Uint8Array]] → Uint8Array (archiwum ZIP bez kompresji). Używane też przy „Zapisz wszystkie”.
+export function zipStored(files) {
   const parts = [];
   const central = [];
   let offset = 0;

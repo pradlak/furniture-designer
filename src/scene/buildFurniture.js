@@ -5,6 +5,8 @@ import { trimSegments, trimIssues, trimAllowance, trimBox } from '../model/trims
 import { trimMaterial, edgeColorOf, coreColorOf } from '../model/materials.js';
 import { projectSolids, panelEdgeSet, trimEdgeSet, TRIM_THICKNESS_AXIS } from '../model/edges.js';
 import { buildCabinetDimensions, buildPartDimensions, buildTotalDimensions } from './furnitureDims.js';
+import { decorSegments } from '../model/decor.js';
+import { getSettings } from '../state/settings.js';
 
 // Materiały ścian prostopadłościanu płyty (kolejność ścian BoxGeometry: +x, −x, +y, −y, +z, −z):
 // lica (ściany prostopadłe do osi grubości) w kolorze płyty, krawędzie — w kolorze rdzenia.
@@ -49,7 +51,7 @@ function solidGeometry(faces, space) {
 }
 
 // Frezy frontu w widoku: frez uchwytowy — ciemny pas wzdłuż krawędzi (wgłębienie), frez dekoracyjny —
-// cienkie ciemniejsze rowki na licu (ramka albo poziome linie). Rysowane tuż przed licem frontu.
+// cienkie ciemniejsze rowki na licu (wzory — model/decor.js). Rysowane tuż przed licem frontu.
 const DECOR_LINE = 6; // mm — szerokość rowka dekoracyjnego (do widoku)
 function addMilling(group, p, materialFor, space) {
   const m = p.milling;
@@ -63,20 +65,18 @@ function addMilling(group, p, materialFor, space) {
     mesh.userData.panelKey = p.key;
     group.add(mesh);
   };
-  const decor = shade(0.75);
-  if (m.decor === 'frame') {
-    const k = m.decorMargin;
-    const [x0, y0, x1, y1] = [p.x + k, p.y + k, p.x + p.width - k, p.y + p.height - k];
-    if (x1 - x0 > 2 * DECOR_LINE && y1 - y0 > 2 * DECOR_LINE) {
-      strip(x0, y0, x1 - x0, DECOR_LINE, decor);
-      strip(x0, y1 - DECOR_LINE, x1 - x0, DECOR_LINE, decor);
-      strip(x0, y0, DECOR_LINE, y1 - y0, decor);
-      strip(x1 - DECOR_LINE, y0, DECOR_LINE, y1 - y0, decor);
-    }
-  } else if (m.decor === 'lines') {
-    for (let y = p.y + m.decorSpacing; y < p.y + p.height - DECOR_LINE; y += m.decorSpacing) {
-      strip(p.x, y - DECOR_LINE / 2, p.width, DECOR_LINE, decor);
-    }
+  // Frez dekoracyjny: odcinki wzoru (model/decor.js) jako cienkie rowki na licu, obrócone wzdłuż odcinka.
+  const decorMat = materialFor(shade(0.75));
+  const opts = { margin: m.decorMargin, spacing: m.decorSpacing, gap: m.decorGap };
+  for (const [ax, ay, bx, by] of decorSegments(m.decor, p.width, p.height, opts)) {
+    const len = Math.hypot(bx - ax, by - ay);
+    if (len < 0.5) continue;
+    const geometry = new THREE.BoxGeometry((len + DECOR_LINE) * MM, DECOR_LINE * MM, 0.6 * MM);
+    const mesh = new THREE.Mesh(geometry, decorMat);
+    mesh.position.set(...toScene(p.x + (ax + bx) / 2, p.y + (ay + by) / 2, p.z + p.depth + 0.3, space));
+    mesh.rotation.z = Math.atan2(by - ay, bx - ax);
+    mesh.userData.panelKey = p.key;
+    group.add(mesh);
   }
   if (m.groove) {
     const S = Math.min(HANDLE_GROOVE_SIZE, p.width / 2, p.height / 2);
@@ -136,6 +136,7 @@ function addHandle(group, p, space) {
     if (rotate === 'x') mesh.rotation.x = Math.PI / 2; // oś walca wzdłuż Z (do przodu)
     if (rotate === 'z') mesh.rotation.z = Math.PI / 2; // oś walca wzdłuż X (poziomo)
     mesh.userData.panelKey = p.key; // klik w uchwyt = klik we front
+    mesh.userData.handle = true; // uchwyt można przeciągnąć po licu frontu
     group.add(mesh);
   };
   if (hd.type === 'knob') {
@@ -168,8 +169,17 @@ function boardMaterial(color) {
 }
 
 const EDGE_SELECTED = 0x2563eb;
-const PICKED_COLOR = '#f97316'; // zaznaczona płyta (np. front)
-const pickedEdgeMat = new THREE.LineBasicMaterial({ color: PICKED_COLOR });
+// Kolor zaznaczonych elementów — z ustawień programu (domyślnie zielony; patrz state/settings.js).
+const pickedColor = () => getSettings().highlight;
+let pickedEdgeCache = { color: null, mat: null };
+function pickedEdge() {
+  const color = pickedColor();
+  if (pickedEdgeCache.color !== color) {
+    pickedEdgeCache.mat?.dispose();
+    pickedEdgeCache = { color, mat: new THREE.LineBasicMaterial({ color }) };
+  }
+  return pickedEdgeCache.mat;
+}
 
 // Zapas na docięcie: wyraźnie inny (pomarańczowy, półprzezroczysty), żeby było widać, co jest do docięcia.
 const allowanceMat = new THREE.MeshLambertMaterial({ color: 0xf97316, transparent: true, opacity: 0.55, depthWrite: false });
@@ -187,10 +197,11 @@ function addAllowance(group, box, min, max, space) {
   }
 }
 
-// Zaznaczony element (front, blenda): kolor przesunięty w stronę pomarańczowego.
+// Zaznaczony element (front, blenda): kolor lekko (25%) przesunięty w stronę koloru zaznaczenia —
+// widać zaznaczenie, a wciąż też prawdziwy kolor (np. po jego zmianie z menu).
 function pickedMaterial(material) {
   // obrzeże w tym samym kolorze co zaznaczona płyta (edgeColor: null)
-  return { ...material, color: `#${new THREE.Color(material.color).lerp(new THREE.Color(PICKED_COLOR), 0.45).getHexString()}`, edgeColor: null };
+  return { ...material, color: `#${new THREE.Color(material.color).lerp(new THREE.Color(pickedColor()), 0.25).getHexString()}`, edgeColor: null };
 }
 
 // Zaznaczone elementy („idKorpusu:klucz” — front albo blenda boczna, „trim:id” — blenda wspólna / blat)
@@ -291,7 +302,7 @@ export function buildFurniture(project, selectedIds = new Set(), selectedFronts 
         const pickedSolid = isPicked(`${cabinet.id}:${p.key}`, p);
         const geometry = solidGeometry(p.solid, project.space);
         const mesh = new THREE.Mesh(geometry, solidMaterialFor((pickedSolid ? pickedMaterial(p.material) : p.material).color));
-        mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geometry, 20), pickedSolid ? pickedEdgeMat : edgeMat));
+        mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geometry, 20), pickedSolid ? pickedEdge() : edgeMat));
         mesh.userData.panelKey = p.key;
         cabinetGroup.add(mesh);
         continue;
@@ -307,7 +318,7 @@ export function buildFurniture(project, selectedIds = new Set(), selectedFronts 
       const material = picked ? pickedMaterial(p.material) : p.material;
       const mesh = new THREE.Mesh(geometry, panelFaceMaterials(material, p.thicknessAxis, materialFor));
       mesh.position.set(...toScene(p.x + p.width / 2, p.y + p.height / 2, p.z + p.depth / 2, project.space));
-      mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geometry), picked ? pickedEdgeMat : edgeMat));
+      mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geometry), picked ? pickedEdge() : edgeMat));
       mesh.userData.panelKey = p.key; // np. „shelf-…” — półkę można przeciągać w pionie
       target.add(mesh);
       addMilling(target, p, materialFor, project.space);
@@ -322,7 +333,7 @@ export function buildFurniture(project, selectedIds = new Set(), selectedFronts 
     const legs = cabinetLegs(cabinet, project);
     if (legs.length) {
       const legMat = new THREE.MeshLambertMaterial({ color: LEG_COLOR });
-      const pickedLegMat = new THREE.MeshLambertMaterial({ color: PICKED_COLOR }); // zaznaczona nóżka
+      const pickedLegMat = new THREE.MeshLambertMaterial({ color: pickedColor() }); // zaznaczona nóżka
       disposables.push(legMat, pickedLegMat);
       legs.forEach((l, i) => {
         const r = (l.diameter / 2) * MM;
@@ -344,7 +355,7 @@ export function buildFurniture(project, selectedIds = new Set(), selectedFronts 
     const picked = selectedFronts.has(`trim:${trim.id}`); // zaznaczona (klik w 3D) — na pomarańczowo
     const tm = picked ? pickedMaterial(trimMaterial(trim, project)) : trimMaterial(trim, project);
     const mat = panelFaceMaterials(tm, TRIM_THICKNESS_AXIS[trim.type], materialFor);
-    const edgeMat = picked ? pickedEdgeMat : new THREE.LineBasicMaterial({ color: trimIssues(trim, project).length ? EDGE_BAD : EDGE_OK });
+    const edgeMat = picked ? pickedEdge() : new THREE.LineBasicMaterial({ color: trimIssues(trim, project).length ? EDGE_BAD : EDGE_OK });
     if (!picked) disposables.push(edgeMat);
     const a = trimAllowance(trim, project);
     if (tm.edgeBanding) solids ??= projectSolids(project);

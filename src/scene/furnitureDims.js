@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { toScene } from './units.js';
 import { createDimension } from './dimensions.js';
 import { legHeight } from '../model/furniture.js';
+import { formatLength } from '../state/settings.js';
 
 // Wymiary zaznaczonych korpusów w widoku 3D (jeden korpus albo grupa zaznaczona z Ctrl):
 //  - przy lewej krawędzi frontów, wysunięte przed korpusy: nóżki, korpus i (dalej) razem;
@@ -105,4 +106,5 @@ export function buildTotalDimensions(boxes, space) {
   return group;
 }
 
-const fmt = (v) => `${Math.round(v * 10) / 10} mm`;
+// w jednostkach z ustawień programu (mm / cm / m)
+const fmt = (v) => formatLength(v);
