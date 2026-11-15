@@ -20,7 +20,7 @@ const COLOR_GROUPS = [
   { label: 'Dekory drewna', test: (c) => c.texture === 'wood' },
   { label: 'Beton i marmur', test: (c) => c.texture === 'concrete' || c.texture === 'marble' },
 ];
-const colorOptions = () =>
+export const colorOptions = () =>
   COLOR_GROUPS.map(
     (g) => `<optgroup label="${g.label}">${COLOR_PRESETS.filter(g.test).map((c) => `<option value="${c.hex}">${escapeHtml(c.name)}</option>`).join('')}</optgroup>`,
   ).join('');

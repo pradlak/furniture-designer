@@ -1209,7 +1209,9 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
     } else if (action === 'add-worktop' && id) {
       // nowy blat na korpusie i sąsiadach w rzędzie (jak „+ Blat na szafkach”), potem jego karta
       const p = store.get();
-      const top = createTrim('countertop', rowOf(id, p), p);
+      // korpusy rzędu bez blatu (te z blatem zostają przy swoim)
+      const covered = new Set(p.trims.filter((t) => t.type === 'countertop').flatMap((t) => t.cabinetIds));
+      const top = createTrim('countertop', rowOf(id, p).filter((cid) => cid === id || !covered.has(cid)), p);
       store.set({ ...p, trims: [...p.trims, top] });
       onShowWorktop?.(top.id);
     } else if (action === 'show-trims' && id) {

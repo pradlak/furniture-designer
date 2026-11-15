@@ -32,15 +32,17 @@ export function createToolbar(root, store, viewer, { onHelp, onNew, onFeedback, 
       <span class="group-label">Widok:</span>
       ${VIEWS.map((v) => `<button type="button" data-view="${v.key}">${v.label}</button>`).join('')}
     </div>
-    <div class="group">
-      <span class="group-label">Pokaż:</span>
+    <details class="group show-menu">
+      <summary title="Co pokazać w widoku 3D">👁 Pokaż <span class="show-count"></span> ▾</summary>
+      <div class="show-menu-list">
       <label class="check"><input type="checkbox" data-view-flag="showWalls" /> Ściany</label>
       <label class="check" title="Wymiary zaznaczonego korpusu: nóżki, korpus, razem, szerokość, głębokość"><input type="checkbox" data-view-flag="showDims" /> Wymiary</label>
       <label class="check"><input type="checkbox" data-view-flag="showCountertops" /> Blaty</label>
       <label class="check"><input type="checkbox" data-view-flag="showBlends" /> Blendy</label>
       <label class="check" title="Ukryj fronty, żeby zajrzeć do wnętrza korpusów (np. przesunąć półkę)"><input type="checkbox" data-view-flag="showFronts" /> Fronty</label>
-      <label class="check" title="Otwórz drzwi i wysuń szuflady — żeby zobaczyć, co jest w środku (tylko widok)"><input type="checkbox" data-view-flag="openFronts" data-default-off /> otwarte</label>
-    </div>
+      <label class="check" title="Otwórz drzwi i wysuń szuflady — żeby zobaczyć, co jest w środku (tylko widok)"><input type="checkbox" data-view-flag="openFronts" data-default-off /> Fronty otwarte</label>
+      </div>
+    </details>
     <div class="group account-group" hidden></div>
     <div class="group help-group">
       <button type="button" class="feedback-btn" data-action="feedback" title="Coś nie działa albo czegoś brakuje? Napisz do autora programu">
@@ -51,6 +53,7 @@ export function createToolbar(root, store, viewer, { onHelp, onNew, onFeedback, 
         <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4z" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M19.4 13.5a7.6 7.6 0 0 0 0-3l2-1.6-2-3.4-2.4 1a7.5 7.5 0 0 0-2.6-1.5L14 2.5h-4l-.4 2.5A7.5 7.5 0 0 0 7 6.5l-2.4-1-2 3.4 2 1.6a7.6 7.6 0 0 0 0 3l-2 1.6 2 3.4 2.4-1a7.5 7.5 0 0 0 2.6 1.5l.4 2.5h4l.4-2.5a7.5 7.5 0 0 0 2.6-1.5l2.4 1 2-3.4z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
       </button>
       <button type="button" data-action="help" title="Jak zacząć">?</button>
+      <div class="user-slot" hidden></div>
     </div>
   `;
 
@@ -114,9 +117,21 @@ export function createToolbar(root, store, viewer, { onHelp, onNew, onFeedback, 
       const value = project.view[box.dataset.viewFlag];
       box.checked = box.dataset.defaultOff !== undefined ? value === true : value !== false;
     }
+    // na przycisku „Pokaż”: ile elementów widać (bez „Fronty otwarte”, który nie ukrywa niczego)
+    const shown = viewFlags.filter((b) => b.dataset.defaultOff === undefined);
+    showCount.textContent = `(${shown.filter((b) => b.checked).length}/${shown.length})`;
     undoBtn.disabled = !store.canUndo();
     redoBtn.disabled = !store.canRedo();
   };
+  // menu „Pokaż” zamyka się po kliknięciu obok i klawiszem Esc
+  const showMenu = root.querySelector('.show-menu');
+  const showCount = showMenu.querySelector('.show-count');
+  document.addEventListener('pointerdown', (e) => {
+    if (showMenu.open && !showMenu.contains(e.target)) showMenu.open = false;
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && showMenu.open) showMenu.open = false;
+  });
   sync(store.get());
   return { sync };
 }

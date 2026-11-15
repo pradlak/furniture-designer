@@ -826,3 +826,91 @@ button.primary:hover { color: #fff; filter: brightness(1.1); }
 /* blat / płyta: szerokie pole „Kolor / dekor” */
 .color-field.wide { display: flex; flex-direction: column; align-items: stretch; gap: 2px; margin: 6px 0; }
 .color-field.wide .color-row select { font-size: 13px; }
+
+/* Awatar zalogowanego użytkownika (prawy górny róg) i menu pod nim: konto, ustawienia, wyloguj */
+body.logged-in .help-group .settings-btn { display: none; }
+.user-slot { position: relative; display: flex; align-items: center; }
+.user-slot[hidden] { display: none; }
+.help-group .avatar-btn { width: 32px; height: 32px; padding: 0; border-radius: 50%; overflow: hidden; border: 2px solid var(--border); background: var(--accent); }
+.help-group .avatar-btn:hover, .help-group .avatar-btn[aria-expanded='true'] { border-color: var(--accent); }
+.avatar-btn img, .avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.avatar-initials { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; background: var(--accent); color: #fff; font-weight: 700; font-size: 12px; }
+.avatar { display: inline-flex; width: 40px; height: 40px; border-radius: 50%; overflow: hidden; flex-shrink: 0; }
+.avatar-lg .avatar-initials { font-size: 15px; }
+.user-menu {
+  position: absolute; top: calc(100% + 8px); right: 0; z-index: 60; width: 290px;
+  background: var(--panel, #fff); border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18); padding: 10px; font-weight: normal;
+}
+.user-menu[hidden] { display: none; }
+.user-menu-head { display: flex; gap: 10px; align-items: center; padding: 2px 4px 10px; border-bottom: 1px solid var(--border); margin-bottom: 6px; }
+.user-menu-who { display: flex; flex-direction: column; min-width: 0; }
+.user-menu-who b, .user-menu-who small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.user-menu-who small { color: var(--muted); }
+.help-group .user-menu button.user-menu-item {
+  display: block; width: 100%; height: auto; border-radius: 6px; text-align: left; padding: 7px 8px; font-weight: 500; border: none; background: none;
+}
+.help-group .user-menu button.user-menu-item:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent); }
+.user-menu-settings { border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); margin: 6px 0; padding: 8px 4px; }
+.user-menu-title { font-weight: 600; margin-bottom: 4px; }
+.user-menu-title small { color: var(--muted); font-weight: normal; }
+.user-menu .settings-group { margin: 4px 0 8px; }
+.help-group .user-menu .swatch { width: 24px; height: 24px; }
+.help-group .user-menu .link-button { width: auto; height: auto; border-radius: 0; font-weight: normal; }
+/* Materiały: kolor płyty i obrzeża z listy nazwanych kolorów */
+.material .color-field.wide { margin: 8px 0 4px; }
+.edge-color-row select { flex: 1; min-width: 0; font-size: 12px; }
+
+/* Materiały: zapis na koncie (☁) i lista „Moje materiały na koncie” */
+.material .cloud-save { flex: none; font-size: 12px; padding: 0 8px; white-space: nowrap; }
+.material .cloud-save[hidden] { display: none; }
+.material .cloud-saved { color: #15803d; border-color: #86efac; }
+.material .cloud-changed { color: #b45309; border-color: #fcd34d; }
+.material-library { margin-top: 18px; padding-top: 10px; border-top: 1px solid var(--border); }
+.material-library h3 { margin: 0 0 4px; }
+.library-list { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.library-list li { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); }
+.library-swatch { width: 22px; height: 22px; border-radius: 4px; background-color: var(--swatch); box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15); flex: none; }
+.library-swatch.tex-wood { background-image: repeating-linear-gradient(8deg, rgba(0, 0, 0, 0.12) 0 1px, transparent 1px 4px); }
+.library-swatch.tex-marble { background-image: linear-gradient(135deg, transparent 45%, rgba(0, 0, 0, 0.2) 50%, transparent 55%); }
+.library-swatch.tex-concrete { background-image: radial-gradient(rgba(0, 0, 0, 0.15) 1px, transparent 1.5px); background-size: 5px 5px; }
+.library-name { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.library-name b, .library-name small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.library-name small { color: var(--muted); }
+.library-list button { flex: none; font-size: 12px; padding: 2px 8px; }
+.library-badge { font-size: 11px; color: var(--muted); white-space: nowrap; }
+
+/* Materiały: zwinięta karta — próbka koloru w podsumowaniu */
+.material .card-sum { display: none; align-items: center; gap: 6px; }
+.material.collapsed .card-sum { display: flex; }
+.sum-swatch { width: 14px; height: 14px; border-radius: 3px; background-color: var(--swatch); box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.2); flex: none; }
+.sum-swatch.tex-wood { background-image: repeating-linear-gradient(8deg, rgba(0, 0, 0, 0.14) 0 1px, transparent 1px 3px); }
+.sum-swatch.tex-marble { background-image: linear-gradient(135deg, transparent 45%, rgba(0, 0, 0, 0.22) 50%, transparent 55%); }
+.sum-swatch.tex-concrete { background-image: radial-gradient(rgba(0, 0, 0, 0.18) 1px, transparent 1.5px); background-size: 4px 4px; }
+/* Pasek: „Pokaż” — rozwijane menu z polami wyboru (ściany, wymiary, blaty, blendy, fronty) */
+.show-menu { position: relative; }
+.show-menu > summary {
+  list-style: none; cursor: pointer; user-select: none; white-space: nowrap;
+  padding: 5px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel, #fff); font-size: 13px;
+}
+.show-menu > summary::-webkit-details-marker { display: none; }
+.show-menu > summary:hover, .show-menu[open] > summary { border-color: var(--accent); color: var(--accent); }
+.show-count { color: var(--muted); font-size: 12px; }
+.show-menu-list {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 60; min-width: 180px;
+  display: flex; flex-direction: column; gap: 2px; padding: 6px;
+  background: var(--panel, #fff); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+}
+.show-menu-list .check { padding: 5px 6px; border-radius: 5px; white-space: nowrap; }
+.show-menu-list .check:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+/* Awatar: niezalogowany (szara ikonka) i elementy menu dostępne po zalogowaniu */
+body.has-user-menu .help-group .settings-btn { display: none; }
+.user-slot.guest .avatar-btn { background: var(--panel, #fff); color: var(--muted); border-color: var(--border); }
+.avatar-guest { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: var(--muted); background: #eef0f3; }
+.avatar-lg .avatar-guest svg { width: 22px; height: 22px; }
+.user-menu .user-menu-login { display: flex; justify-content: center; margin: 4px 0 8px; }
+.user-menu .user-menu-login[hidden], .user-menu .user-menu-note[hidden], .user-menu [hidden].user-menu-item { display: none; }
+.help-group .user-menu button.user-menu-item:disabled { color: var(--muted); opacity: 0.55; cursor: not-allowed; background: none; }
+.user-menu-note { font-size: 12px; color: var(--muted); margin: 2px 8px 6px; }
+.account-group .save-status { border: none; background: none; padding: 2px 4px; cursor: pointer; }
+.account-group .save-status:hover { text-decoration: underline; }

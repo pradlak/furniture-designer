@@ -3,14 +3,15 @@
 // GET  /api/auth/google    → przekierowanie do Google (wybór konta)
 // GET  /api/auth/callback  → powrót z Google: zakładamy / odnawiamy konto, sesja w ciasteczku, powrót na stronę
 // POST /api/auth/logout    → koniec sesji
-// GET  /api/me             → { user: { name, email } } albo { user: null }
+// GET  /api/me             → { user: { name, email, picture, settings } } albo { user: null }
+// PUT  /api/me/settings    → zapis ustawień programu użytkownika (kolor zaznaczenia, jednostki)
 // DELETE /api/me           → usunięcie konta razem z projektami (RODO)
 // GET  /api/auth/dev-login → logowanie testowe — TYLKO na localhoście i gdy DEV_LOGIN=1 (plik .dev.vars)
 //
 // Konfiguracja: vars.GOOGLE_CLIENT_ID (wrangler.jsonc), sekret GOOGLE_CLIENT_SECRET (`wrangler secret put`).
 // Adres powrotu (w Google Cloud): https://meblesamemu.pl/api/auth/callback (+ www i localhost do testów).
 
-import { json, randomId, sha256, getCookie, cookie, isLocal, sameOrigin } from './util.js';
+import { json, randomId, sha256, getCookie, cookie, isLocal, sameOrigin, readJson } from './util.js';
 
 const SESSION_COOKIE = 'ms_session';
 const STATE_COOKIE = 'ms_oauth_state';
@@ -28,7 +29,7 @@ export async function currentUser(request, env) {
   const token = getCookie(request, SESSION_COOKIE);
   if (!token) return null;
   const row = await env.DB.prepare(
-    `SELECT u.id, u.email, u.name FROM sessions s JOIN users u ON u.id = s.user_id
+    `SELECT u.id, u.email, u.name, u.picture, u.settings FROM sessions s JOIN users u ON u.id = s.user_id
      WHERE s.token_hash = ? AND s.expires_at > ?`,
   )
     .bind(await sha256(token), Date.now())
@@ -49,16 +50,27 @@ async function startSession(request, env, userId) {
 }
 
 // Konto Google → nasz użytkownik (zakładany przy pierwszym logowaniu).
-async function upsertUser(env, { sub, email, name }) {
+// Zdjęcie profilowe: tylko adres obrazka z serwerów Google (https, *.googleusercontent.com), inaczej puste.
+const safePicture = (url) => {
+  try {
+    const u = new URL(url);
+    return u.protocol === 'https:' && /(^|.)googleusercontent.com$/.test(u.hostname) && url.length <= 1000 ? url : '';
+  } catch {
+    return '';
+  }
+};
+
+async function upsertUser(env, { sub, email, name, picture = '' }) {
   const now = Date.now();
+  const pic = safePicture(picture);
   const existing = await env.DB.prepare('SELECT id FROM users WHERE google_sub = ?').bind(sub).first();
   if (existing) {
-    await env.DB.prepare('UPDATE users SET email = ?, name = ?, last_login = ? WHERE id = ?').bind(email, name, now, existing.id).run();
+    await env.DB.prepare('UPDATE users SET email = ?, name = ?, picture = ?, last_login = ? WHERE id = ?').bind(email, name, pic, now, existing.id).run();
     return existing.id;
   }
   const id = randomId(12);
-  await env.DB.prepare('INSERT INTO users (id, google_sub, email, name, created_at, last_login) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(id, sub, email, name, now, now)
+  await env.DB.prepare('INSERT INTO users (id, google_sub, email, name, picture, created_at, last_login) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .bind(id, sub, email, name, pic, now, now)
     .run();
   return id;
 }
@@ -116,7 +128,7 @@ async function googleCallback(request, env) {
   if (!p || !validIssuer || p.aud !== env.GOOGLE_CLIENT_ID || p.exp * 1000 < Date.now() || !p.email || p.email_verified === false) {
     return fail('token');
   }
-  const userId = await upsertUser(env, { sub: p.sub, email: p.email, name: p.name ?? p.given_name ?? '' });
+  const userId = await upsertUser(env, { sub: p.sub, email: p.email, name: p.name ?? p.given_name ?? '', picture: p.picture ?? '' });
   return redirect('/?logowanie=ok', [await startSession(request, env, userId), cookie(STATE_COOKIE, '', { maxAge: 0, secure: !isLocal(request) })]);
 }
 
@@ -142,13 +154,41 @@ async function me(request, env) {
     if (!user) return json(401, { error: 'Nie jesteś zalogowany.' });
     await env.DB.batch([
       env.DB.prepare('DELETE FROM projects WHERE user_id = ?').bind(user.id),
+      env.DB.prepare('DELETE FROM user_materials WHERE user_id = ?').bind(user.id),
       env.DB.prepare('DELETE FROM sessions WHERE user_id = ?').bind(user.id),
       env.DB.prepare('DELETE FROM users WHERE id = ?').bind(user.id),
     ]);
     return json(200, { ok: true }, { 'set-cookie': cookie(SESSION_COOKIE, '', { maxAge: 0, secure: !isLocal(request) }) });
   }
   const user = await currentUser(request, env);
-  return json(200, { user: user ? { name: user.name, email: user.email } : null, loginAvailable: !!env.GOOGLE_CLIENT_ID });
+  return json(200, {
+    user: user ? { name: user.name, email: user.email, picture: user.picture || '', settings: parseSettings(user.settings) } : null,
+    loginAvailable: !!env.GOOGLE_CLIENT_ID,
+  });
+}
+
+// Ustawienia programu użytkownika: tylko znane pola i dozwolone wartości (reszta jest pomijana).
+function cleanSettings(raw) {
+  const out = {};
+  if (typeof raw?.highlight === 'string' && /^#[0-9a-f]{6}$/i.test(raw.highlight)) out.highlight = raw.highlight.toLowerCase();
+  if (['mm', 'cm', 'm'].includes(raw?.units)) out.units = raw.units;
+  return out;
+}
+function parseSettings(text) {
+  try {
+    return text ? cleanSettings(JSON.parse(text)) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function saveSettings(request, env) {
+  if (!sameOrigin(request)) return json(403, { error: 'Niedozwolone.' });
+  const user = await currentUser(request, env);
+  if (!user) return json(401, { error: 'Nie jesteś zalogowany.' });
+  const settings = cleanSettings(await readJson(request, 2000));
+  await env.DB.prepare('UPDATE users SET settings = ? WHERE id = ?').bind(JSON.stringify(settings), user.id).run();
+  return json(200, { settings });
 }
 
 export async function handleAuth(request, env, path) {
@@ -157,5 +197,6 @@ export async function handleAuth(request, env, path) {
   if (path === '/api/auth/dev-login') return devLogin(request, env);
   if (path === '/api/auth/logout' && request.method === 'POST') return logout(request, env);
   if (path === '/api/me') return me(request, env);
+  if (path === '/api/me/settings' && request.method === 'PUT') return saveSettings(request, env);
   return null;
 }

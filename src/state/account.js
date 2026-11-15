@@ -25,6 +25,13 @@ export const getProject = (id) => api(`/api/projects/${id}`);
 export const createProject = (name, data) => api('/api/projects', { method: 'POST', body: { name, data } });
 export const renameProject = (id, name) => api(`/api/projects/${id}`, { method: 'PUT', body: { name } });
 export const deleteProject = (id) => api(`/api/projects/${id}`, { method: 'DELETE' });
+// Ustawienia programu zalogowanego użytkownika (kolor zaznaczenia, jednostki) — zapis na koncie.
+export const saveUserSettings = (settings) => api('/api/me/settings', { method: 'PUT', body: settings });
+// Materiały na koncie (biblioteka użytkownika).
+export const listAccountMaterials = () => api('/api/materials').then((d) => d.materials);
+export const createAccountMaterial = (data) => api('/api/materials', { method: 'POST', body: { data } });
+export const updateAccountMaterial = (id, data) => api(`/api/materials/${id}`, { method: 'PUT', body: { data } });
+export const deleteAccountMaterial = (id) => api(`/api/materials/${id}`, { method: 'DELETE' });
 
 function readLink() {
   try {

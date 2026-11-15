@@ -1,5 +1,6 @@
-// Ustawienia programu (koło zębate na pasku): dotyczą osoby, nie projektu — zapisywane w tej przeglądarce
-// (localStorage), nie w pliku projektu. Gdy przeglądarka nie pozwala na zapis, działają do odświeżenia strony.
+// Ustawienia programu (koło zębate na pasku albo menu pod awatarem): dotyczą osoby, nie projektu — zapisywane
+// w tej przeglądarce (localStorage), a po zalogowaniu także na koncie (main.js), nie w pliku projektu.
+// Gdy przeglądarka nie pozwala na zapis, działają do odświeżenia strony.
 //
 //  highlight — kolor zaznaczonych elementów w 3D (korpus, front, blenda, nóżki),
 //  units     — jednostki w wymiarach na widoku 3D (mm / cm / m).
@@ -20,13 +21,17 @@ export const UNITS = [
 ];
 export const DEFAULT_SETTINGS = { highlight: '#22c55e', units: 'mm' };
 
+// Ustawienia z zapisu (przeglądarka, konto) → tylko poprawne wartości, reszta domyślna.
+export function normalizeSettings(raw) {
+  return {
+    highlight: /^#[0-9a-f]{6}$/i.test(raw?.highlight ?? '') ? raw.highlight.toLowerCase() : DEFAULT_SETTINGS.highlight,
+    units: UNITS.some((u) => u.key === raw?.units) ? raw.units : DEFAULT_SETTINGS.units,
+  };
+}
+
 function load() {
   try {
-    const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null') ?? {};
-    return {
-      highlight: /^#[0-9a-f]{6}$/i.test(raw.highlight ?? '') ? raw.highlight : DEFAULT_SETTINGS.highlight,
-      units: UNITS.some((u) => u.key === raw.units) ? raw.units : DEFAULT_SETTINGS.units,
-    };
+    return normalizeSettings(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null') ?? {});
   } catch {
     return { ...DEFAULT_SETTINGS };
   }
@@ -37,14 +42,15 @@ const listeners = new Set();
 
 export const getSettings = () => current;
 
-export function setSettings(patch) {
-  current = { ...current, ...patch };
+// meta.fromAccount — ustawienia wczytane z konta (nie trzeba ich odsyłać z powrotem na konto).
+export function setSettings(patch, meta = {}) {
+  current = normalizeSettings({ ...current, ...patch });
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(current));
   } catch {
     /* bez zapisu — ustawienia działają do odświeżenia strony */
   }
-  listeners.forEach((fn) => fn(current));
+  listeners.forEach((fn) => fn(current, meta));
 }
 
 export function onSettingsChange(fn) {

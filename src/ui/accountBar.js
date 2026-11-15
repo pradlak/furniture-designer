@@ -1,11 +1,10 @@
-// Fragment paska narzędzi: „☁ Moje projekty” i stan zapisu na koncie (✓ zapisano / zapisuję… / błąd).
-// Ukryty, gdy serwer nie obsługuje logowania (np. sama strona na localhoście albo logowanie nieskonfigurowane).
+// Fragment paska narzędzi: stan zapisu projektu na koncie (✓ zapisano / zapisuję… / błąd) — tylko po zalogowaniu.
+// Kliknięcie otwiera „Moje projekty” (które są też w menu pod awatarem).
 export function createAccountBar(root, account, { onOpen }) {
   root.innerHTML = `
-    <button type="button" class="account-btn" data-account="open" title="Projekty zapisane na koncie — logowanie przez Google">☁ Moje projekty</button>
-    <span class="save-status" aria-live="polite"></span>`;
+    <button type="button" class="save-status" aria-live="polite"></button>`;
   const status = root.querySelector('.save-status');
-  root.querySelector('[data-account="open"]').addEventListener('click', () => onOpen());
+  status.addEventListener('click', () => onOpen());
 
   const TEXT = {
     pending: ['zapisuję…', 'Zmiany zapiszą się na koncie za chwilę'],
@@ -15,7 +14,7 @@ export function createAccountBar(root, account, { onOpen }) {
     conflict: ['⚠ zmieniony gdzie indziej', 'Ten projekt zmieniono na innym urządzeniu'],
   };
   function sync(s) {
-    root.hidden = !s.loaded || (!s.user && !s.loginAvailable);
+    root.hidden = !s.loaded || !s.user;
     if (!s.user) {
       status.textContent = '';
       return;

@@ -21,8 +21,9 @@ import { selectedCabinetIds } from './state/selection.js';
 import { initSizeNotices } from './ui/sizeNotices.js';
 import { createFeedbackDialog } from './ui/feedbackDialog.js';
 import { createSettingsDialog } from './ui/settingsDialog.js';
-import { onSettingsChange } from './state/settings.js';
-import { createAccount, getProject } from './state/account.js';
+import { onSettingsChange, getSettings, setSettings, DEFAULT_SETTINGS } from './state/settings.js';
+import { createUserMenu } from './ui/userMenu.js';
+import { createAccount, getProject, saveUserSettings } from './state/account.js';
 import { createProjectsDialog } from './ui/projectsDialog.js';
 import { createAccountBar } from './ui/accountBar.js';
 
@@ -134,6 +135,35 @@ const account = createAccount(store, {
 });
 const projectsDialog = createProjectsDialog(store, account);
 createAccountBar(document.querySelector('.account-group'), account, { onOpen: () => projectsDialog.open() });
+materialsPanel.setAccount(account); // materiały zapisane na koncie
+// Awatar w prawym górnym rogu (po zalogowaniu) z menu: projekty, ustawienia, wyloguj.
+createUserMenu(document.querySelector('.user-slot'), account, {
+  onProjects: () => projectsDialog.open(),
+  onMaterials: () => {
+    tabs.activate('materials-panel');
+    document.querySelector('#materials-panel .material-library')?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  },
+  onLogout: () => account.logout().catch((err) => alert(err.message)),
+});
+// Ustawienia (kolor zaznaczenia, jednostki) zapamiętane na koncie: po zalogowaniu wczytujemy je z konta
+// (a gdy konto jeszcze ich nie ma — zapisujemy tam bieżące z przeglądarki); każda zmiana idzie na konto.
+let settingsUser = null;
+let settingsTimer = null;
+const uploadSettings = () => {
+  clearTimeout(settingsTimer);
+  settingsTimer = setTimeout(() => saveUserSettings(getSettings()).catch((err) => console.warn('Ustawienia na koncie:', err.message)), 800);
+};
+account.onChange((s) => {
+  const email = s.user?.email ?? null;
+  if (email === settingsUser) return;
+  settingsUser = email;
+  if (!s.user) return;
+  if (s.user.settings) setSettings({ ...DEFAULT_SETTINGS, ...s.user.settings }, { fromAccount: true });
+  else uploadSettings();
+});
+onSettingsChange((_, meta) => {
+  if (account.get().user && !meta?.fromAccount) uploadSettings();
+});
 // Zamykanie strony w trakcie zapisu — ostrzeżenie (zmiany mogłyby nie trafić na konto).
 window.addEventListener('beforeunload', (e) => {
   if (['pending', 'saving'].includes(account.get().saveStatus)) e.preventDefault();

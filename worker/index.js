@@ -10,6 +10,7 @@
 import { EmailMessage } from 'cloudflare:email';
 import { handleAuth } from './auth.js';
 import { handleProjects } from './projects.js';
+import { handleMaterials } from './materials.js';
 import { json as jsonResponse } from './util.js';
 
 const MAX_MESSAGE = 5000;
@@ -91,7 +92,10 @@ export default {
     if (url.pathname === '/api/uwagi') return handleFeedback(request, env);
     if (url.pathname.startsWith('/api/')) {
       try {
-        const res = (await handleAuth(request, env, url.pathname)) ?? (await handleProjects(request, env, url.pathname));
+        const res =
+          (await handleAuth(request, env, url.pathname)) ??
+          (await handleProjects(request, env, url.pathname)) ??
+          (await handleMaterials(request, env, url.pathname));
         if (res) return res;
         return jsonResponse(404, { error: 'Nie ma takiego adresu.' });
       } catch (err) {

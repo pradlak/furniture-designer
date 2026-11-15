@@ -170,5 +170,7 @@ export function normalizeMaterials(raw) {
       edgeBanding: num(m.edgeBanding, 0, 0, 5),
       edgeColor: typeof m.edgeColor === 'string' && /^#[0-9a-f]{6}$/i.test(m.edgeColor) ? m.edgeColor : null,
       ...(isTexture(m.texture) ? { texture: m.texture } : {}),
+      // materiał zapisany na koncie (biblioteka) — identyfikator na koncie, do aktualizacji
+      ...(typeof m.cloudId === 'string' && /^[\w-]{1,40}$/.test(m.cloudId) ? { cloudId: m.cloudId } : {}),
     }));
 }

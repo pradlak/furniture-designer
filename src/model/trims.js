@@ -184,11 +184,16 @@ function countertopBox(trim, project, cabs, front, thickness) {
   const depth = trim.depth ?? front + countertopOverhang(trim, project) - back;
 
   // Co ogranicza blat na boki: inne meble i przeszkody na wysokości blatu i w jego głębokości.
-  const inBand = (o) => o.y < top + thickness && o.y + o.height > top && o.z < back + depth && o.z + o.depth > back;
+  const inBand = (o, touch = 0) => o.y < top + thickness && o.y + o.height > top - touch && o.z < back + depth && o.z + o.depth > back;
+  // Nieobjęty korpus tej samej wysokości (wierzch na poziomie spodu blatu) też ogranicza blat — po odznaczeniu
+  // korpusu w „Obejmuje” blat kończy się na nim, zamiast dalej leżeć na nim aż do ściany.
   const others = [
-    ...project.furniture.filter((c) => !trim.cabinetIds.includes(c.id)).map((c) => cabinetBounds(c, project)),
-    ...project.space.obstacles,
-  ].filter(inBand);
+    ...project.furniture
+      .filter((c) => !trim.cabinetIds.includes(c.id))
+      .map((c) => cabinetBounds(c, project))
+      .filter((o) => inBand(o, 0.5)),
+    ...project.space.obstacles.filter((o) => inBand(o)),
+  ];
   const { walls, width: spaceWidth } = project.space;
   let left = walls.left ? 0 : rowLeft;
   let right = walls.right ? spaceWidth : rowRight;
