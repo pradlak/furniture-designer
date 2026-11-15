@@ -17,11 +17,12 @@ import { trimMaterial } from '../model/materials.js';
 import { escapeHtml, numberField, readNumberInput, setIfNotFocused, round1, commitEmptyAsZero } from './dom.js';
 import { setEye, materialSelect, colorPicker, readColorInput, syncColorPicker } from './widgets.js';
 import { renderSideBlendCard, updateSideBlendCard } from './sideBlends.js';
+import { renderBoardFeatures, syncBoardFeatures, readFeatureInput, readFeatureClick, applyFeatureChange } from './boardFeaturesEditor.js';
 import { createCardCollapse, COLLAPSE_BUTTON, COLLAPSE_ALL_BUTTONS } from './collapsible.js';
 import { setPath, setSideBlendField, cabinetReachesTop, describeCuts } from '../model/furniture.js';
 import { updateCabinetKeepingRow } from '../model/layout.js';
 
-// Zakładka „Blendy i blaty”: elementy, które mogą obejmować kilka korpusów — blendy dolne,
+// Zakładki „Blendy” i „Blaty i półki”: elementy, które mogą obejmować kilka korpusów — blendy dolne,
 // blendy górne i blaty. To jedyne miejsce ich edycji (karta korpusu tylko pokazuje, co go obejmuje).
 
 // Kolejność w panelu: od góry mebla — blendy górne, dolne, blaty.
@@ -42,9 +43,9 @@ const GROUPS = [
   },
   {
     type: 'countertop',
-    title: 'Blaty',
-    add: '+ Blat',
-    hint: 'Leży na korpusach, z przodu wysunięty (domyślnie 30 mm od frontu), domyślnie od ściany do ściany.',
+    title: 'Blaty na szafkach',
+    add: '+ Blat na szafkach',
+    hint: 'Leży na korpusach, z przodu wysunięty (domyślnie 30 mm od frontu), domyślnie od ściany do ściany. Z frezami krawędzi i otworami (zlew, płyta grzewcza, przepust…).',
   },
 ];
 
@@ -61,7 +62,10 @@ const trimValue = (t, field, project) => {
   return typeof v === 'number' ? round1(v) : v;
 };
 
-export function createTrimsPanel(root, store, ui) {
+// mode: 'blends' — zakładka „Blendy” (blendy boczne, górne, dolne),
+//       'worktops' — zakładka „Blaty i półki” (blaty na szafkach; samodzielne płyty — ui/boardsPanel.js).
+export function createTrimsPanel(root, store, ui, { mode = 'blends' } = {}) {
+  const groups = GROUPS.filter((g) => (mode === 'worktops' ? g.type === 'countertop' : g.type !== 'countertop'));
   let renderedKey = null;
   const cardCollapse = createCardCollapse(root); // zwijane karty (jak karty korpusów)
   const structureKey = (project) =>
@@ -75,17 +79,24 @@ export function createTrimsPanel(root, store, ui) {
 
   function render(project) {
     root.innerHTML = `
-      <h2>Blendy i blaty</h2>
-      <p class="hint">Blendy dolne, górne i blaty mogą obejmować kilka korpusów — w karcie zaznacz, które.</p>
-      <p class="hint add-target"></p>
-      ${project.furniture.length || project.trims.length ? COLLAPSE_ALL_BUTTONS : ''}
-      <h3>Blendy boczne</h3>
-      <p class="hint">Po bokach korpusu: blenda boczna — pas z przodu przy ścianie (opcjonalnie z panelem przy ścianie),
-        panel na pełną wysokość albo cokół boczny. Każdy korpus ma swoją kartę.</p>
-      <div class="items">
-        ${project.furniture.map((c) => renderSideBlendCard(c, project)).join('') || '<p class="empty">Brak korpusów.</p>'}
-      </div>
-      ${GROUPS.map(
+      ${
+        mode === 'worktops'
+          ? `<h2>Blaty i półki</h2>
+             <p class="hint">Blaty na szafkach (mogą obejmować kilka korpusów) oraz samodzielne blaty i półki —
+               wszystkie z frezami krawędzi i otworami.</p>
+             <p class="hint add-target"></p>`
+          : `<h2>Blendy</h2>
+             <p class="hint">Blendy dolne i górne mogą obejmować kilka korpusów — w karcie zaznacz, które.</p>
+             <p class="hint add-target"></p>
+             ${project.furniture.length || project.trims.length ? COLLAPSE_ALL_BUTTONS : ''}
+             <h3>Blendy boczne</h3>
+             <p class="hint">Po bokach korpusu: blenda boczna — pas z przodu przy ścianie (opcjonalnie z panelem przy ścianie),
+               panel na pełną wysokość albo cokół boczny. Każdy korpus ma swoją kartę.</p>
+             <div class="items">
+               ${project.furniture.map((c) => renderSideBlendCard(c, project)).join('') || '<p class="empty">Brak korpusów.</p>'}
+             </div>`
+      }
+      ${groups.map(
         (g) => `
         <h3>${g.title}</h3>
         <p class="hint">${g.hint}</p>
@@ -164,8 +175,10 @@ export function createTrimsPanel(root, store, ui) {
         <div class="grid-3">
           ${fields.join('')}
           ${materialSelect('Materiał', 'materialId', project)}
-          ${colorPicker('Kolor', 'color')}
+          ${t.type === 'countertop' ? '' : colorPicker('Kolor', 'color')}
         </div>
+        ${t.type === 'countertop' ? colorPicker('Kolor / dekor (dąb, orzech, beton, marmur…)', 'color', { wide: true }) : ''}
+        ${t.type === 'countertop' ? renderBoardFeatures() : ''}
         <p class="trim-size"></p>
         <p class="allowance-note trim-allowance"></p>
         <ul class="issues"></ul>
@@ -183,6 +196,11 @@ export function createTrimsPanel(root, store, ui) {
       const el = root.querySelector(`[data-kind="trim"][data-id="${t.id}"]`);
       if (!el) continue;
       syncColorPicker(el, 'color', t.color, trimMaterial(t, project).color);
+      // blat: frezy krawędzi i otwory (wymiary blatu — do położenia otworów)
+      if (t.type === 'countertop') {
+        const cb = trimBox(t, project);
+        if (cb) syncBoardFeatures(el, t, cb.width, cb.depth);
+      }
       el.querySelectorAll('[data-f]').forEach((input) => {
         if (input.type === 'checkbox') {
           input.checked = !!t[input.dataset.f];
@@ -335,6 +353,16 @@ export function createTrimsPanel(root, store, ui) {
     }
     const id = input.closest('[data-kind="trim"]')?.dataset.id;
     if (!id) return;
+    // blat: frezy krawędzi i otwory
+    const feature = readFeatureInput(input);
+    if (feature) {
+      updateTrim(id, (t, p) => {
+        const cb = trimBox(t, p);
+        return applyFeatureChange(t, feature, cb?.width ?? 1000, cb?.depth ?? 600, setPath);
+      });
+      return;
+    }
+    if (input.dataset.bf || input.dataset.bfAdd !== undefined) return;
     if (input.dataset.trimCabinet) {
       const cabId = input.dataset.trimCabinet;
       updateTrim(id, (t, p) => ({
@@ -393,6 +421,14 @@ export function createTrimsPanel(root, store, ui) {
     const data = e.target.dataset ?? {};
     const id = e.target.closest('[data-kind="trim"]')?.dataset.id;
     const cabinetId = e.target.closest('[data-kind="side-blends"]')?.dataset.id;
+    const featureClick = id && readFeatureClick(e.target);
+    if (featureClick) {
+      updateTrim(id, (t, p) => {
+        const cb = trimBox(t, p);
+        return applyFeatureChange(t, featureClick, cb?.width ?? 1000, cb?.depth ?? 600, setPath);
+      });
+      return;
+    }
     if (data.resetSideField && data.side && cabinetId) {
       updateCabinetRow(cabinetId, (c) => setPath(c, `sideBlends.${data.side}.${data.resetSideField}`, null));
     } else if (data.resetSideWidth && cabinetId) {

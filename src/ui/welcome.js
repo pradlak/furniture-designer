@@ -18,7 +18,8 @@ export function createWelcome(store, { onNew, onStart, onExamples } = {}) {
       <ol>
         <li><b>Przestrzeń</b> — wpisz wymiary wnęki lub pokoju, zaznacz ściany, dodaj skosy i przeszkody (rury, listwy).</li>
         <li><b>Meble</b> — dodaj korpus, ustaw wymiary, nóżki i wzmocnienia. Korpus przesuniesz też myszką w podglądzie 3D.</li>
-        <li><b>Blendy i blaty</b> — blendy boczne, blenda dolna (cokół), blenda górna i blat.</li>
+        <li><b>Blendy</b> — blendy boczne, blenda dolna (cokół) i blenda górna.</li>
+        <li><b>Blaty i półki</b> — blat na szafkach albo samodzielny blat lub półka, z frezami krawędzi i otworami.</li>
         <li><b>Materiały</b> — płyty, grubości, kolory i obrzeże.</li>
         <li><b>💾 Formatki…</b> na górnym pasku — lista płyt do zamówienia rozkroju: Excel, CSV albo plik do rozkroju na meble.pl.</li>
       </ol>

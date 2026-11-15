@@ -39,6 +39,7 @@ const DEFAULT_WORKTOP = {
   type: 'worktop',
   thickness: 38,
   color: '#b8905e',
+  texture: 'wood',
   edgeBanding: 0,
 };
 
@@ -59,7 +60,7 @@ const FALLBACK = {
   chipboard: { id: null, name: 'Płyta 18', type: 'chipboard', thickness: 18, color: '#d2b48c', edgeBanding: 0 },
   mdf: { id: null, name: 'MDF 18', type: 'mdf', thickness: 18, color: '#d2b48c', edgeBanding: 0 },
   hdf: { id: null, name: 'HDF 3', type: 'hdf', thickness: 3, color: '#e9e4da', edgeBanding: 0 },
-  worktop: { id: null, name: 'Blat 38', type: 'worktop', thickness: 38, color: '#b8905e', edgeBanding: 0 },
+  worktop: { id: null, name: 'Blat 38', type: 'worktop', thickness: 38, color: '#b8905e', texture: 'wood', edgeBanding: 0 },
 };
 
 export const materialById = (project, id) => project?.materials?.find((m) => m.id === id) ?? null;
@@ -89,9 +90,28 @@ export const COLOR_PRESETS = [
   { hex: '#5f7f5c', name: 'zielony' },
   { hex: '#2f4f3e', name: 'butelkowa zieleń' },
   { hex: '#26334d', name: 'granatowy' },
-  { hex: '#c8a27a', name: 'dąb naturalny' },
-  { hex: '#7a5537', name: 'orzech' },
+  // dekory z fakturą (texture: wood — słoje, concrete — beton, marble — marmur; patrz scene/textures.js)
+  { hex: '#c8a27a', name: 'dąb naturalny', texture: 'wood' },
+  { hex: '#ddc196', name: 'dąb jasny', texture: 'wood' },
+  { hex: '#8a6038', name: 'dąb ciemny', texture: 'wood' },
+  { hex: '#7a5537', name: 'orzech', texture: 'wood' },
+  { hex: '#d9a877', name: 'buk', texture: 'wood' },
+  { hex: '#e2d3b5', name: 'jesion', texture: 'wood' },
+  { hex: '#4a3426', name: 'wenge', texture: 'wood' },
+  { hex: '#9a9893', name: 'beton', texture: 'concrete' },
+  { hex: '#c3c0b9', name: 'beton jasny', texture: 'concrete' },
+  { hex: '#ece9e4', name: 'marmur biały', texture: 'marble' },
+  { hex: '#b9b8b4', name: 'marmur szary', texture: 'marble' },
 ];
+
+// Wzory (faktury) materiałów: jednolity kolor albo dekor.
+export const TEXTURES = [
+  { key: null, label: 'Jednolity kolor' },
+  { key: 'wood', label: 'Drewno (słoje)' },
+  { key: 'concrete', label: 'Beton' },
+  { key: 'marble', label: 'Marmur' },
+];
+const isTexture = (t) => TEXTURES.some((x) => x.key && x.key === t);
 
 const HEX = /^#[0-9a-f]{6}$/i;
 // Kolor z pliku projektu → { hex, name } albo null.
@@ -99,13 +119,14 @@ export function normalizeColor(raw) {
   if (!raw || typeof raw !== 'object' || !HEX.test(raw.hex ?? '')) return null;
   const hex = raw.hex.toLowerCase();
   const name = typeof raw.name === 'string' && raw.name.trim() ? raw.name.trim().slice(0, 60) : `własny ${hex}`;
-  return { hex, name };
+  return isTexture(raw.texture) ? { hex, name, texture: raw.texture } : { hex, name };
 }
 
 // Materiał w wybranym kolorze: kolor płyty i obrzeża, nazwa z kolorem; bez koloru — materiał bez zmian.
 export function withColor(material, color) {
   if (!color) return material;
-  return { ...material, color: color.hex, edgeColor: null, colorName: color.name, name: `${material.name} — ${color.name}` };
+  // kolor jednolity zdejmuje fakturę materiału, dekor (np. dąb) ją ustawia
+  return { ...material, color: color.hex, texture: color.texture ?? null, edgeColor: null, colorName: color.name, name: `${material.name} — ${color.name}` };
 }
 
 // Materiały korpusu: body — korpus, blend — blendy boczne, front — fronty (domyślnie jak blendy), hdf — plecy HDF.
@@ -148,5 +169,6 @@ export function normalizeMaterials(raw) {
       color: typeof m.color === 'string' && /^#[0-9a-f]{6}$/i.test(m.color) ? m.color : '#d9d4c7',
       edgeBanding: num(m.edgeBanding, 0, 0, 5),
       edgeColor: typeof m.edgeColor === 'string' && /^#[0-9a-f]{6}$/i.test(m.edgeColor) ? m.edgeColor : null,
+      ...(isTexture(m.texture) ? { texture: m.texture } : {}),
     }));
 }

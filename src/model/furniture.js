@@ -1,4 +1,4 @@
-import { LIMITS, isPointInside, slopePlanes, DEFAULT_SLOPE_GAP, DEFAULT_CEILING_GAP } from './space.js';
+import { LIMITS, isPointInside, describeOutside, slopePlanes, DEFAULT_SLOPE_GAP, DEFAULT_CEILING_GAP } from './space.js';
 import { FRONT_DECORS, DECOR_LIMITS, DECOR_GAP_LIMITS, describeDecor } from './decor.js';
 import { cabinetMaterials, trimMaterial, normalizeColor, withColor } from './materials.js';
 import { boxSolid, clipSolid, isClippedBy, solidBounds, extentAlong, solidsOverlap, vertices, outline2d } from './solid.js';
@@ -1374,13 +1374,8 @@ export function cabinetIssues(cabinet, project) {
     x: l.x - l.diameter / 2, y: l.y, z: l.z - l.diameter / 2, width: l.diameter, height: l.height, depth: l.diameter,
   }));
   const corners = [...valid.flatMap(panelVertices), ...legBoxes.flatMap(boxCorners)];
-  if (!corners.every((p) => isPointInside(p, space))) {
-    issues.push(
-      slopePlanes(space).length
-        ? 'Wychodzi poza przestrzeń (sprawdź też skosy).'
-        : 'Wychodzi poza przestrzeń.',
-    );
-  }
+  const outside = describeOutside(corners, space);
+  if (outside) issues.push(outside);
   const hitObstacles = space.obstacles.filter((o) => boxesOverlap(bounds, o)).map((o) => o.name || 'przeszkoda');
   if (hitObstacles.length) issues.push(`Koliduje z: ${hitObstacles.join(', ')}.`);
 

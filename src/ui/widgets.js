@@ -14,14 +14,26 @@ export function setEye(btn, hidden, what) {
 // Lista: „jak w materiale”, gotowe kolory z nazwami i „własny…” (próbnik koloru obok).
 // path — ścieżka w obiekcie (np. 'colors.front' w korpusie, 'color' w blendzie wspólnej).
 // Odczyt zmiany: readColorInput(input) → { path, value } (value: { hex, name } albo null).
-export function colorPicker(label, path) {
+// Lista kolorów pogrupowana: jednolite kolory i dekory z fakturą (drewno, beton, marmur).
+const COLOR_GROUPS = [
+  { label: 'Kolory jednolite', test: (c) => !c.texture },
+  { label: 'Dekory drewna', test: (c) => c.texture === 'wood' },
+  { label: 'Beton i marmur', test: (c) => c.texture === 'concrete' || c.texture === 'marble' },
+];
+const colorOptions = () =>
+  COLOR_GROUPS.map(
+    (g) => `<optgroup label="${g.label}">${COLOR_PRESETS.filter(g.test).map((c) => `<option value="${c.hex}">${escapeHtml(c.name)}</option>`).join('')}</optgroup>`,
+  ).join('');
+
+// wide — pole na całą szerokość karty (np. blat: wybór dekoru)
+export function colorPicker(label, path, { wide = false } = {}) {
   return `
-    <label class="field small color-field">
+    <label class="field small color-field${wide ? ' wide' : ''}">
       <span>${label}</span>
       <span class="color-row">
         <select data-color-select="${path}">
           <option value="">jak w materiale</option>
-          ${COLOR_PRESETS.map((c) => `<option value="${c.hex}">${escapeHtml(c.name)}</option>`).join('')}
+          ${colorOptions()}
           <option value="custom">własny…</option>
         </select>
         <input type="color" data-color-custom="${path}" title="Własny kolor" />

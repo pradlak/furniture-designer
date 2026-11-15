@@ -141,6 +141,42 @@ export function isPointInside([x, y, z], space, eps = 0.01) {
   return slopePlanes(space).every(({ normal: [a, b, c], offset }) => a * x + b * y + c * z <= offset + eps * Math.hypot(a, b, c));
 }
 
+// Opis, którędy i o ile punkty (narożniki elementu, [x, y, z] w mm) wychodzą poza przestrzeń, np.
+// „Wychodzi poza przestrzeń: ponad sufit o 18 mm.” — albo null, gdy wszystkie są w środku.
+// openFront — przód przestrzeni to pokój (nie ma tam ściany): wystawanie do przodu (np. blat) nie jest błędem.
+const SLOPE_NAMES = { left: 'lewy', right: 'prawy', back: 'tylny', front: 'przedni' };
+export function describeOutside(points, space, { openFront = false } = {}) {
+  const over = { left: 0, right: 0, floor: 0, ceiling: 0, back: 0, front: 0 };
+  const slopes = {};
+  const planes = slopePlanes(space);
+  for (const [x, y, z] of points) {
+    over.left = Math.max(over.left, -x);
+    over.right = Math.max(over.right, x - space.width);
+    over.floor = Math.max(over.floor, -y);
+    over.ceiling = Math.max(over.ceiling, y - space.height);
+    over.back = Math.max(over.back, -z);
+    if (!openFront) over.front = Math.max(over.front, z - space.depth);
+    for (const { normal: [a, b, c], offset, side } of planes) {
+      // pionowo: o ile punkt jest nad skosem
+      const d = (a * x + b * y + c * z - offset) / b;
+      slopes[side] = Math.max(slopes[side] ?? 0, d);
+    }
+  }
+  const mm = (v) => `${Math.round(v)} mm`;
+  const labels = {
+    left: (v) => `za lewą ścianę o ${mm(v)}`,
+    right: (v) => `za prawą ścianę o ${mm(v)}`,
+    floor: (v) => `pod podłogę o ${mm(v)}`,
+    ceiling: (v) => `ponad sufit o ${mm(v)} (wysokość przestrzeni ${space.height} mm)`,
+    back: (v) => `za tylną ścianę o ${mm(v)}`,
+    front: (v) => `do przodu poza przestrzeń o ${mm(v)} (głębokość przestrzeni ${space.depth} mm)`,
+  };
+  const parts = Object.entries(over).filter(([, v]) => v > 0.5).map(([k, v]) => labels[k](v));
+  for (const [side, v] of Object.entries(slopes)) if (v > 0.5) parts.push(`nad ${SLOPE_NAMES[side] ?? ''} skos o ${mm(v)}`);
+  if (!parts.length) return null; // (przekroczenia do 0,5 mm pomijamy)
+  return `Wychodzi poza przestrzeń: ${parts.join(', ')}.`;
+}
+
 export function isObstacleOutside(o, space) {
   for (const x of [o.x, o.x + o.width])
     for (const y of [o.y, o.y + o.height])

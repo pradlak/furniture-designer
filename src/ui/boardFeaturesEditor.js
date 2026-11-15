@@ -1,0 +1,112 @@
+import { escapeHtml, setIfNotFocused, readNumberInput } from './dom.js';
+import { EDGE_KEYS, EDGE_NAMES, EDGE_PROFILES, profileInfo, HOLE_PRESETS, HOLE_LIMITS, createHole, holeFits } from '../model/boardFeatures.js';
+
+// Edytor frezów krawędzi i otworów płyty (blat, półka) — wspólny dla samodzielnych płyt (zakładka Meble)
+// i blatów na szafkach (oba w zakładce „Blaty i półki”).
+// Pola mają data-bf="ścieżka" (np. edges.front.profile, holes.0.x) — zmianę odczytuje readFeatureInput.
+
+export function renderBoardFeatures() {
+  return `
+    <div class="bf">
+      <div class="bf-title">Frezy krawędzi <small>(patrząc z góry)</small></div>
+      <div class="bf-edges">
+        ${EDGE_KEYS.map(
+          (k) => `
+          <div class="bf-edge" data-edge="${k}">
+            <span class="bf-edge-name">${EDGE_NAMES[k]}</span>
+            <select data-bf="edges.${k}.profile" aria-label="Frez krawędzi: ${EDGE_NAMES[k]}">
+              ${EDGE_PROFILES.map((p) => `<option value="${p.key}">${escapeHtml(p.label)}</option>`).join('')}
+            </select>
+            <label class="bf-size" title="Rozmiar frezu: fazka — szerokość ścięcia, zaokrąglenie — promień R">
+              <input type="number" step="0.5" min="0.5" max="50" data-bf="edges.${k}.size" aria-label="Rozmiar frezu" />
+              <small>mm</small>
+            </label>
+          </div>`,
+        ).join('')}
+      </div>
+      <div class="bf-title">Otwory <small>(środek: od lewej i od przedniej krawędzi)</small></div>
+      <div class="bf-holes"></div>
+      <label class="field small bf-add">
+        <select data-bf-add>
+          <option value="">+ Dodaj otwór…</option>
+          ${HOLE_PRESETS.map((p) => `<option value="${p.key}">${escapeHtml(p.label)}</option>`).join('')}
+        </select>
+      </label>
+    </div>`;
+}
+
+const holeRow = (h, i) => `
+  <div class="bf-hole" data-hole="${i}">
+    <span class="bf-hole-name" title="${escapeHtml(h.label || '')}">${i + 1}. ${h.shape === 'circle' ? 'okrągły' : 'prostokątny'}${h.label ? ` <small>${escapeHtml(h.label)}</small>` : ''}</span>
+    <label>x <input type="number" step="1" data-bf="holes.${i}.x" /></label>
+    <label>y <input type="number" step="1" data-bf="holes.${i}.y" /></label>
+    ${
+      h.shape === 'circle'
+        ? `<label>Ø <input type="number" step="1" min="${HOLE_LIMITS.min}" max="${HOLE_LIMITS.max}" data-bf="holes.${i}.d" /></label>`
+        : `<label>szer. <input type="number" step="1" min="${HOLE_LIMITS.min}" max="${HOLE_LIMITS.max}" data-bf="holes.${i}.w" /></label>
+           <label>gł. <input type="number" step="1" min="${HOLE_LIMITS.min}" max="${HOLE_LIMITS.max}" data-bf="holes.${i}.h" /></label>
+           <label>R <input type="number" step="1" min="0" max="500" data-bf="holes.${i}.r" /></label>`
+    }
+    <button type="button" class="icon tiny danger" data-bf-remove="${i}" title="Usuń otwór">✕</button>
+    <span class="bf-hole-warn" hidden>⚠ nie mieści się</span>
+  </div>`;
+
+// Odświeża pola edytora: wartości frezów i lista otworów (lista budowana na nowo, gdy zmieniła się liczba / rodzaje).
+export function syncBoardFeatures(el, { edges, holes }, width, depth) {
+  for (const k of EDGE_KEYS) {
+    const e = edges?.[k] ?? { profile: 'none', size: 0 };
+    const row = el.querySelector(`.bf-edge[data-edge="${k}"]`);
+    if (!row) continue;
+    setIfNotFocused(row.querySelector('select'), e.profile);
+    const info = profileInfo(e.profile);
+    const size = row.querySelector('.bf-size');
+    size.hidden = !info.sizes.length;
+    if (!size.querySelector('input').classList.contains('invalid')) setIfNotFocused(size.querySelector('input'), e.size);
+  }
+  const list = el.querySelector('.bf-holes');
+  const sig = (holes ?? []).map((h) => h.shape + (h.label ?? '')).join('|');
+  if (list.dataset.sig !== sig) {
+    list.innerHTML = (holes ?? []).map(holeRow).join('') || '<p class="hint">Brak otworów.</p>';
+    list.dataset.sig = sig;
+  }
+  (holes ?? []).forEach((h, i) => {
+    const row = list.querySelector(`[data-hole="${i}"]`);
+    if (!row) return;
+    row.querySelectorAll('[data-bf]').forEach((input) => {
+      const key = input.dataset.bf.split('.')[2];
+      if (!input.classList.contains('invalid')) setIfNotFocused(input, h[key]);
+    });
+    row.querySelector('.bf-hole-warn').hidden = holeFits(h, width, depth);
+  });
+}
+
+// Zmiana w edytorze → { path, value } (do setPath na płycie / blacie) albo { add: presetKey } albo null.
+export function readFeatureInput(input) {
+  if (input.dataset.bfAdd !== undefined) {
+    const key = input.value;
+    input.value = '';
+    return key ? { add: key } : null;
+  }
+  const path = input.dataset.bf;
+  if (!path) return null;
+  if (input.tagName === 'SELECT') {
+    // zmiana profilu: rozmiar — pierwszy typowy dla nowego profilu
+    const info = profileInfo(input.value);
+    return { path: path.replace(/\.profile$/, ''), value: { profile: info.key, size: info.sizes[0] ?? 0 } };
+  }
+  const value = readNumberInput(input);
+  return value === undefined ? null : { path, value };
+}
+
+// Akcje przycisków (usunięcie otworu) → { remove: index } albo null.
+export function readFeatureClick(target) {
+  const btn = target.closest('[data-bf-remove]');
+  return btn ? { remove: Number(btn.dataset.bfRemove) } : null;
+}
+
+// Zastosowanie zmiany do obiektu z edges / holes (płyta albo blat). width / depth — do położenia nowego otworu.
+export function applyFeatureChange(obj, change, width, depth, setPath) {
+  if (change.add) return { ...obj, holes: [...(obj.holes ?? []), createHole(change.add, width, depth)] };
+  if (change.remove != null) return { ...obj, holes: (obj.holes ?? []).filter((_, i) => i !== change.remove) };
+  return setPath(obj, change.path, change.value);
+}

@@ -39,12 +39,16 @@ export function attachCabinetInteraction(viewer, store, ui) {
     for (const hit of hits) {
       let o = hit.object;
       let panelKey = null;
+      let slab = null; // płyta z otworami (blat, półka) — do przesuwania otworów
       const handle = !!o.userData.handle; // trafiony uchwyt frontu
-      while (o && !o.userData.cabinetId && !o.userData.trimId) {
+      while (o && !o.userData.cabinetId && !o.userData.trimId && !o.userData.boardId) {
         panelKey ??= o.userData.panelKey ?? null;
+        slab ??= o.userData.slab ?? null;
         o = o.parent;
       }
-      if (o?.userData.trimId) return { trimId: o.userData.trimId, point: hit.point }; // blenda wspólna / blat
+      if (o) slab ??= o.userData.slab ?? null;
+      if (o?.userData.boardId) return { boardId: o.userData.boardId, point: hit.point, slab }; // samodzielny blat / półka
+      if (o?.userData.trimId) return { trimId: o.userData.trimId, point: hit.point, slab }; // blenda wspólna / blat
       if (o) return { id: o.userData.cabinetId, panelKey, point: hit.point, handle };
     }
     return null;
@@ -55,6 +59,7 @@ export function attachCabinetInteraction(viewer, store, ui) {
   // Zaznaczany element (poza frontami): blenda boczna (płyta korpusu z grupy „blend”: „idKorpusu:klucz”),
   // nóżki korpusu („idKorpusu:legs” — wszystkie naraz) albo blenda wspólna / blat („trim:id”).
   const blendIdOf = (hit) => {
+    if (hit?.boardId) return `board:${hit.boardId}`;
     if (hit?.trimId) return `trim:${hit.trimId}`;
     if (!hit?.panelKey) return null;
     if (hit.panelKey.startsWith('leg-')) return `${hit.id}:legs`; // wszystkie nóżki korpusu naraz
@@ -63,6 +68,48 @@ export function attachCabinetInteraction(viewer, store, ui) {
     return panel?.group === 'blend' ? `${hit.id}:${hit.panelKey}` : null;
   };
   const toggleIn = (list, id) => (list.includes(id) ? list.filter((x) => x !== id) : [...list, id]);
+
+  // Otwór płyty (blatu / półki) przy trafionym punkcie: kursor na płycie tuż przy brzegu otworu
+  // (otwór sam jest pusty) — do przesuwania otworu myszką. → { kind, id, index, u, v, hole, box } albo null.
+  const HOLE_GRAB_MM = 30;
+  function holeAt(hit) {
+    const slab = hit?.slab;
+    if (!slab) return null;
+    const project = store.get();
+    const obj = slab.kind === 'trim' ? project.trims.find((t) => t.id === slab.id) : project.boards?.find((b) => b.id === slab.id);
+    const holes = obj?.holes ?? [];
+    const { box } = slab;
+    // punkt na płycie → u (od lewej), v (od przedniej krawędzi), w mm
+    const u = hit.point.x / MM - box.x;
+    const v = box.z + box.depth - (hit.point.z / MM + project.space.depth);
+    let best = null;
+    holes.forEach((h, index) => {
+      const [hw, hd] = h.shape === 'circle' ? [h.d / 2, h.d / 2] : [h.w / 2, h.h / 2];
+      const dist = h.shape === 'circle' ? Math.hypot(u - h.x, v - h.y) - hw : Math.max(Math.abs(u - h.x) - hw, Math.abs(v - h.y) - hd);
+      if (dist <= HOLE_GRAB_MM && (!best || dist < best.dist)) best = { dist, index, hole: h };
+    });
+    return best ? { kind: slab.kind, id: slab.id, index: best.index, hole: best.hole, u, v, box } : null;
+  }
+
+  // Przesunięcie otworu (drag.hole) do punktu na płycie — środek otworu w granicach płyty (10 mm od krawędzi).
+  function dragHole(pt) {
+    const { kind, id, index, grab, box } = drag.hole;
+    const project = store.get();
+    const u = pt.x / MM - box.x - grab.u;
+    const v = box.z + box.depth - (pt.z / MM + project.space.depth) - grab.v;
+    const move = (holes) =>
+      holes.map((h, i) => {
+        if (i !== index) return h;
+        const [hw, hd] = h.shape === 'circle' ? [h.d / 2, h.d / 2] : [h.w / 2, h.h / 2];
+        const clamp = (x, half, size) => Math.round(Math.min(Math.max(x, half + 10), Math.max(half + 10, size - half - 10)));
+        return { ...h, x: clamp(u, hw, box.width), y: clamp(v, hd, box.depth) };
+      });
+    store.set((p) =>
+      kind === 'trim'
+        ? { ...p, trims: p.trims.map((t) => (t.id === id ? { ...t, holes: move(t.holes) } : t)) }
+        : { ...p, boards: p.boards.map((b) => (b.id === id ? { ...b, holes: move(b.holes) } : b)) },
+    );
+  }
 
   // Otwarcie frontu („idKorpusu:front-N”): przełączone ręcznie albo według „otwarte” na pasku.
   const isFrontOpen = (frontId) => ui.get().frontOpen?.[frontId] ?? store.get().view?.openFronts === true;
@@ -325,6 +372,8 @@ export function attachCabinetInteraction(viewer, store, ui) {
       setRay(e);
       const hit = pickCabinet();
       if (!hit) return;
+      // klik w coś innego niż płyta z otworami — otwór przestaje być zaznaczony
+      if (ui.get().selectedHole && !hit.trimId && !hit.boardId) ui.set({ ...ui.get(), selectedHole: null });
 
       // Kliknięty front jest zaznaczony osobno (Delete usuwa wtedy tylko fronty); z Ctrl — dodawany do
       // zaznaczenia albo z niego usuwany (bez przeciągania).
@@ -336,12 +385,29 @@ export function attachCabinetInteraction(viewer, store, ui) {
         viewer.controls.enabled = false;
         el.setPointerCapture(e.pointerId);
       };
-      if (hit.trimId) {
-        // Blenda wspólna (dolna, górna) albo blat: klik zaznacza ją (z Ctrl — dodaje / usuwa z zaznaczenia).
+      if (hit.trimId || hit.boardId) {
+        // Blenda wspólna (dolna, górna), blat albo samodzielna płyta: klik zaznacza ją (z Ctrl — dodaje / usuwa
+        // z zaznaczenia). Chwycenie płyty tuż przy otworze — przesuwanie otworu.
         const state = ui.get();
-        const blends = e.ctrlKey || e.metaKey ? toggleIn(state.selectedBlends ?? [], blendId) : [blendId];
-        const keepCabinets = e.ctrlKey || e.metaKey ? {} : { selectedId: null, selectedIds: [], selectedFronts: [] };
-        ui.set({ ...state, ...keepCabinets, selectedBlends: blends });
+        const grabbed = !(e.ctrlKey || e.metaKey) && holeAt(hit);
+        if (grabbed) {
+          // klik / chwycenie przy otworze — zaznaczony jest sam otwór (nie cała płyta)
+          const selectedHole = { kind: grabbed.kind, id: grabbed.id, index: grabbed.index };
+          ui.set({ ...state, selectedId: null, selectedIds: [], selectedFronts: [], selectedBlends: [], selectedHole });
+        } else {
+          const blends = e.ctrlKey || e.metaKey ? toggleIn(state.selectedBlends ?? [], blendId) : [blendId];
+          const keepCabinets = e.ctrlKey || e.metaKey ? {} : { selectedId: null, selectedIds: [], selectedFronts: [] };
+          ui.set({ ...state, ...keepCabinets, selectedBlends: blends, selectedHole: null });
+        }
+        if (grabbed) {
+          drag = {
+            hole: { kind: grabbed.kind, id: grabbed.id, index: grabbed.index, box: grabbed.box, grab: { u: grabbed.u - grabbed.hole.x, v: grabbed.v - grabbed.hole.y } },
+            plane: new THREE.Plane(new THREE.Vector3(0, 1, 0), -hit.point.y), // poziomo, na wierzchu płyty
+          };
+          viewer.controls.enabled = false;
+          el.setPointerCapture(e.pointerId);
+          return;
+        }
         selectOnly();
         return;
       }
@@ -429,10 +495,17 @@ export function attachCabinetInteraction(viewer, store, ui) {
     setRay(e);
     if (!drag) {
       const hover = pickCabinet();
-      el.style.cursor = hover?.handle ? 'move' : isShelf(hover) ? 'ns-resize' : isFront(hover) || hover?.trimId ? 'pointer' : hover ? 'grab' : '';
+      el.style.cursor =
+        hover?.handle || holeAt(hover) ? 'move' : isShelf(hover) ? 'ns-resize' : isFront(hover) || hover?.trimId || hover?.boardId ? 'pointer' : hover ? 'grab' : '';
       return;
     }
     if (drag.select) return; // Ctrl + klik na froncie — tylko zaznaczanie
+    if (drag.hole) {
+      el.style.cursor = 'move';
+      const pt = raycaster.ray.intersectPlane(drag.plane, new THREE.Vector3());
+      if (pt) dragHole(pt);
+      return;
+    }
     if (drag.handleOf) {
       el.style.cursor = 'move';
       const pt = raycaster.ray.intersectPlane(drag.plane, new THREE.Vector3());
@@ -489,7 +562,7 @@ export function attachCabinetInteraction(viewer, store, ui) {
       viewer.controls.enabled = true;
       el.releasePointerCapture(e.pointerId);
     } else if (down && !moved && e.button === 0) {
-      ui.set({ ...ui.get(), selectedId: null, selectedFronts: [], selectedBlends: [] }); // klik w puste miejsce
+      ui.set({ ...ui.get(), selectedId: null, selectedFronts: [], selectedBlends: [], selectedHole: null }); // klik w puste miejsce
     }
     down = null;
   });

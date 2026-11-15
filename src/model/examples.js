@@ -2,7 +2,9 @@ import { createExampleProject } from './example.js';
 import { createProjectFromTemplate, SPACE_TEMPLATES } from './templates.js';
 import { addCabinetToLayout, updateCabinetKeepingRow } from './layout.js';
 import { addShelf, setShelfY, setSideBlendField, defaultHandle } from './furniture.js';
-import { createTrim } from './trims.js';
+import { createTrim, trimBox } from './trims.js';
+import { createBoard } from './boards.js';
+import { createHole } from './boardFeatures.js';
 
 // Galeria przykładowych projektów (do wczytania z ekranu powitalnego / okienka „Nowy projekt”).
 // Każdy przykład budujemy tymi samymi funkcjami, których używa program — więc wygląda tak,
@@ -102,6 +104,36 @@ function chest() {
   return named(p, ['Komoda — szuflady', 'Komoda — drzwi']);
 }
 
+// 6. Blat z wycięciami: trzy szafki kuchenne z blatem — wycięcie pod zlew i płytę grzewczą, przepust
+//    na kable, zaokrąglony przód; nad blatem półka wisząca z zaokrągloną krawędzią.
+function worktop() {
+  let p = spaceFrom('niche', { width: 3000, height: 2500, depth: 650 }, 'Przykład: blat z wycięciami');
+  p = row(p, 3, { height: 720, depth: 560, legs: { enabled: true, height: 100 } });
+  p = edit(p, 0, (c) => fronts(c, { type: 'drawers', drawers: 3 }));
+  p = edit(p, 1, (c) => fronts(c, { type: 'doubleDoor' }));
+  p = edit(p, 2, (c) => fronts(c, { type: 'drawers', drawers: 2 }));
+  p = named(p, ['Szafka z szufladami', 'Szafka pod zlew', 'Szafka pod płytę']);
+  const ids = p.furniture.map((c) => c.id);
+  let top = createTrim('countertop', ids, p);
+  p = { ...p, trims: [top, createTrim('plinth', ids, p)] };
+  // otwory względem blatu: środek od lewej krawędzi blatu i od jego przedniej krawędzi
+  const box = trimBox(top, p);
+  const [c0, c1, c2] = p.furniture;
+  const sink = { ...createHole('sink', box.width, box.depth), x: c1.x + c1.width / 2 - box.x, y: Math.round(box.depth / 2) - 10 };
+  const hob = { ...createHole('hob', box.width, box.depth), x: c2.x + c2.width / 2 - box.x, y: Math.round(box.depth / 2) - 10 };
+  const tap = { ...createHole('tap', box.width, box.depth), x: sink.x, y: box.depth - 60 };
+  const cable = { ...createHole('cable60', box.width, box.depth), x: c0.x + 150 - box.x, y: box.depth - 60 };
+  top = { ...top, edges: { ...top.edges, front: { profile: 'round', size: 3 } }, holes: [sink, hob, tap, cable] };
+  p = { ...p, trims: [top, p.trims[1]] };
+  // półka wisząca nad blatem
+  const shelf = createBoard(p, 'shelf');
+  p = {
+    ...p,
+    boards: [{ ...shelf, name: 'Półka nad blatem', x: 400, y: 1500, width: 1200, depth: 250, edges: { ...shelf.edges, front: { profile: 'round', size: 5 } } }],
+  };
+  return p;
+}
+
 export const EXAMPLES = [
   { key: 'kitchen', label: 'Szafki kuchenne', description: 'Szafki dolne na nóżkach z blatem, cokołem, drzwiami i szufladami', create: kitchen },
   {
@@ -113,4 +145,10 @@ export const EXAMPLES = [
   { key: 'attic', label: 'Zabudowa poddasza', description: 'Korpusy ze skośną górą pod skosem 45°, drzwi i półki', create: attic },
   { key: 'bookcase', label: 'Regał na książki', description: 'Otwarte korpusy z półkami, bez frontów', create: bookcase },
   { key: 'chest', label: 'Komoda', description: 'Szuflady i drzwi na nóżkach, z blatem', create: chest },
+  {
+    key: 'worktop',
+    label: 'Blat z wycięciami',
+    description: 'Szafki kuchenne z blatem: wycięcia pod zlew i płytę grzewczą, przepust, zaokrąglony przód; półka wisząca',
+    create: worktop,
+  },
 ];

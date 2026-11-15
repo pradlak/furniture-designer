@@ -59,7 +59,7 @@ import { edgeKeys, EDGE_LABELS, projectSolids, panelEdgeSet, isManualEdgeSet, ed
 import { escapeHtml, numberField, readNumberInput, setIfNotFocused, round1, commitEmptyAsZero } from './dom.js';
 import { createLegsDialog } from './legsDialog.js';
 import { decorInfo, decorPreviewSvg } from '../model/decor.js';
-import { rowOf } from '../model/trims.js';
+import { rowOf, createTrim } from '../model/trims.js';
 import { selectedCabinetIds, toggleCabinet } from '../state/selection.js';
 
 const POSITION_FIELDS = [
@@ -108,8 +108,9 @@ function setSummary(cardEl, section, text) {
 // Panel mebli (korpusów). Pełna przebudowa DOM tylko przy zmianach strukturalnych
 // (dodanie/usunięcie korpusu, zmiana rodzaju pleców), w pozostałych przypadkach
 // odświeżane są wartości pól i ostrzeżenia.
-// onShowTrims(cabinetId) — przejście do zakładki „Blendy i blaty” (z karty korpusu).
-export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}) {
+// onShowTrims(cabinetId) — przejście do zakładki „Blendy” (z karty korpusu);
+// onShowWorktop(trimId) — przejście do karty blatu w zakładce „Blaty i półki”.
+export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onShowWorktop } = {}) {
   let renderedKey = null;
   const legsDialog = createLegsDialog();
   // Łańcuszki: zmiana wysokości / nóżek dotyczy też korpusów z rzędu (stykają się bokami,
@@ -521,9 +522,13 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
         ${section('legs', 'Nóżki', legs)}
         <div class="section section-static">
           <div class="section-bar">
-            <span class="section-title">Blendy i blaty</span>
+            <span class="section-title">Blendy i blat</span>
             <span class="section-sum trims-sum"></span>
-            <button type="button" class="section-link" data-action="show-trims" title="Blendy boczne, dolne, górne i blaty edytujesz w zakładce „Blendy i blaty”">Edytuj →</button>
+            <span class="section-links">
+              <button type="button" class="section-link" data-action="show-trims" title="Blendy boczne, dolne i górne tego korpusu — zakładka „Blendy”">Blendy →</button>
+              <button type="button" class="section-link worktop-show" data-action="show-worktop" title="Blat leżący na tym korpusie — zakładka „Blaty i półki”">Blat →</button>
+              <button type="button" class="section-link worktop-add" data-action="add-worktop" title="Dodaj blat na tym korpusie i sąsiednich w rzędzie (z frezami krawędzi i otworami)">+ Dodaj blat</button>
+            </span>
           </div>
         </div>
         ${section('parts', 'Elementy', parts, 'parts')}
@@ -581,8 +586,12 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
         else if (!input.classList.contains('invalid')) setIfNotFocused(input, value);
       });
 
-      // Blendy i blaty — tylko informacja (edycja w zakładce „Blendy i blaty”).
+      // Blendy i blat — tylko informacja (edycja w zakładkach „Blendy” i „Blaty i półki”).
       const covering = project.trims.filter((t) => t.cabinetIds.includes(c.id));
+      // blat na korpusie: „Blat →”, bez blatu: „+ Dodaj blat”
+      const hasWorktop = covering.some((t) => t.type === 'countertop');
+      el.querySelector('.worktop-show').hidden = !hasWorktop;
+      el.querySelector('.worktop-add').hidden = hasWorktop;
       const side = sideBlendSummary(c);
       el.querySelector('.trims-sum').textContent =
         [side && `Blendy boczne: ${side}`, covering.length && `Obejmują go: ${covering.map((t) => t.name).join(', ')}`]
@@ -1194,6 +1203,15 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims } = {}
         const { edgeSet: _removed, ...o } = c.panelOverrides?.[part] ?? {};
         return { ...c, panelOverrides: { ...c.panelOverrides, [part]: o } };
       });
+    } else if (action === 'show-worktop' && id) {
+      const top = store.get().trims.find((t) => t.type === 'countertop' && t.cabinetIds.includes(id));
+      if (top) onShowWorktop?.(top.id);
+    } else if (action === 'add-worktop' && id) {
+      // nowy blat na korpusie i sąsiadach w rzędzie (jak „+ Blat na szafkach”), potem jego karta
+      const p = store.get();
+      const top = createTrim('countertop', rowOf(id, p), p);
+      store.set({ ...p, trims: [...p.trims, top] });
+      onShowWorktop?.(top.id);
     } else if (action === 'show-trims' && id) {
       onShowTrims?.(id);
     } else if (togglePartHidden && id) {

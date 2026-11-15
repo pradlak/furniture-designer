@@ -2,8 +2,7 @@ import {
   MATERIAL_TYPES,
   MATERIAL_THICKNESSES,
   EDGE_BANDING_OPTIONS,
-  createMaterial,
-} from '../model/materials.js';
+  createMaterial, TEXTURES } from '../model/materials.js';
 import { escapeHtml, readNumberInput, setIfNotFocused, commitEmptyAsZero } from './dom.js';
 
 // Zakładka „Materiały”: biblioteka płyt projektu. Zmiana grubości materiału od razu przebudowuje
@@ -68,6 +67,12 @@ export function createMaterialsPanel(root, store) {
               ${EDGE_BANDING_OPTIONS.map((b) => `<option value="${b}">${b ? String(b).replace('.', ',') : 'brak'}</option>`).join('')}
             </select>
           </label>
+          <label class="field small" title="Wygląd w 3D: jednolity kolor albo dekor z fakturą (słoje drewna, beton, marmur) w kolorze materiału">
+            <span>Wzór</span>
+            <select data-texture>
+              ${TEXTURES.map((t) => `<option value="${t.key ?? ''}">${t.label}</option>`).join('')}
+            </select>
+          </label>
         </div>
         <div class="edge-color-row">
           <span>Kolor obrzeża:</span>
@@ -85,6 +90,7 @@ export function createMaterialsPanel(root, store) {
       el.querySelectorAll('[data-f]').forEach((input) => {
         if (!input.classList.contains('invalid')) setIfNotFocused(input, m[input.dataset.f]);
       });
+      setIfNotFocused(el.querySelector('[data-texture]'), m.texture ?? '');
       // Kolor obrzeża: „jak płyta” albo własny; ukryty, gdy materiał nie ma obrzeża.
       const sameColor = m.edgeColor == null;
       const row = el.querySelector('.edge-color-row');
@@ -110,6 +116,11 @@ export function createMaterialsPanel(root, store) {
     }
     if (id && input.dataset.edgeColor !== undefined) {
       updateMaterial(id, { edgeColor: input.value });
+      return;
+    }
+    // Wzór (faktura): pusty — jednolity kolor
+    if (id && input.dataset.texture !== undefined) {
+      updateMaterial(id, { texture: input.value || undefined });
       return;
     }
     const field = input.dataset.f;

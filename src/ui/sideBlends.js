@@ -5,7 +5,7 @@ import { cabinetMaterials } from '../model/materials.js';
 import { COLLAPSE_BUTTON } from './collapsible.js';
 
 // Blendy boczne korpusu (lewa i prawa): blenda boczna (przy ścianie), panel na pełną wysokość, cokół boczny.
-// Edytowane w zakładce „Blendy i blaty” — po jednej karcie na korpus.
+// Edytowane w zakładce „Blendy” — po jednej karcie na korpus.
 
 const SIDE_LABEL = { left: 'Lewa', right: 'Prawa' };
 

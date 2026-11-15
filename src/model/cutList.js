@@ -3,6 +3,8 @@ import { projectSolids, panelEdgeSet, trimEdgeSet, edgeCounts, TRIM_THICKNESS_AX
 import { trimSegments, trimAllowance, TRIM_TYPES } from './trims.js';
 import { trimMaterial } from './materials.js';
 import { buildXlsx } from './xlsx.js';
+import { describeEdges, describeHoles } from './boardFeatures.js';
+import { boardBox, boardMaterial } from './boards.js';
 
 // Lista formatek do rozkroju: wszystkie płyty projektu (korpusy, blendy boczne, blendy dolne i górne,
 // blaty). Jednakowe formatki (ten sam materiał, wymiary, obrzeże i zapas) łączone są w jeden wiersz.
@@ -66,8 +68,19 @@ export function buildCutList(project, parts = ALL_PARTS) {
       const box = { ...seg, allowanceMin: i === 0 ? a.min : 0, allowanceMax: i === segments.length - 1 ? a.max : 0 };
       const set = trimEdgeSet(t, seg, i, solids);
       const cut = panelCutSize({ ...box, material, edges: edgeCounts(box, TRIM_THICKNESS_AXIS[t.type], set) });
-      add(t.type === 'countertop' ? 'countertop' : 'blend', t.name || TRIM_TYPES[t.type].label, 'wspólne', material, cut, set);
+      // blat: frezy krawędzi i otwory (zlew, płyta grzewcza, przepusty…)
+      const work = t.type === 'countertop' ? [describeEdges(t.edges), describeHoles(t.holes)].filter(Boolean).join('; ') : '';
+      add(t.type === 'countertop' ? 'countertop' : 'blend', t.name || TRIM_TYPES[t.type].label, 'wspólne', material, cut, set, work);
     });
+  }
+
+  // Samodzielne płyty (blaty, półki) — z frezami krawędzi i otworami.
+  for (const b of project.boards ?? []) {
+    const material = boardMaterial(b, project);
+    const box = boardBox(b, project);
+    const cut = panelCutSize({ ...box, material, edges: { l: 0, w: 0 } });
+    const work = [describeEdges(b.edges), describeHoles(b.holes)].filter(Boolean).join('; ');
+    add(b.kind === 'worktop' ? 'countertop' : 'body', b.name, b.kind === 'worktop' ? 'blat samodzielny' : 'półka samodzielna', material, cut, [], work);
   }
 
   // Łączenie jednakowych formatek (nazwy i meble zbieramy w jedną kolumnę).

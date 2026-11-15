@@ -470,12 +470,12 @@ details.subsection > summary.subsection-title:hover { color: var(--accent); }
 .collapse-all { display: flex; gap: 6px; margin: 0 0 8px; }
 .collapse-all button { padding: 2px 8px; font-size: 12px; }
 
-/* --- zakładka „Blendy i blaty” --- */
+/* --- zakładki „Blendy” i „Blaty i półki” --- */
 .tabs { flex-wrap: wrap; }
 .tabs button { padding: 6px 9px; }
 .item.trim.related { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent); }
 .add-target { font-style: italic; }
-/* pasek sekcji bez rozwijania (np. „Blendy i blaty” w karcie korpusu) — wygląda jak nagłówek sekcji;
+/* pasek sekcji bez rozwijania (np. „Blendy” w karcie korpusu) — wygląda jak nagłówek sekcji;
    do innej zakładki przenosi tylko przycisk na pasku */
 .section-bar {
   display: flex;
@@ -509,7 +509,7 @@ body.resizing .viewport { pointer-events: none; }
   .panel { width: 100% !important; }
 }
 
-/* --- blendy boczne w zakładce „Blendy i blaty” --- */
+/* --- blendy boczne w zakładce „Blendy” --- */
 .item.side-blends { border-left-color: #7c6a55; }
 .item.side-blends.related { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent); }
 .side-blends-name { font-weight: 600; }
@@ -795,3 +795,34 @@ button.primary:hover { color: #fff; filter: brightness(1.1); }
 .google-login { display: inline-flex; align-items: center; gap: 10px; padding: 9px 16px; border: 1px solid var(--border); border-radius: 6px;
   background: #fff; color: #1f2937; font-weight: 600; text-decoration: none; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08); }
 .google-login:hover { background: #f8fafc; }
+
+/* --- blaty i półki: frezy krawędzi i otwory --- */
+#boards-panel { margin-top: 24px; padding-top: 12px; border-top: 1px solid var(--border); }
+.boards-title { margin-top: 0; }
+.bf { margin: 10px 0 0; display: flex; flex-direction: column; gap: 6px; }
+.bf-title { font-weight: 600; font-size: 13px; margin-top: 6px; }
+.bf-title small { font-weight: 400; color: var(--muted); }
+.bf-edges { display: flex; flex-direction: column; gap: 4px; }
+.bf-edge { display: grid; grid-template-columns: 48px 1fr auto; align-items: center; gap: 6px; font-size: 12px; }
+.bf-edge-name { color: var(--muted); }
+.bf-edge select { min-width: 0; }
+.bf-size { display: inline-flex; align-items: center; gap: 3px; }
+.bf-size input { width: 56px; }
+.bf-size[hidden] { display: none; }
+.bf-holes { display: flex; flex-direction: column; gap: 4px; }
+.bf-hole { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; }
+.bf-hole-name { flex-basis: 100%; font-weight: 600; }
+.bf-hole-name small { font-weight: 400; color: var(--muted); }
+.bf-hole label { display: inline-flex; align-items: center; gap: 3px; color: var(--muted); }
+.bf-hole input { width: 62px; }
+.bf-hole-warn { color: var(--danger); font-size: 11px; }
+.bf-hole-warn[hidden] { display: none; }
+.bf-add select { max-width: 100%; }
+/* karta korpusu: „Blendy →”, „Blat →” / „+ Dodaj blat” */
+.section-links { display: inline-flex; gap: 4px; flex: none; }
+.section-links [hidden] { display: none; }
+/* zaznaczony otwór (klik / przeciąganie w 3D albo wiersz w karcie) */
+.bf-hole.picked { background: color-mix(in srgb, var(--accent, #ff8c00) 14%, transparent); outline: 1px solid var(--accent, #ff8c00); border-radius: 4px; }
+/* blat / płyta: szerokie pole „Kolor / dekor” */
+.color-field.wide { display: flex; flex-direction: column; align-items: stretch; gap: 2px; margin: 6px 0; }
+.color-field.wide .color-row select { font-size: 13px; }

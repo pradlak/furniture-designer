@@ -83,3 +83,5 @@ export const PICTURES = {
     <line x1="26" y1="96" x2="26" y2="104" class="pic-leg" /><line x1="134" y1="96" x2="134" y2="104" class="pic-leg" />
     ${floor}`),
 };
+// blat z wycięciami — ten sam obrazek co kuchnia
+PICTURES.worktop = PICTURES.kitchen;

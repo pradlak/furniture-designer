@@ -19,7 +19,8 @@ import {
   panelVertices,
   panelsOverlap,
 } from './furniture.js';
-import { isPointInside } from './space.js';
+import { isPointInside, describeOutside } from './space.js';
+import { defaultEdges, normalizeEdges, normalizeHoles } from './boardFeatures.js';
 
 // Blendy wspólne — płyty, które mogą obejmować kilka korpusów:
 //  plinth   — blenda dolna: zasłania nóżki, stoi na podłodze, cofnięta od frontu;
@@ -71,6 +72,8 @@ export function createTrim(type, cabinetIds, project) {
         : (first?.blendMaterialId ?? project.materials?.find((m) => m.type === 'mdf')?.id ?? null),
     // kolor — jak blendy pierwszego objętego korpusu (blat — jak w materiale)
     color: type === 'countertop' ? null : (first?.colors?.blend ?? null),
+    // blat: frezy krawędzi i otwory (zlew, płyta grzewcza, przepust…) — model/boardFeatures.js
+    ...(type === 'countertop' ? { edges: defaultEdges(), holes: [] } : {}),
     ...TRIM_DEFAULTS[type],
   };
 }
@@ -254,7 +257,8 @@ export function trimIssues(trim, project) {
   const box = trimBox(trim, project);
   if (box && box.height > 0) {
     // Narożniki (blenda docięta pod skos ma skośną górę — sprawdzamy jej wierzchołki).
-    if (!panelVertices(box).every((p) => isPointInside(p, project.space))) issues.push('Wychodzi poza przestrzeń.');
+    const outside = describeOutside(panelVertices(box), project.space, { openFront: true });
+    if (outside) issues.push(outside);
     const hit = project.space.obstacles.filter((o) => boxesOverlap(box, o)).map((o) => o.name);
     if (hit.length) issues.push(`Koliduje z: ${hit.join(', ')}.`);
     // Nachodzenie na płyty korpusów (po podzieleniu blendy na odcinki przy panelach bocznych).
@@ -304,6 +308,8 @@ export function normalizeTrim(raw = {}, cabinetIds) {
     trim.x = opt(raw.x, -20000, 20000);
     trim.length = opt(raw.length, 1, 20000);
     trim.depth = opt(raw.depth, 1, 20000);
+    trim.edges = normalizeEdges(raw.edges);
+    trim.holes = normalizeHoles(raw.holes);
   }
   return trim;
 }

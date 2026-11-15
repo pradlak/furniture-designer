@@ -2,6 +2,7 @@ import { createDefaultSpace, normalizeSpace } from './space.js';
 import { normalizeCabinet } from './furniture.js';
 import { normalizeTrim, createTrim } from './trims.js';
 import { defaultMaterials, normalizeMaterials } from './materials.js';
+import { normalizeBoard } from './boards.js';
 
 // Projekt = przestrzeń + materiały + meble + blendy wspólne + ustawienia widoku.
 export const PROJECT_VERSION = 5;
@@ -20,6 +21,7 @@ export function createDefaultProject() {
     materials: defaultMaterials(),
     furniture: [],
     trims: [],
+    boards: [], // samodzielne blaty i półki (model/boards.js)
     view: createDefaultView(),
   };
 }
@@ -37,6 +39,7 @@ export function normalizeProject(raw) {
     materials: normalizeMaterials(raw.materials),
     furniture,
     trims: (Array.isArray(raw.trims) ? raw.trims : []).map((t) => normalizeTrim(t, ids)).filter(Boolean),
+    boards: (Array.isArray(raw.boards) ? raw.boards : []).map(normalizeBoard),
     view: {
       showWalls: raw.view?.showWalls !== false,
       showCountertops: raw.view?.showCountertops !== false,

@@ -6,14 +6,19 @@ import { trimMaterial, edgeColorOf, coreColorOf } from '../model/materials.js';
 import { projectSolids, panelEdgeSet, trimEdgeSet, TRIM_THICKNESS_AXIS } from '../model/edges.js';
 import { buildCabinetDimensions, buildPartDimensions, buildTotalDimensions } from './furnitureDims.js';
 import { decorSegments } from '../model/decor.js';
+import { buildSlab, needsSlab } from './slab.js';
+import { boardBox, boardMaterial as boardPlateMaterial, boardIssues } from '../model/boards.js';
 import { getSettings } from '../state/settings.js';
+import { decorTexture, scaleBoxUVs } from './textures.js';
 
 // Materiały ścian prostopadłościanu płyty (kolejność ścian BoxGeometry: +x, −x, +y, −y, +z, −z):
 // lica (ściany prostopadłe do osi grubości) w kolorze płyty, krawędzie — w kolorze rdzenia.
 // Oklejone krawędzie przykrywa potem warstwa obrzeża (addEdgeBanding).
 function panelFaceMaterials(material, thicknessAxis, materialFor) {
-  const face = materialFor(material.color);
-  const edge = materialFor(coreColorOf(material));
+  const face = materialFor(material.color, material.texture);
+  // krawędź w kolorze płyty (MDF, blat) — z tą samą fakturą co lico; rdzeń (płyta meblowa) — jednolity
+  const core = coreColorOf(material);
+  const edge = core === material.color ? face : materialFor(core);
   return ['x', 'x', 'y', 'y', 'z', 'z'].map((ax) => (ax === thicknessAxis ? face : edge));
 }
 
@@ -163,7 +168,13 @@ const EDGE_BAD = 0xdc2626;
 // a światło sceny dodawało tylko lekkie cieniowanie potrzebne do odczytania kształtu.
 const SELF_LIGHT = 0.3;
 
-function boardMaterial(color) {
+// texture — dekor z fakturą (wood / concrete / marble, scene/textures.js) albo brak (jednolity kolor).
+function boardMaterial(color, texture) {
+  const map = texture ? decorTexture(texture, color) : null;
+  if (map) {
+    // faktura niesie kolor; „samoświecenie” tą samą fakturą — jak przy jednolitych płytach
+    return new THREE.MeshLambertMaterial({ map, emissive: new THREE.Color(SELF_LIGHT, SELF_LIGHT, SELF_LIGHT), emissiveMap: map });
+  }
   const c = new THREE.Color(color);
   return new THREE.MeshLambertMaterial({ color: c, emissive: c.clone().multiplyScalar(SELF_LIGHT) });
 }
@@ -242,20 +253,23 @@ const cabinetBox = (c) => ({ x: c.x, y: c.y, z: c.z, width: c.width, height: leg
 // zaznaczony — niebieskie krawędzie; korpus z problemami — czerwone krawędzie.
 // selectedFronts — zbiór zaznaczonych frontów („idKorpusu:front-N”, kliknięte w 3D) — wyróżnione na pomarańczowo.
 // isFrontOpen(id) — czy front jest otwarty; domyślnie według przełącznika „otwarte”.
-export function buildFurniture(project, selectedIds = new Set(), selectedFronts = new Set(), isFrontOpen = () => project.view?.openFronts === true) {
+export function buildFurniture(project, selectedIds = new Set(), selectedFronts = new Set(), isFrontOpen = () => project.view?.openFronts === true, selectedHole = null) {
+  // zaznaczony otwór płyty ({ kind: "trim" | "board", id, index }) — wyróżniony sam otwór
+  const holeOf = (kind, id) => (selectedHole?.kind === kind && selectedHole.id === id ? selectedHole.index : null);
   const group = new THREE.Group();
   const disposables = [];
   group.userData.disposables = disposables;
 
   // Jeden materiał Three.js na kolor płyty (kolory pochodzą z biblioteki materiałów projektu).
   const byColor = new Map();
-  const materialFor = (color) => {
-    if (!byColor.has(color)) {
-      const m = boardMaterial(color);
-      byColor.set(color, m);
+  const materialFor = (color, texture = null) => {
+    const key = texture ? `${color}|${texture}` : color;
+    if (!byColor.has(key)) {
+      const m = boardMaterial(color, texture);
+      byColor.set(key, m);
       disposables.push(m);
     }
-    return byColor.get(color);
+    return byColor.get(key);
   };
   // Płyty docięte pod skos: materiał dwustronny (ściany bryły po przycięciu mają różną orientację).
   const solidByColor = new Map();
@@ -313,6 +327,7 @@ export function buildFurniture(project, selectedIds = new Set(), selectedFronts 
         ? frontPivotGroup(p, cabinet, cabinetGroup, project.space, isFrontOpen(`${cabinet.id}:${p.key}`))
         : cabinetGroup;
       const geometry = new THREE.BoxGeometry(p.width * MM, p.height * MM, p.depth * MM);
+      if (p.material.texture) scaleBoxUVs(geometry, p.width, p.height, p.depth); // faktura w skali płyty
       const picked = isPicked(`${cabinet.id}:${p.key}`, p);
       // zaznaczona płyta: kolor przesunięty w stronę pomarańczowego i pomarańczowe krawędzie
       const material = picked ? pickedMaterial(p.material) : p.material;
@@ -361,6 +376,14 @@ export function buildFurniture(project, selectedIds = new Set(), selectedFronts 
     if (tm.edgeBanding) solids ??= projectSolids(project);
     const trimGroup = new THREE.Group();
     trimGroup.userData.trimId = trim.id; // do wybierania myszką
+    // Blat z otworami albo frezami krawędzi — kształt z wyciętymi otworami (scene/slab.js).
+    if (trim.type === 'countertop' && needsSlab(trim.edges, trim.holes) && segments.length === 1 && !segments[0].solid) {
+      const slab = buildSlab(segments[0], { edges: trim.edges, holes: trim.holes, material: materialFor(tm.color, tm.texture), edgeMaterial: edgeMat, space: project.space, pickedHole: holeOf('trim', trim.id), pickedColor: pickedColor() });
+      slab.userData.slab = { kind: 'trim', id: trim.id, box: segments[0] }; // do przesuwania otworów myszką
+      trimGroup.add(slab);
+      group.add(trimGroup);
+      continue;
+    }
     segments.forEach((box, i) => {
       if (box.solid) {
         // Blenda docięta pod skos (np. blenda górna do skosu).
@@ -374,6 +397,7 @@ export function buildFurniture(project, selectedIds = new Set(), selectedFronts 
         addEdgeBanding(trimGroup, box, trimEdgeSet(trim, box, i, solids), tm.edgeBanding, edgeColorOf(tm), materialFor, project.space);
       }
       const geometry = new THREE.BoxGeometry(box.width * MM, box.height * MM, box.depth * MM);
+      if (tm.texture) scaleBoxUVs(geometry, box.width, box.height, box.depth);
       const mesh = new THREE.Mesh(geometry, mat);
       mesh.position.set(...toScene(box.x + box.width / 2, box.y + box.height / 2, box.z + box.depth / 2, project.space));
       mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geometry), edgeMat));
@@ -382,6 +406,19 @@ export function buildFurniture(project, selectedIds = new Set(), selectedFronts 
       addAllowance(trimGroup, box, i === 0 ? a.min : 0, i === segments.length - 1 ? a.max : 0, project.space);
     });
     group.add(trimGroup);
+  }
+
+  // Samodzielne płyty (blaty, półki) — z otworami i frezami krawędzi.
+  for (const board of (project.boards ?? []).filter((b) => !b.hidden && (b.kind !== 'worktop' || view.showCountertops !== false))) {
+    const box = boardBox(board, project);
+    const picked = selectedFronts.has(`board:${board.id}`);
+    const bm = picked ? pickedMaterial(boardPlateMaterial(board, project)) : boardPlateMaterial(board, project);
+    const edgeMat = picked ? pickedEdge() : new THREE.LineBasicMaterial({ color: boardIssues(board, project).length ? EDGE_BAD : EDGE_OK });
+    if (!picked) disposables.push(edgeMat);
+    const slab = buildSlab(box, { edges: board.edges, holes: board.holes, material: materialFor(bm.color, bm.texture), edgeMaterial: edgeMat, space: project.space, pickedHole: holeOf('board', board.id), pickedColor: pickedColor() });
+    slab.userData.boardId = board.id; // do wybierania myszką
+    slab.userData.slab = { kind: 'board', id: board.id, box }; // do przesuwania otworów myszką
+    group.add(slab);
   }
 
   // Wymiary w 3D:

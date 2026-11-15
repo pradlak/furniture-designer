@@ -81,7 +81,7 @@ export class Viewer {
     }
   }
 
-  setProject(project, { refit = false, selectedIds = new Set(), selectedFronts = new Set(), isFrontOpen } = {}) {
+  setProject(project, { refit = false, selectedIds = new Set(), selectedFronts = new Set(), isFrontOpen, selectedHole = null } = {}) {
     const first = !this.space;
     if (this.spaceGroup) {
       this.scene.remove(this.spaceGroup);
@@ -90,7 +90,7 @@ export class Viewer {
     this.space = project.space;
     this.spaceGroup = new THREE.Group();
     this.spaceGroup.add(buildSpace(project.space, project.view));
-    this.furnitureGroup = buildFurniture(project, selectedIds, selectedFronts, isFrontOpen);
+    this.furnitureGroup = buildFurniture(project, selectedIds, selectedFronts, isFrontOpen, selectedHole);
     // Fronty nowej sceny: znane wracają do swojego bieżącego stanu (i dalej się animują), nowe — od razu w docelowym.
     this.frontPivots = [];
     this.furnitureGroup.traverse((o) => {

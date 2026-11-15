@@ -32,7 +32,28 @@ export function initShortcuts(store, ui) {
     }
 
     if (key === 'escape') {
-      ui.set({ ...ui.get(), selectedId: null, selectedFronts: [], selectedBlends: [] });
+      ui.set({ ...ui.get(), selectedId: null, selectedFronts: [], selectedBlends: [], selectedHole: null });
+      return;
+    }
+    // zaznaczony otwór blatu / półki: Delete — usuń, strzałki — przesuń (10 mm, z Shift 100 mm; ↑ — w głąb)
+    const hole = ui.get().selectedHole;
+    if (hole) {
+      const updateHoles = (fn) =>
+        store.set((p) => {
+          const list = hole.kind === 'trim' ? 'trims' : 'boards';
+          return { ...p, [list]: (p[list] ?? []).map((o) => (o.id === hole.id ? { ...o, holes: fn(o.holes ?? []) } : o)) };
+        });
+      const step = e.shiftKey ? 100 : 10;
+      const arrows = { arrowleft: ['x', -step], arrowright: ['x', step], arrowup: ['y', step], arrowdown: ['y', -step] };
+      if (key === 'delete') {
+        e.preventDefault();
+        updateHoles((hs) => hs.filter((_, i) => i !== hole.index));
+        ui.set({ ...ui.get(), selectedHole: null });
+      } else if (arrows[key] && !ctrl) {
+        e.preventDefault();
+        const [axis, d] = arrows[key];
+        updateHoles((hs) => hs.map((h, i) => (i === hole.index ? { ...h, [axis]: h[axis] + d } : h)));
+      }
       return;
     }
     const id = ui.get().selectedId;
@@ -71,7 +92,7 @@ export function initShortcuts(store, ui) {
         }));
         ui.set({ ...ui.get(), selectedFronts: [] });
       } else if ((ui.get().selectedBlends ?? []).length) {
-        // zaznaczona blenda — Delete nie usuwa całego korpusu (blendę usuwa się w zakładce „Blendy i blaty”)
+        // zaznaczona blenda — Delete nie usuwa całego korpusu (blendę usuwa się w zakładce „Blendy”)
       } else {
         store.set((p) => ({ ...p, furniture: p.furniture.filter((c) => c.id !== id) }));
       }
