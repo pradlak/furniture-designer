@@ -20,7 +20,19 @@
       "destination_address": "p.radlak@gmail.com"
     }
   ],
+  // Konta i projekty w chmurze: baza Cloudflare D1 (tabele w migrations/).
+  // database_id — z polecenia `npx wrangler d1 create meblesamemu`.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "meblesamemu",
+      "database_id": "8bac3215-7b1a-4ee5-ad47-a1b710cfc1e8",
+      "migrations_dir": "migrations"
+    }
+  ],
   "vars": {
-    "FEEDBACK_TO": "p.radlak@gmail.com"
+    "FEEDBACK_TO": "p.radlak@gmail.com",
+    // Logowanie przez Google: identyfikator klienta OAuth (publiczny). Sekret: `npx wrangler secret put GOOGLE_CLIENT_SECRET`.
+    "GOOGLE_CLIENT_ID": "782791228145-ablaigscvpqsagmqgsgalr9evh3su4p2.apps.googleusercontent.com"
   }
 }

@@ -570,7 +570,7 @@ body.resizing .viewport { pointer-events: none; }
 .welcome-note { font-size: 13px; color: var(--muted); }
 .welcome-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
 /* --- ekran powitalny: karty wyboru z obrazkami --- */
-.welcome:not(.new-project):not(.legs-dialog):not(.cut-list-dialog):not(.files-dialog):not(.feedback-dialog):not(.settings-dialog) { max-width: 660px; }
+.welcome:not(.new-project):not(.legs-dialog):not(.cut-list-dialog):not(.files-dialog):not(.feedback-dialog):not(.settings-dialog):not(.projects-dialog) { max-width: 660px; }
 .legs-dialog { max-width: 480px; }
 .legs-dialog-all { margin-top: 10px; font-size: 13px; }
 .legs-dialog-all[hidden] { display: none; }
@@ -764,3 +764,34 @@ button.primary:hover { color: #fff; filter: brightness(1.1); }
 .spacing-row { display: flex; gap: 4px; align-items: center; }
 .spacing-row input { flex: 1; min-width: 0; }
 .spacing-row select { flex: 0 0 auto; width: auto; }
+/* miniaturka frezu w menu prawego przycisku */
+.context-menu-decor { display: inline-flex; width: 16px; justify-content: center; }
+.context-menu-decor .decor-preview-front { fill: #fff; stroke: #9ca3af; }
+.context-menu-decor .decor-preview-lines line { stroke: #4b5563; stroke-width: 1; }
+
+/* --- konto i „Moje projekty” --- */
+.account-group { gap: 8px; align-items: center; }
+.account-group[hidden] { display: none; }
+.account-btn { font-weight: 600; }
+.save-status { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.save-status.ok { color: #15803d; }
+.save-status.bad { color: var(--danger); }
+.projects-dialog { max-width: 620px; }
+.projects-user { font-size: 13px; color: var(--muted); margin: 0 0 12px; }
+.projects-current { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; margin: 0 0 12px;
+  background: #eff4ff; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; }
+.projects-current small { color: var(--muted); }
+.projects-current button { flex-shrink: 0; }
+.projects-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; max-height: 50vh; overflow-y: auto; }
+.projects-list li { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; }
+.projects-list li.is-open { border-color: var(--accent); }
+.projects-list small { color: var(--muted); }
+.projects-badge { font-size: 11px; color: #fff; background: var(--accent); border-radius: 8px; padding: 1px 6px; }
+.projects-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.projects-actions button { padding: 3px 8px; }
+.projects-footer { align-items: center; }
+.projects-footer .link-button:first-child { margin-right: auto; }
+.danger-link { color: var(--danger); }
+.google-login { display: inline-flex; align-items: center; gap: 10px; padding: 9px 16px; border: 1px solid var(--border); border-radius: 6px;
+  background: #fff; color: #1f2937; font-weight: 600; text-decoration: none; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08); }
+.google-login:hover { background: #f8fafc; }

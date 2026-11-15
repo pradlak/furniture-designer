@@ -68,3 +68,15 @@ npm run deploy
 ```
 
 Skrypt sprawdza build, wysyła `dev`, przenosi zmiany na `prod` i wysyła `prod` — Cloudflare publikuje nową wersję.
+
+## Konta i projekty w chmurze (lokalnie)
+
+Logowanie przez Google i projekty na koncie obsługuje Worker (`worker/`) z bazą Cloudflare D1 (`migrations/`).
+Żeby sprawdzić je na swoim komputerze:
+
+1. `npx wrangler d1 migrations apply meblesamemu --local` — lokalna baza (raz, i po każdej nowej migracji).
+2. `npm run build`, potem `npx wrangler dev --port 8787` — Worker z gotową stroną na http://127.0.0.1:8787.
+3. W pliku `.dev.vars` (nie trafia do gita) jest `DEV_LOGIN=1` — wtedy http://127.0.0.1:8787/api/auth/dev-login
+   loguje testowo, bez Google (działa tylko na localhoście).
+
+`npm run dev` (Vite) przekazuje adresy `/api/*` do Workera z punktu 2 (patrz `vite.config.js`).

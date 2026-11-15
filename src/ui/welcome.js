@@ -13,7 +13,7 @@ export function createWelcome(store, { onNew, onStart, onExamples } = {}) {
   overlay.hidden = true;
   overlay.innerHTML = `
     <div class="welcome" role="dialog" aria-modal="true" aria-labelledby="welcome-title">
-      <h2 id="welcome-title">Projektant mebli — jak zacząć</h2>
+      <h2 id="welcome-title">Meble Samemu — jak zacząć</h2>
       <p>Zaprojektuj szafkę albo całą zabudowę w 3D i pobierz listę formatek do rozkroju. Za darmo, bez rejestracji.</p>
       <ol>
         <li><b>Przestrzeń</b> — wpisz wymiary wnęki lub pokoju, zaznacz ściany, dodaj skosy i przeszkody (rury, listwy).</li>
@@ -95,5 +95,6 @@ export function createWelcome(store, { onNew, onStart, onExamples } = {}) {
   }
   if (!seen) open();
 
-  return { open, isOpen: () => !overlay.hidden };
+  // hide — chowa okienko bez zapamiętywania (np. wejście z linku do przykładu: przy następnej wizycie pokaże się znowu)
+  return { open, hide: () => (overlay.hidden = true), isOpen: () => !overlay.hidden };
 }

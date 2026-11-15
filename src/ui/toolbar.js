@@ -16,7 +16,7 @@ const VIEWS = [
 // onFeedback — okienko „Uwagi i propozycje”; onSettings — okienko „Ustawienia”.
 export function createToolbar(root, store, viewer, { onHelp, onNew, onFeedback, onSettings } = {}) {
   root.innerHTML = `
-    <div class="brand">Projektant mebli</div>
+    <div class="brand" title="Meble Samemu — darmowy projektant mebli">Meble Samemu</div>
     <div class="group">
       <button type="button" data-action="new" title="Nowy projekt — wnęka prostokątna albo poddasze ze skosem">📄 Nowy…</button>
       <button type="button" data-action="import" title="Wczytaj projekt z pliku (.json)">📂 Importuj…</button>
@@ -41,6 +41,7 @@ export function createToolbar(root, store, viewer, { onHelp, onNew, onFeedback, 
       <label class="check" title="Ukryj fronty, żeby zajrzeć do wnętrza korpusów (np. przesunąć półkę)"><input type="checkbox" data-view-flag="showFronts" /> Fronty</label>
       <label class="check" title="Otwórz drzwi i wysuń szuflady — żeby zobaczyć, co jest w środku (tylko widok)"><input type="checkbox" data-view-flag="openFronts" data-default-off /> otwarte</label>
     </div>
+    <div class="group account-group" hidden></div>
     <div class="group help-group">
       <button type="button" class="feedback-btn" data-action="feedback" title="Coś nie działa albo czegoś brakuje? Napisz do autora programu">
         <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v8a2.5 2.5 0 0 1-2.5 2.5H10l-4.5 4v-4h0A2.5 2.5 0 0 1 4 13.5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M8 8.5h8M8 12h5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>

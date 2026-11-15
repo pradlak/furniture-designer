@@ -1,6 +1,6 @@
 import './style.css';
 import { createStore } from './state/store.js';
-import { createDefaultProject, loadProject, saveProject } from './model/project.js';
+import { createDefaultProject, loadProject, saveProject, normalizeProject } from './model/project.js';
 import { Viewer } from './scene/Viewer.js';
 import { attachCabinetInteraction } from './scene/interaction.js';
 import { createSpacePanel } from './ui/spacePanel.js';
@@ -14,12 +14,16 @@ import { initPanelResizer } from './ui/resizer.js';
 import { createWelcome } from './ui/welcome.js';
 import { createNewProjectDialog } from './ui/newProject.js';
 import { createExamplesDialog } from './ui/examples.js';
+import { EXAMPLES } from './model/examples.js';
 import { initMathInputs } from './ui/mathInputs.js';
 import { selectedCabinetIds } from './state/selection.js';
 import { initSizeNotices } from './ui/sizeNotices.js';
 import { createFeedbackDialog } from './ui/feedbackDialog.js';
 import { createSettingsDialog } from './ui/settingsDialog.js';
 import { onSettingsChange } from './state/settings.js';
+import { createAccount, getProject } from './state/account.js';
+import { createProjectsDialog } from './ui/projectsDialog.js';
+import { createAccountBar } from './ui/accountBar.js';
 
 // Działania w polach liczbowych (np. 1100-70 → 1030).
 initMathInputs();
@@ -64,6 +68,25 @@ const welcome = createWelcome(store, {
     examples.open();
   },
 });
+// Link prosto do przykładu, np. meblesamemu.pl/?przyklad=szafa — otwiera gotowy projekt (do postów, poradników).
+// Gdy ktoś ma już własny projekt, pytamy, czy go zastąpić. Parametr znika z adresu (odświeżenie nie wczytuje
+// przykładu ponownie).
+const EXAMPLE_LINKS = { kuchnia: 'kitchen', szafa: 'wardrobe', poddasze: 'attic', regal: 'bookcase', 'regał': 'bookcase', komoda: 'chest' };
+const exampleParam = new URLSearchParams(location.search).get('przyklad')?.toLowerCase();
+const linkedExample = exampleParam && EXAMPLES.find((ex) => ex.key === (EXAMPLE_LINKS[exampleParam] ?? exampleParam));
+// Sam przykład wczytujemy na końcu (pendingExample), gdy panele i widok już nasłuchują zmian projektu.
+let pendingExample = null;
+if (linkedExample) {
+  const hasOwnProject = !!savedProject && savedProject.furniture.length > 0;
+  if (!hasOwnProject || confirm(`Otworzyć przykład „${linkedExample.label}”? Twój bieżący projekt zostanie zastąpiony — jeśli chcesz go zachować, kliknij Anuluj i najpierw użyj „Eksportuj”.`)) {
+    pendingExample = linkedExample;
+    welcome.hide();
+    templateOffered = true;
+  }
+  const url = new URL(location.href);
+  url.searchParams.delete('przyklad');
+  history.replaceState(null, '', url.pathname + url.search + url.hash);
+}
 // Okienko powitalne już kiedyś zamknięte — wybór przestrzeni od razu.
 if (!welcome.isOpen()) offerTemplate();
 // Uwagi i propozycje (formularz → mail do autora) — z paska i z menu w rogu podglądu 3D.
@@ -79,6 +102,63 @@ const toolbar = createToolbar(document.getElementById('toolbar'), store, viewer,
   onNew: () => newProject.open(),
   onFeedback: () => feedback.open(),
   onSettings: () => settingsDialog.open(),
+});
+
+// --- Konto (logowanie przez Google) i projekty w chmurze ---
+// Zmiana projektu z innego urządzenia: pytamy, którą wersję zostawić.
+async function loadCloudVersion() {
+  const link = account.get().link;
+  if (!link) return;
+  const p = await account.open(link.id);
+  store.set(normalizeProject(p.data), { replace: true, cloud: true });
+}
+const account = createAccount(store, {
+  onConflict: () => {
+    const takeServer = confirm(
+      'Ten projekt zmieniono na innym urządzeniu.\n\n' +
+        'OK — wczytaj wersję z konta (zmiany zrobione tutaj od ostatniego zapisu przepadną).\n' +
+        'Anuluj — zapisz wersję z tego urządzenia (zastąpi tamtą).',
+    );
+    if (takeServer) loadCloudVersion().catch((err) => alert(err.message));
+    else account.overwrite();
+  },
+});
+const projectsDialog = createProjectsDialog(store, account);
+createAccountBar(document.querySelector('.account-group'), account, { onOpen: () => projectsDialog.open() });
+// Zamykanie strony w trakcie zapisu — ostrzeżenie (zmiany mogłyby nie trafić na konto).
+window.addEventListener('beforeunload', (e) => {
+  if (['pending', 'saving'].includes(account.get().saveStatus)) e.preventDefault();
+});
+account.refresh().then(async () => {
+  const params = new URLSearchParams(location.search);
+  const login = params.get('logowanie');
+  if (login) {
+    params.delete('logowanie');
+    params.delete('powod');
+    history.replaceState(null, '', location.pathname + (params.size ? `?${params}` : '') + location.hash);
+    if (login === 'ok') {
+      // po zalogowaniu — lista projektów (i zapis bieżącego); bez okienek powitania / wyboru przestrzeni
+      welcome.hide();
+      templateOffered = true;
+      document.querySelectorAll('.welcome-overlay').forEach((o) => (o.hidden = true));
+      projectsDialog.open();
+    }
+    else alert('Nie udało się zalogować. Spróbuj ponownie.');
+  }
+  // Projekt połączony z kontem: gdy na koncie jest nowsza wersja (zmiana na innym urządzeniu) — proponujemy ją.
+  const { user, link } = account.get();
+  if (user && link) {
+    try {
+      const p = await getProject(link.id);
+      if (p.updatedAt > link.updatedAt && confirm(`Na koncie jest nowsza wersja projektu „${p.name}” (zmieniona na innym urządzeniu). Wczytać ją?`)) {
+        await loadCloudVersion();
+      }
+    } catch (err) {
+      if (err.status === 404) account.unlink();
+    }
+  } else if (!user && link) {
+    account.unlink(); // wylogowano (np. sesja wygasła) — projekt zostaje w przeglądarce
+  }
 });
 attachCabinetInteraction(viewer, store, ui);
 initShortcuts(store, ui);
@@ -96,6 +176,9 @@ redraw();
 
 let lastOpenFronts = store.get().view?.openFronts === true;
 store.subscribe((project, meta) => {
+  // Konto: nowy / zaimportowany projekt nie jest już tym z konta; zwykła zmiana (i cofnij) — autozapis.
+  if (meta.replace && !meta.undo && !meta.cloud) account.unlink();
+  else if (!meta.cloud) account.projectChanged();
   // Usunięty korpus nie może pozostać zaznaczony.
   const { selectedId } = ui.get();
   if (selectedId && !project.furniture.some((c) => c.id === selectedId)) ui.set({ ...ui.get(), selectedId: null });
@@ -158,3 +241,6 @@ if (siteMenu) {
     if (e.key === 'Escape' && siteMenu.open) siteMenu.open = false;
   });
 }
+
+// Przykład z linku (?przyklad=…) — teraz, gdy wszystko nasłuchuje zmian projektu.
+if (pendingExample) store.set(pendingExample.create(), { replace: true });

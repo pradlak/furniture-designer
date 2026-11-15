@@ -991,7 +991,8 @@ export function cabinetPanels(cabinet, project) {
       base[key] = [x, y, D, w, h, t];
       const milling = {
         groove: grooveEdge(fr.groove ?? 'none', kind),
-        decor: fr.decor ?? 'none',
+        // frez wybrany dla tego frontu (menu prawego przycisku) albo wspólny dla frontów korpusu
+        decor: ov[key]?.decor ?? fr.decor ?? 'none',
         decorMargin: fr.decorMargin ?? 60,
         decorSpacing: fr.decorSpacing ?? 100,
         decorGap: fr.decorGap ?? 20,
@@ -1449,6 +1450,8 @@ export function normalizeCabinet(raw = {}) {
       const color = normalizeColor(src.color);
       if (color) o.color = color;
     }
+    // frez dekoracyjny pojedynczego frontu (z menu prawego przycisku) — ważniejszy niż frez frontów korpusu
+    if (key.startsWith('front-') && FRONT_DECORS.some((d) => d.key === src.decor)) o.decor = src.decor;
     // Ręcznie wybrane oklejone krawędzie (np. ['zMax', 'yMax']); dawny zapis liczbowy pomijamy —
     // takie płyty wracają do obrzeża automatycznego (na krawędziach widocznych).
     if (Array.isArray(src.edgeSet)) {

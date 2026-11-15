@@ -5,6 +5,7 @@ import { cabinetPanels, legHeight, shelfKey, setShelfY, handleOffsetsFor } from 
 import { createContextMenu } from '../ui/contextMenu.js';
 import { selectedCabinetIds, toggleCabinet } from '../state/selection.js';
 import { COLOR_PRESETS } from '../model/materials.js';
+import { FRONT_DECORS, decorPreviewSvg } from '../model/decor.js';
 
 const CLICK_TOLERANCE_PX = 4;
 
@@ -94,6 +95,25 @@ export function attachCabinetInteraction(viewer, store, ui) {
         for (const k of keys) {
           const { color: _old, ...rest } = overrides[k] ?? {};
           overrides[k] = color ? { ...rest, color } : rest;
+          if (!Object.keys(overrides[k]).length) delete overrides[k];
+        }
+        return { ...c, panelOverrides: overrides };
+      }),
+    }));
+  }
+
+  // Frez dekoracyjny wybranych frontów („idKorpusu:front-N”) — przy płycie frontu (panelOverrides[klucz].decor);
+  // null — front wraca do frezu frontów korpusu. Parametry frezu (odległość, rozstaw) — wspólne z korpusem.
+  function setFrontsDecor(frontIds, decor) {
+    store.set((p) => ({
+      ...p,
+      furniture: p.furniture.map((c) => {
+        const keys = frontIds.filter((id) => id.startsWith(`${c.id}:`)).map((id) => id.split(':')[1]);
+        if (!keys.length) return c;
+        const overrides = { ...c.panelOverrides };
+        for (const k of keys) {
+          const { decor: _old, ...rest } = overrides[k] ?? {};
+          overrides[k] = decor ? { ...rest, decor } : rest;
           if (!Object.keys(overrides[k]).length) delete overrides[k];
         }
         return { ...c, panelOverrides: overrides };
@@ -214,6 +234,24 @@ export function attachCabinetInteraction(viewer, store, ui) {
         parts,
       ),
     );
+    // Frez — tylko gdy zaznaczone są same fronty (bez blend)
+    if (selectedParts().every((id) => id.includes(':front-'))) {
+      items.push({
+        icon: '▦',
+        label: `Zmień frez${all}…`,
+        submenu: () => ({
+          title: many ? `Frez: ${fronts.length} frontów` : `Frez: ${fronts[0].panel.name}`,
+          items: [
+            { icon: '↺', label: 'jak w korpusie (frez frontów)', run: () => setFrontsDecor(ids, null) },
+            ...FRONT_DECORS.map((d) => ({
+              icon: `<span class="context-menu-decor">${decorPreviewSvg(d.key, 450, 700, {}, 18)}</span>`,
+              label: d.label,
+              run: () => setFrontsDecor(ids, d.key),
+            })),
+          ],
+        }),
+      });
+    }
     const title = many ? `Zaznaczone fronty: ${fronts.length}` : fronts[0].panel.name;
     menu.show(clientX, clientY, title, items);
   }

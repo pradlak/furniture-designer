@@ -1,4 +1,5 @@
-// Worker Cloudflare: serwuje stronę (pliki z dist/) i obsługuje formularz uwag.
+// Worker Cloudflare: serwuje stronę (pliki z dist/), formularz uwag, logowanie przez Google (worker/auth.js)
+// i projekty na koncie (worker/projects.js, baza D1).
 //
 // POST /api/uwagi  { message, contact?, website? }  → wysyła uwagę mailem na adres z konfiguracji
 // (wrangler.jsonc: vars.FEEDBACK_TO i binding send_email „FEEDBACK”). Adres nie trafia do kodu strony.
@@ -7,6 +8,9 @@
 // Wysyłka przez Email Routing (EmailMessage z gotową wiadomością MIME): wymaga włączonego Email Routing
 // dla meblesamemu.pl i zweryfikowanego adresu docelowego; nadawca — adres w tej domenie.
 import { EmailMessage } from 'cloudflare:email';
+import { handleAuth } from './auth.js';
+import { handleProjects } from './projects.js';
+import { json as jsonResponse } from './util.js';
 
 const MAX_MESSAGE = 5000;
 const FROM_EMAIL = 'uwagi@meblesamemu.pl';
@@ -85,6 +89,16 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (url.pathname === '/api/uwagi') return handleFeedback(request, env);
+    if (url.pathname.startsWith('/api/')) {
+      try {
+        const res = (await handleAuth(request, env, url.pathname)) ?? (await handleProjects(request, env, url.pathname));
+        if (res) return res;
+        return jsonResponse(404, { error: 'Nie ma takiego adresu.' });
+      } catch (err) {
+        console.error('Błąd API', url.pathname, err?.message, err?.stack);
+        return jsonResponse(500, { error: 'Błąd serwera — spróbuj później.' });
+      }
+    }
     // pozostałe adresy — pliki strony (tu trafiamy tylko wyjątkowo; zwykle serwuje je Cloudflare przed Workerem)
     return env.ASSETS.fetch(request);
   },
