@@ -53,6 +53,7 @@ import { duplicateCabinet, slideCabinet, slideCabinets } from '../model/placemen
 import { addCabinetToLayout, cabinetAlcoves, updateCabinetRefit, updateCabinetCeilingGap, setLegs } from '../model/layout.js';
 import { createAlcoveDialog } from './alcoveDialog.js';
 import { cabinetMapSvg } from './cabinetMap.js';
+import { attachDragReorder, moveInList, DRAG_HANDLE } from './dragReorder.js';
 import { cabinetMaterials } from '../model/materials.js';
 import { setEye, materialSelect, colorPicker, readColorInput, syncColorPicker } from './widgets.js';
 import { sideBlendSummary } from './sideBlends.js';
@@ -513,7 +514,7 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
     return `
       <div class="item cabinet" data-kind="cabinet" data-id="${c.id}">
         <div class="item-head">
-          <span class="drag-handle" draggable="true" data-drag-cabinet title="Przeciągnij, aby zmienić kolejność na liście">⠿</span>
+          ${DRAG_HANDLE}
           <button type="button" class="collapse-toggle" data-collapse-card>▾</button>
           <input type="text" data-f="name" value="${escapeHtml(c.name)}" aria-label="Nazwa mebla" />
           <button type="button" class="eye" data-toggle-hidden="cabinet">👁</button>
@@ -843,52 +844,8 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
     }
   }
 
-  // --- zmiana kolejności kart: przeciąganie za uchwyt ⠿ (upuszczenie nad / pod kartą — kreska pokazuje miejsce) ---
-  let dragId = null;
-  const clearDropMarks = () => root.querySelectorAll('.drop-before, .drop-after').forEach((el) => el.classList.remove('drop-before', 'drop-after'));
-  const dropTarget = (e) => {
-    const card = e.target.closest?.('[data-kind="cabinet"]');
-    if (!card || !dragId || card.dataset.id === dragId) return null;
-    const r = card.getBoundingClientRect();
-    return { card, after: e.clientY > r.top + r.height / 2 };
-  };
-  root.addEventListener('dragstart', (e) => {
-    const handle = e.target.closest?.('[data-drag-cabinet]');
-    if (!handle) return;
-    const card = handle.closest('[data-kind="cabinet"]');
-    dragId = card.dataset.id;
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', dragId); // Firefox wymaga danych, żeby przeciąganie ruszyło
-    e.dataTransfer.setDragImage(card, 20, 16);
-    card.classList.add('dragging');
-  });
-  root.addEventListener('dragover', (e) => {
-    const t = dropTarget(e);
-    if (!t) return;
-    e.preventDefault(); // pozwalamy upuścić
-    e.dataTransfer.dropEffect = 'move';
-    clearDropMarks();
-    t.card.classList.add(t.after ? 'drop-after' : 'drop-before');
-  });
-  root.addEventListener('drop', (e) => {
-    const t = dropTarget(e);
-    clearDropMarks();
-    if (!t) return;
-    e.preventDefault();
-    const moved = dragId;
-    const targetId = t.card.dataset.id;
-    store.set((p) => {
-      const item = p.furniture.find((c) => c.id === moved);
-      const rest = p.furniture.filter((c) => c.id !== moved);
-      const at = rest.findIndex((c) => c.id === targetId) + (t.after ? 1 : 0);
-      return { ...p, furniture: [...rest.slice(0, at), item, ...rest.slice(at)] };
-    });
-  });
-  root.addEventListener('dragend', () => {
-    dragId = null;
-    clearDropMarks();
-    root.querySelectorAll('.dragging').forEach((el) => el.classList.remove('dragging'));
-  });
+  // Zmiana kolejności kart: przeciąganie za uchwyt ⠿ (ui/dragReorder.js).
+  attachDragReorder(root, 'cabinet', (moved, target, after) => updateFurniture((list) => moveInList(list, moved, target, after)));
 
   // Klik w korpus na mapce: zaznacza go (jak klik w 3D) i pokazuje jego kartę; Ctrl + klik — kilka korpusów.
   root.addEventListener('click', (e) => {

@@ -14,6 +14,7 @@ import {
   trimSegments,
   countertopFreeSpace,
 } from '../model/trims.js';
+import { attachDragReorder, moveInList, DRAG_HANDLE } from './dragReorder.js';
 import { trimMaterial } from '../model/materials.js';
 import { escapeHtml, numberField, readNumberInput, setIfNotFocused, round1, commitEmptyAsZero } from './dom.js';
 import { setEye, materialSelect, colorPicker, readColorInput, syncColorPicker } from './widgets.js';
@@ -85,7 +86,8 @@ export function createTrimsPanel(root, store, ui, { mode = 'blends' } = {}) {
           ? `<h2>Blaty i półki</h2>
              <p class="hint">Blaty na szafkach (mogą obejmować kilka korpusów) oraz samodzielne blaty i półki —
                wszystkie z frezami krawędzi i otworami.</p>
-             <p class="hint add-target"></p>`
+             <p class="hint add-target"></p>
+             ${COLLAPSE_ALL_BUTTONS /* działa też na samodzielne płyty poniżej (boardsPanel) */}`
           : `<h2>Blendy</h2>
              <p class="hint">Blendy dolne i górne mogą obejmować kilka korpusów — w karcie zaznacz, które.</p>
              <p class="hint add-target"></p>
@@ -153,6 +155,7 @@ export function createTrimsPanel(root, store, ui, { mode = 'blends' } = {}) {
     return `
       <div class="item trim ${t.type}" data-kind="trim" data-id="${t.id}">
         <div class="item-head">
+          ${DRAG_HANDLE}
           ${COLLAPSE_BUTTON}
           <input type="text" data-f="name" value="${escapeHtml(t.name)}" aria-label="Nazwa" />
           <button type="button" class="eye" data-toggle-trim-hidden>👁</button>
@@ -468,6 +471,23 @@ export function createTrimsPanel(root, store, ui, { mode = 'blends' } = {}) {
       updateTrim(id, (t) => ({ ...t, [data.resetTrimField]: null }));
     }
   });
+
+  // Klik w kartę blatu / blendy dolnej lub górnej — zaznacza ten element (także w 3D), jak klik w niego w widoku.
+  // Wiersz otworu zaznacza sam otwór (main.js), zwijanie / przeciąganie karty niczego nie zaznacza.
+  root.addEventListener('pointerdown', (e) => {
+    const card = e.target.closest('[data-kind="trim"]');
+    if (!card || e.target.closest('.bf-hole, [data-collapse-card], [data-drag-card]')) return;
+    const pick = `trim:${card.dataset.id}`;
+    const state = ui.get();
+    if (state.selectedBlends?.length === 1 && state.selectedBlends[0] === pick && !state.selectedId) return;
+    ui.set(
+      { ...state, selectedId: null, selectedIds: [], selectedFronts: [], selectedBlends: [pick], selectedHole: null, selectedObstacle: null },
+      { fromPanel: true }, // karta jest już widoczna — bez przewijania (main.js)
+    );
+  });
+
+  // Zmiana kolejności kart (blaty między blatami, blendy dolne między blendami…) przeciąganiem za uchwyt ⠿.
+  attachDragReorder(root, 'trim', (moved, target, after) => store.set((p) => ({ ...p, trims: moveInList(p.trims, moved, target, after) })));
 
   render(store.get());
 

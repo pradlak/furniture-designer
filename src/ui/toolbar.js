@@ -3,6 +3,7 @@ import { cutListCsv, cutListXlsx, cutListMeblePl, MEBLEPL_LIMITS, MEBLEPL_CUTTIN
 import { createCutListDialog } from './cutListDialog.js';
 import { createFilesDialog, svgToPng } from './filesDialog.js';
 import { mdfOrderItems, mdfOrderXlsx, mdfDrawingSvg } from '../model/mdfOrder.js';
+import { worktopItems, worktopXlsx, worktopDrawingSvg } from '../model/worktopOrder.js';
 import { saveFile } from './saveFile.js';
 
 const VIEWS = [
@@ -173,6 +174,10 @@ function downloadCutList(project, { format, parts, accessories }) {
     downloadMdfOrder(project);
     return;
   }
+  if (format === 'worktops') {
+    downloadWorktops(project);
+    return;
+  }
   const xlsx = format === 'xlsx';
   const options = { parts, accessories };
   const blob = xlsx
@@ -257,6 +262,44 @@ function downloadMdfOrder(project) {
     ],
   });
   track('pobranie-frontow-mdf', { pozycje: items.length });
+}
+
+// Blaty i płyty z otworami: lista w Excelu i rysunek każdej płyty z góry (wymiary, otwory i wycięcia, frezy krawędzi)
+// — do zamówienia docięcia blatu albo do warsztatu.
+function downloadWorktops(project) {
+  const items = worktopItems(project);
+  if (!items.length) {
+    alert('Projekt nie ma blatów ani samodzielnych płyt (blatów, półek). Dodasz je w zakładce „Blaty i półki”.');
+    return;
+  }
+  const base = safeName(project, 'projekt');
+  const size = (it) => `${String(it.width).replace('.', ',')}x${String(it.depth).replace('.', ',')}`;
+  filesDialog ??= createFilesDialog();
+  filesDialog.show({
+    title: 'Blaty i płyty z otworami',
+    zipName: `${base}_blaty.zip`,
+    intro:
+      'Lista w Excelu (wymiary, materiał, frezy krawędzi, otwory) i rysunek każdej płyty z góry — z wymiarami, ' +
+      'położeniem otworów i wycięć oraz frezami krawędzi.',
+    files: [
+      {
+        fileName: `${base}_blaty.xlsx`,
+        label: 'Lista blatów i płyt (Excel)',
+        info: `${items.length} poz.`,
+        blob: new Blob([worktopXlsx(project)], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
+        description: 'Arkusz Excel',
+      },
+      ...items.map((it) => ({
+        // nazwa mówi, czego dotyczy plik, np. projekt_blat_T1_2400x600.png
+        fileName: `${base}_${fileSafe(it.kind)}_${it.no}_${size(it)}.png`,
+        label: `${it.no} — ${it.name} — rysunek`,
+        info: `${it.kind} ${size(it).replace('x', ' × ')} mm${it.holes.length ? `, otwory: ${it.holes.length}` : ''}`,
+        blobPromise: svgToPng(worktopDrawingSvg(it)),
+        description: 'Obraz PNG',
+      })),
+    ],
+  });
+  track('pobranie-blatow', { pozycje: items.length });
 }
 
 function exportProject(project) {

@@ -314,9 +314,9 @@ select {
 .item.cabinet > .item-head input[type='text'] { font-weight: 600; }
 .drag-handle { flex: none; cursor: grab; color: #8a6a48; font-size: 16px; line-height: 1; padding: 2px 1px; user-select: none; }
 .drag-handle:active { cursor: grabbing; }
-.item.cabinet.dragging { opacity: 0.45; }
-.item.cabinet.drop-before { box-shadow: 0 -3px 0 0 var(--accent); }
-.item.cabinet.drop-after { box-shadow: 0 3px 0 0 var(--accent); }
+.item.dragging { opacity: 0.45; }
+.item.drop-before { box-shadow: 0 -3px 0 0 var(--accent); }
+.item.drop-after { box-shadow: 0 3px 0 0 var(--accent); }
 .map-space { fill: #f4f3ef; stroke: #94a3b8; stroke-width: 0.4%; vector-effect: non-scaling-stroke; }
 .map-wall { fill: #cbd5e1; stroke: #94a3b8; vector-effect: non-scaling-stroke; }
 .map-top { fill: #b8905e; }
@@ -540,7 +540,7 @@ details.subsection > summary.subsection-title:hover { color: var(--accent); }
 /* --- zakładki „Blendy” i „Blaty i półki” --- */
 .tabs { flex-wrap: wrap; }
 .tabs button { padding: 6px 9px; }
-.item.trim.related { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent); }
+.item.trim.related, .item.board.related { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent); }
 .add-target { font-style: italic; }
 /* pasek sekcji bez rozwijania (np. „Blendy” w karcie korpusu) — wygląda jak nagłówek sekcji;
    do innej zakładki przenosi tylko przycisk na pasku */

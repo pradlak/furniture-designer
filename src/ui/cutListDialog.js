@@ -3,7 +3,7 @@ import { escapeHtml } from './dom.js';
 
 // Okienko „Formatki”: wybór formatu (Excel / CSV) i tego, co wyeksportować (korpusy, plecy HDF,
 // fronty, blendy, blaty, akcesoria). Ostatni wybór pamiętamy w przeglądarce (tylko wygoda).
-// onExport({ format: 'xlsx' | 'csv' | 'meblepl', parts: Set, accessories: boolean }) — przy meble.pl akcesoria pomijamy
+// onExport({ format: 'xlsx' | 'csv' | 'meblepl' | 'mdf' | 'worktops', parts: Set, accessories: boolean }) — przy meble.pl akcesoria pomijamy
 const STORAGE_KEY = 'furnitureDesigner.cutListExport';
 
 export function createCutListDialog({ onExport }) {
@@ -24,6 +24,8 @@ export function createCutListDialog({ onExport }) {
           <span><b>meble.pl</b> <small>— plik do wczytania w <a href="https://www.meble.pl/rozkroj,plyty-meblowe" target="_blank" rel="noopener">rozkroju na meble.pl</a>: wszystko z płyty meblowej (korpusy, a także fronty i blendy, jeśli są z płyty meblowej) i plecy HDF; osobny plik dla każdej płyty</small></span></label>
         <label class="check"><input type="radio" name="cut-format" value="mdf" />
           <span><b>Fronty i blendy MDF</b> <small>— elementy z MDF lakierowanego (np. do zamówienia w <a href="https://smartfronty.pl/" target="_blank" rel="noopener">smartfronty.pl</a>): lista w Excelu i rysunek każdego elementu z otworami pod uchwyty i zawiasy</small></span></label>
+        <label class="check"><input type="radio" name="cut-format" value="worktops" />
+          <span><b>Blaty i płyty z otworami</b> <small>— blaty na szafkach i samodzielne blaty i półki: lista w Excelu i rysunek każdej płyty z góry — wymiary, otwory i wycięcia (zlew, płyta grzewcza…), frezy krawędzi</small></span></label>
       </fieldset>
       <fieldset class="cut-list-group">
         <legend>Co wyeksportować

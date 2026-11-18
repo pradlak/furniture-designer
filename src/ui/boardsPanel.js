@@ -4,10 +4,14 @@ import { BOARD_KINDS, BOARD_LIMITS, createBoard, boardMaterial, boardIssues } fr
 import { setPath } from '../model/furniture.js';
 import { renderBoardFeatures, syncBoardFeatures, readFeatureInput, readFeatureClick, applyFeatureChange } from './boardFeaturesEditor.js';
 import { describeEdges, describeHoles } from '../model/boardFeatures.js';
+import { attachDragReorder, moveInList, DRAG_HANDLE } from './dragReorder.js';
+import { createCardCollapse, COLLAPSE_BUTTON } from './collapsible.js';
 
 // Samodzielne płyty (blaty, półki) w zakładce „Blaty i półki”, pod blatami na szafkach: dodawanie, wymiary, położenie,
 // materiał i kolor, frezy krawędzi i otwory.
-export function createBoardsPanel(root, store) {
+// ui — stan zaznaczenia: klik w kartę zaznacza płytę (także w 3D), zaznaczona w 3D płyta ma wyróżnioną kartę.
+export function createBoardsPanel(root, store, ui) {
+  const cardCollapse = createCardCollapse(root, 'płytę'); // zwijane karty (jak blaty na szafkach)
   const update = (id, fn) =>
     store.set((p) => ({ ...p, boards: (p.boards ?? []).map((b) => (b.id === id ? fn(b, p) : b)) }));
   let renderedKey = null;
@@ -19,10 +23,13 @@ export function createBoardsPanel(root, store) {
     return `
       <div class="item board" data-kind="board" data-id="${b.id}">
         <div class="item-head">
+          ${DRAG_HANDLE}
+          ${COLLAPSE_BUTTON}
           <input type="text" data-f="name" value="${escapeHtml(b.name)}" aria-label="Nazwa" />
           <button type="button" class="icon eye" data-board-hide title="Ukryj w widoku 3D">👁</button>
           <button type="button" class="danger" data-board-remove title="Usuń">✕</button>
         </div>
+        <div class="card-sum" data-collapse-card title="Kliknij, aby rozwinąć"></div>
         <div class="grid-3">
           <label class="field small"><span>Rodzaj</span>
             <select data-f="kind">${BOARD_KINDS.map((k) => `<option value="${k.key}">${k.label}</option>`).join('')}</select>
@@ -55,8 +62,17 @@ export function createBoardsPanel(root, store) {
         <button type="button" data-board-add="shelf">+ Półka</button>
       </div>`;
     renderedKey = structureKey(project);
+    cardCollapse.applyAll();
     sync(project);
+    markPicked();
   }
+
+  // Karta płyty zaznaczonej (w 3D albo kliknięciem w kartę) — wyróżniona.
+  function markPicked() {
+    const picked = ui?.get().selectedBlends ?? [];
+    root.querySelectorAll('[data-kind="board"]').forEach((el) => el.classList.toggle('related', picked.includes(`board:${el.dataset.id}`)));
+  }
+  ui?.subscribe(markPicked);
 
   function sync(project) {
     for (const b of project.boards ?? []) {
@@ -73,6 +89,11 @@ export function createBoardsPanel(root, store) {
       el.querySelector('.board-info').textContent =
         `Formatka: ${b.width} × ${b.depth} × ${mat.thickness} mm` + [describeEdges(b.edges), describeHoles(b.holes, b.width, b.depth)].filter(Boolean).map((t) => ` · ${t}`).join('');
       const issues = boardIssues(b, project);
+      // podsumowanie widoczne w zwiniętej karcie
+      el.querySelector('.card-sum').textContent =
+        `${BOARD_KINDS.find((k) => k.key === b.kind)?.label ?? 'Płyta'} ${b.width} × ${b.depth} × ${mat.thickness} mm` +
+        (b.holes?.length ? ` · otwory: ${b.holes.length}` : '') +
+        (issues.length ? ' · ⚠ ' + issues[0] : '');
       el.classList.toggle('has-issues', issues.length > 0);
       el.querySelector('.board-issues').innerHTML = issues.map((t) => `<li>${escapeHtml(t)}</li>`).join('');
     }
@@ -102,7 +123,26 @@ export function createBoardsPanel(root, store) {
   });
   root.addEventListener('change', (e) => commitEmptyAsZero(e.target));
 
+  // „Zwiń / Rozwiń wszystkie” na górze zakładki (nad blatami na szafkach, poza tym panelem) — też dla tych kart.
+  root.parentElement?.addEventListener('click', (e) => {
+    if (!root.contains(e.target) && e.target.closest('[data-collapse-all], [data-expand-all]')) cardCollapse.handleClick(e.target);
+  });
+
+  // Klik w kartę płyty — zaznacza ją (także w 3D); wiersz otworu zaznacza sam otwór (main.js).
+  root.addEventListener('pointerdown', (e) => {
+    const card = e.target.closest('[data-kind="board"]');
+    if (!card || !ui || e.target.closest('.bf-hole, [data-collapse-card], [data-drag-card]')) return;
+    const pick = `board:${card.dataset.id}`;
+    const state = ui.get();
+    if (state.selectedBlends?.length === 1 && state.selectedBlends[0] === pick && !state.selectedId) return;
+    ui.set(
+      { ...state, selectedId: null, selectedIds: [], selectedFronts: [], selectedBlends: [pick], selectedHole: null, selectedObstacle: null },
+      { fromPanel: true }, // karta jest już widoczna — bez przewijania (main.js)
+    );
+  });
+
   root.addEventListener('click', (e) => {
+    if (cardCollapse.handleClick(e.target)) return;
     const add = e.target.closest('[data-board-add]')?.dataset.boardAdd;
     if (add) {
       store.set((p) => ({ ...p, boards: [...(p.boards ?? []), createBoard(p, add)] }));
@@ -120,11 +160,16 @@ export function createBoardsPanel(root, store) {
     if (click) update(id, (b) => applyFeatureChange(b, click, b.width, b.depth, setPath));
   });
 
+  // Zmiana kolejności kart przeciąganiem za uchwyt ⠿ (ui/dragReorder.js).
+  attachDragReorder(root, 'board', (moved, target, after) => store.set((p) => ({ ...p, boards: moveInList(p.boards ?? [], moved, target, after) })));
+
   render(store.get());
   return {
     // Przewija do karty płyty (po kliknięciu jej w widoku 3D).
     reveal(id) {
-      root.querySelector(`[data-kind="board"][data-id="${id}"]`)?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      const card = root.querySelector(`[data-kind="board"][data-id="${id}"]`);
+      cardCollapse.expand(card); // karta mogła być zwinięta
+      card?.scrollIntoView({ block: 'start', behavior: 'smooth' });
     },
     sync(project, meta = {}) {
       if (meta.replace || structureKey(project) !== renderedKey) render(project);

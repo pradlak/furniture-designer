@@ -58,7 +58,7 @@ const furniturePanel = createFurniturePanel(document.getElementById('furniture-p
 });
 const materialsPanel = createMaterialsPanel(document.getElementById('materials-panel'), store);
 // Samodzielne blaty i półki (z frezami i otworami) — w zakładce „Blaty i półki”, pod blatami na szafkach.
-const boardsPanel = createBoardsPanel(document.getElementById('boards-panel'), store);
+const boardsPanel = createBoardsPanel(document.getElementById('boards-panel'), store, ui);
 // Notatki projektu — zakładka „Notatki” (na przycisku zakładki liczba niezrobionych).
 const notesTab = document.querySelector('[data-tab="notes-panel"]');
 const notesPanel = createNotesPanel(document.getElementById('notes-panel'), store, {
@@ -317,7 +317,8 @@ ui.subscribe((state, meta) => {
   worktopsPanel.syncSelection();
   // ostatnio dodany do zaznaczenia element (klik albo Ctrl + klik)
   const newest = (state.selectedBlends ?? []).at(-1) ?? null;
-  if (newest && newest !== lastPicked) revealPicked(newest);
+  // (zaznaczenie kliknięciem w kartę w panelu — karta już widoczna, bez przewijania)
+  if (newest && newest !== lastPicked && !meta?.fromPanel) revealPicked(newest);
   lastPicked = newest;
   // zaznaczony front („idKorpusu:front-N”) — sekcja „Fronty” w karcie jego korpusu
   const front = (state.selectedFronts ?? []).at(-1) ?? null;
