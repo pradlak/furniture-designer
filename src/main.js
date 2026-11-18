@@ -26,6 +26,7 @@ import { createUserMenu } from './ui/userMenu.js';
 import { createAccount, getProject, saveUserSettings } from './state/account.js';
 import { createProjectsDialog } from './ui/projectsDialog.js';
 import { createAccountBar } from './ui/accountBar.js';
+import { createNotesPanel } from './ui/notesPanel.js';
 
 // Działania w polach liczbowych (np. 1100-70 → 1030).
 initMathInputs();
@@ -58,6 +59,17 @@ const furniturePanel = createFurniturePanel(document.getElementById('furniture-p
 const materialsPanel = createMaterialsPanel(document.getElementById('materials-panel'), store);
 // Samodzielne blaty i półki (z frezami i otworami) — w zakładce „Blaty i półki”, pod blatami na szafkach.
 const boardsPanel = createBoardsPanel(document.getElementById('boards-panel'), store);
+// Notatki projektu — zakładka „Notatki” (na przycisku zakładki liczba niezrobionych).
+const notesTab = document.querySelector('[data-tab="notes-panel"]');
+const notesPanel = createNotesPanel(document.getElementById('notes-panel'), store, {
+  onShowCabinet: (id) => {
+    tabs.activate('furniture-panel');
+    ui.set({ ...ui.get(), selectedId: id, selectedIds: [id], selectedFronts: [], selectedBlends: [], selectedHole: null }, { reveal: true });
+  },
+  onCountChange: (open) => {
+    if (notesTab) notesTab.textContent = open ? `Notatki (${open})` : 'Notatki';
+  },
+});
 const examples = createExamplesDialog(store);
 const newProject = createNewProjectDialog(store, { onExamples: () => examples.open() });
 let templateOffered = false;
@@ -209,7 +221,14 @@ const selectedFronts = () => new Set([...(ui.get().selectedFronts ?? []), ...(ui
 // według przełącznika „otwarte” na pasku.
 const isFrontOpen = (id) => ui.get().frontOpen?.[id] ?? store.get().view?.openFronts === true;
 const redraw = (refit = false) =>
-  viewer.setProject(store.get(), { refit, selectedIds: selectedCabinetIds(ui.get()), selectedFronts: selectedFronts(), isFrontOpen, selectedHole: ui.get().selectedHole ?? null });
+  viewer.setProject(store.get(), {
+    refit,
+    selectedIds: selectedCabinetIds(ui.get()),
+    selectedFronts: selectedFronts(),
+    isFrontOpen,
+    selectedHole: ui.get().selectedHole ?? null,
+    selectedObstacle: ui.get().selectedObstacle ?? null,
+  });
 onSettingsChange(() => redraw());
 redraw();
 
@@ -235,6 +254,7 @@ store.subscribe((project, meta) => {
   trimsPanel.sync(project, meta);
   worktopsPanel.sync(project, meta);
   materialsPanel.sync(project, meta);
+  notesPanel.sync(project, meta);
   toolbar.sync(project);
   saveProject(project); // autozapis w przeglądarce
 });
@@ -244,6 +264,7 @@ store.subscribe((project, meta) => {
 // blenda boczna → karta blend bocznych korpusu, nóżki → sekcja „Nóżki” w karcie korpusu.
 let lastPicked = null;
 let lastFront = null;
+let lastObstacle = null;
 function revealPicked(id) {
   if (id.startsWith('board:')) {
     // samodzielny blat / półka → karta w zakładce „Blaty i półki”
@@ -277,7 +298,20 @@ ui.subscribe((state, meta) => {
     ui.set({ ...state, selectedHole: null });
     return;
   }
+  // tak samo występ ściany (kominek) — przestaje być zaznaczony
+  if (state.selectedObstacle && (state.selectedId || state.selectedBlends?.length || state.selectedFronts?.length || state.selectedHole)) {
+    ui.set({ ...state, selectedObstacle: null });
+    return;
+  }
   redraw();
+  // zaznaczony występ ściany — jego karta w zakładce „Przestrzeń”
+  const obstacle = state.selectedObstacle ?? null;
+  if (obstacle && (obstacle !== lastObstacle || meta?.revealObstacle)) {
+    tabs.activate('space-panel');
+    spacePanel.reveal(obstacle);
+  }
+  spacePanel.markPicked(obstacle);
+  lastObstacle = obstacle;
   furniturePanel.syncSelection(meta);
   trimsPanel.syncSelection();
   worktopsPanel.syncSelection();
@@ -305,7 +339,11 @@ function markPickedHole() {
   const card = document.querySelector(`[data-kind="${hole.kind === 'trim' ? 'trim' : 'board'}"][data-id="${hole.id}"]`);
   card?.querySelector(`.bf-hole[data-hole="${hole.index}"]`)?.classList.add('picked');
 }
-store.subscribe(() => {
+store.subscribe((project) => {
+  // usunięty występ ściany — zaznaczenie znika; po przebudowie panelu karta znów wyróżniona
+  const obstacle = ui.get().selectedObstacle;
+  if (obstacle && !project.space.obstacles.some((o) => o.id === obstacle)) ui.set({ ...ui.get(), selectedObstacle: null });
+  else spacePanel.markPicked(obstacle ?? null);
   // usunięty otwór (albo płyta) — zaznaczenie znika
   const hole = ui.get().selectedHole;
   if (hole) {

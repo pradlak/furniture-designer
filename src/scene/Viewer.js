@@ -36,6 +36,11 @@ export class Viewer {
 
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
+    // Kółko myszy przybliża w stronę kursora (a nie środka przestrzeni) — przy długiej zabudowie łatwo
+    // dojechać do skrajnej ściany. Podwójny klik — patrz focusAt.
+    this.controls.zoomToCursor = true;
+    this.focusAnim = null;
+    this.controls.addEventListener('start', () => (this.focusAnim = null)); // obrót / kółko przerywa przybliżanie
 
     // Światło dobrane tak, żeby każda ściana (lewa, prawa, tylna, sufit, skosy) miała
     // nieco inny odcień — białe ściany pozostają jasne, ale da się je odróżnić.
@@ -61,6 +66,7 @@ export class Viewer {
       const dt = Math.min(0.1, (now - last) / 1000);
       last = now;
       this.animateFronts(dt);
+      this.animateFocus(dt);
       this.controls.update();
       this.renderer.render(this.scene, this.camera);
       this.labelRenderer.render(this.scene, this.camera);
@@ -81,7 +87,32 @@ export class Viewer {
     }
   }
 
-  setProject(project, { refit = false, selectedIds = new Set(), selectedFronts = new Set(), isFrontOpen, selectedHole = null } = {}) {
+  // Płynne przybliżenie do punktu (np. podwójny klik): punkt staje się środkiem obrotu widoku, a kamera
+  // podjeżdża do niego z tego samego kierunku — za każdym razem o ponad połowę bliżej (najbliżej ~0,6 m).
+  focusAt(point) {
+    const offset = this.camera.position.clone().sub(this.controls.target);
+    const dist = offset.length();
+    const nextDist = Math.min(dist, Math.max(0.6, dist * 0.45));
+    this.focusAnim = {
+      t: 0,
+      fromTarget: this.controls.target.clone(),
+      toTarget: point.clone(),
+      fromPos: this.camera.position.clone(),
+      toPos: point.clone().add(offset.setLength(nextDist)),
+    };
+  }
+
+  animateFocus(dt) {
+    const a = this.focusAnim;
+    if (!a) return;
+    a.t = Math.min(1, a.t + dt / 0.35);
+    const k = 1 - (1 - a.t) ** 3; // łagodne hamowanie
+    this.controls.target.lerpVectors(a.fromTarget, a.toTarget, k);
+    this.camera.position.lerpVectors(a.fromPos, a.toPos, k);
+    if (a.t >= 1) this.focusAnim = null;
+  }
+
+  setProject(project, { refit = false, selectedIds = new Set(), selectedFronts = new Set(), isFrontOpen, selectedHole = null, selectedObstacle = null } = {}) {
     const first = !this.space;
     if (this.spaceGroup) {
       this.scene.remove(this.spaceGroup);
@@ -89,7 +120,7 @@ export class Viewer {
     }
     this.space = project.space;
     this.spaceGroup = new THREE.Group();
-    this.spaceGroup.add(buildSpace(project.space, project.view));
+    this.spaceGroup.add(buildSpace(project.space, project.view, { selectedObstacle }));
     this.furnitureGroup = buildFurniture(project, selectedIds, selectedFronts, isFrontOpen, selectedHole);
     // Fronty nowej sceny: znane wracają do swojego bieżącego stanu (i dalej się animują), nowe — od razu w docelowym.
     this.frontPivots = [];
@@ -113,6 +144,7 @@ export class Viewer {
     const fov = THREE.MathUtils.degToRad(this.camera.fov);
     const distance = (radius / Math.sin(fov / 2)) * 1.15;
 
+    this.focusAnim = null;
     const dir = VIEW_DIRECTIONS[name].clone().normalize();
     this.camera.position.copy(center).addScaledVector(dir, distance);
     this.controls.target.copy(center);

@@ -1,5 +1,17 @@
 import { escapeHtml, setIfNotFocused, readNumberInput } from './dom.js';
-import { EDGE_KEYS, EDGE_NAMES, EDGE_PROFILES, profileInfo, HOLE_PRESETS, HOLE_LIMITS, createHole, holeFits } from '../model/boardFeatures.js';
+import {
+  EDGE_KEYS,
+  EDGE_NAMES,
+  EDGE_PROFILES,
+  profileInfo,
+  HOLE_PRESETS,
+  HOLE_LIMITS,
+  HOLE_POSITIONS,
+  createHole,
+  holeFits,
+  resolveHole,
+  setHolePosition,
+} from '../model/boardFeatures.js';
 
 // Edytor frezów krawędzi i otworów płyty (blat, półka) — wspólny dla samodzielnych płyt (zakładka Meble)
 // i blatów na szafkach (oba w zakładce „Blaty i półki”).
@@ -38,8 +50,17 @@ export function renderBoardFeatures() {
 const holeRow = (h, i) => `
   <div class="bf-hole" data-hole="${i}">
     <span class="bf-hole-name" title="${escapeHtml(h.label || '')}">${i + 1}. ${h.shape === 'circle' ? 'okrągły' : 'prostokątny'}${h.label ? ` <small>${escapeHtml(h.label)}</small>` : ''}</span>
-    <label>x <input type="number" step="1" data-bf="holes.${i}.x" /></label>
-    <label>y <input type="number" step="1" data-bf="holes.${i}.y" /></label>
+    <label class="bf-hole-pos" title="Róg albo środek krawędzi z odstępem (jak uchwyt na froncie) — otwór zostaje na miejscu po zmianie wymiarów płyty">
+      położenie
+      <select data-bf="holes.${i}.pos">
+        ${HOLE_POSITIONS.map((p) => `<option value="${p.key ?? ''}">${escapeHtml(p.label)}</option>`).join('')}
+      </select>
+    </label>
+    <label class="bf-gap" data-gap="x"><span></span> <input type="number" step="1" data-bf="holes.${i}.gx" /></label>
+    <label class="bf-gap" data-gap="y"><span></span> <input type="number" step="1" data-bf="holes.${i}.gy" /></label>
+    <span class="bf-break"></span>
+    <label title="Środek otworu od lewej krawędzi (wpisanie zmienia położenie na „własne”)">x <input type="number" step="1" data-bf="holes.${i}.x" /></label>
+    <label title="Środek otworu od przedniej krawędzi (wpisanie zmienia położenie na „własne”)">y <input type="number" step="1" data-bf="holes.${i}.y" /></label>
     ${
       h.shape === 'circle'
         ? `<label>Ø <input type="number" step="1" min="${HOLE_LIMITS.min}" max="${HOLE_LIMITS.max}" data-bf="holes.${i}.d" /></label>`
@@ -72,9 +93,24 @@ export function syncBoardFeatures(el, { edges, holes }, width, depth) {
   (holes ?? []).forEach((h, i) => {
     const row = list.querySelector(`[data-hole="${i}"]`);
     if (!row) return;
+    const shown = resolveHole(h, width, depth); // x, y wyliczone dla otworu w rogu / przy krawędzi
     row.querySelectorAll('[data-bf]').forEach((input) => {
       const key = input.dataset.bf.split('.')[2];
-      if (!input.classList.contains('invalid')) setIfNotFocused(input, h[key]);
+      if (key === 'pos') return setIfNotFocused(input, h.pos ?? '');
+      if (!input.classList.contains('invalid')) setIfNotFocused(input, shown[key] ?? '');
+    });
+    // odstępy: tylko przy położeniu; opis zależy od krawędzi (przy środku — przesunięcie od środka)
+    const [rowKey, colKey] = h.pos ?? '';
+    const gapLabels = {
+      x: { l: 'od lewej', r: 'od prawej', c: 'przesunięcie ←→' }[colKey],
+      y: { f: 'od przodu', b: 'od tyłu', c: 'przesunięcie w głąb' }[rowKey],
+    };
+    row.querySelectorAll('.bf-gap').forEach((label) => {
+      label.hidden = !h.pos;
+      label.querySelector('span').textContent = gapLabels[label.dataset.gap] ?? '';
+      label.title = label.dataset.gap === 'x' && colKey !== 'c' || label.dataset.gap === 'y' && rowKey !== 'c'
+        ? 'Odstęp od krawędzi płyty do krawędzi otworu (mm)'
+        : 'Przesunięcie środka otworu od środka płyty (mm)';
     });
     row.querySelector('.bf-hole-warn').hidden = holeFits(h, width, depth);
   });
@@ -89,6 +125,7 @@ export function readFeatureInput(input) {
   }
   const path = input.dataset.bf;
   if (!path) return null;
+  if (/^holes\.\d+\.pos$/.test(path)) return { holePos: Number(path.split('.')[1]), value: input.value || null };
   if (input.tagName === 'SELECT') {
     // zmiana profilu: rozmiar — pierwszy typowy dla nowego profilu
     const info = profileInfo(input.value);
@@ -108,5 +145,15 @@ export function readFeatureClick(target) {
 export function applyFeatureChange(obj, change, width, depth, setPath) {
   if (change.add) return { ...obj, holes: [...(obj.holes ?? []), createHole(change.add, width, depth)] };
   if (change.remove != null) return { ...obj, holes: (obj.holes ?? []).filter((_, i) => i !== change.remove) };
+  if (change.holePos != null) {
+    return { ...obj, holes: (obj.holes ?? []).map((h, i) => (i === change.holePos ? setHolePosition(h, change.value) : h)) };
+  }
+  // wpisane x / y — otwór przestaje być przypięty do rogu / krawędzi (położenie „własne”)
+  const xy = /^holes\.(\d+)\.(x|y)$/.exec(change.path ?? '');
+  if (xy) {
+    const i = Number(xy[1]);
+    const unpinned = { ...obj, holes: (obj.holes ?? []).map((h, j) => (j === i && h.pos ? { ...resolveHole(h, width, depth), pos: null } : h)) };
+    return setPath(unpinned, change.path, change.value);
+  }
   return setPath(obj, change.path, change.value);
 }

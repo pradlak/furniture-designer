@@ -49,8 +49,10 @@ import {
 // (półka idzie od boku do boku), np. przy podziale wnęki 2000 mm na trzy korpusy: 666 / 666 / 668.
 const sameSize = (a, b) => ['height', 'depth'].every((k) => Math.abs(a[k] - b[k]) < 0.5);
 const sameSizeCabinets = (cabinet, project) => project.furniture.filter((c) => c.id !== cabinet.id && sameSize(c, cabinet));
-import { duplicateCabinet, slideCabinet } from '../model/placement.js';
-import { addCabinetToLayout, updateCabinetRefit, updateCabinetCeilingGap, setLegs } from '../model/layout.js';
+import { duplicateCabinet, slideCabinet, slideCabinets } from '../model/placement.js';
+import { addCabinetToLayout, cabinetAlcoves, updateCabinetRefit, updateCabinetCeilingGap, setLegs } from '../model/layout.js';
+import { createAlcoveDialog } from './alcoveDialog.js';
+import { cabinetMapSvg } from './cabinetMap.js';
 import { cabinetMaterials } from '../model/materials.js';
 import { setEye, materialSelect, colorPicker, readColorInput, syncColorPicker } from './widgets.js';
 import { sideBlendSummary } from './sideBlends.js';
@@ -113,6 +115,7 @@ function setSummary(cardEl, section, text) {
 export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onShowWorktop } = {}) {
   let renderedKey = null;
   const legsDialog = createLegsDialog();
+  const alcoveDialog = createAlcoveDialog();
   // Łańcuszki: zmiana wysokości / nóżek dotyczy też korpusów z rzędu (stykają się bokami,
   // wspólna linia frontu), które mają tę samą wysokość / takie same nóżki.
   // linked[kind] — korpusy z włączonym łańcuszkiem (stan widoku, nie zapisuje się w projekcie).
@@ -184,9 +187,11 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
         Wymiary są zewnętrzne, pozycja to narożnik lewy‑dolny‑tylny.</p>
       ${
         project.furniture.length
-          ? `<div class="collapse-all">
+          ? `<div class="cab-map" title="Mapka zabudowy (widok z przodu): klik — zaznacz korpus i pokaż jego kartę, Ctrl + klik — kilka korpusów"></div>
+            <div class="collapse-all">
               <button type="button" data-action="collapse-all" title="Zwiń wszystkie karty korpusów do nagłówków">▸ Zwiń wszystkie</button>
               <button type="button" data-action="expand-all" title="Rozwiń wszystkie karty korpusów">▾ Rozwiń wszystkie</button>
+              <button type="button" data-action="sort-cabinets" title="Ułóż karty tak jak na mapce: od lewej do prawej">⇅ Od lewej</button>
             </div>`
           : ''
       }
@@ -198,6 +203,7 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
       </div>
 
       <datalist id="leg-heights">${LEG_HEIGHTS.map((h) => `<option value="${h}"></option>`).join('')}</datalist>
+      <div class="scroll-spacer" aria-hidden="true"></div>
     `;
     renderedKey = structureKey(project);
     root.querySelectorAll('[data-kind="cabinet"]').forEach(applyCollapsed);
@@ -254,7 +260,7 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
         <span class="hint">Wypełnij całą wnękę jednym korpusem:</span>
         <button type="button" data-action="fit">Dopasuj do wnęki</button>
       </div>
-      <div class="slide-row" title="Przesuwa korpus aż do ściany, innego mebla lub przeszkody">
+      <div class="slide-row" title="Przesuwa korpus aż do ściany, innego mebla lub przeszkody. Kilka korpusów zaznaczonych Ctrl + klik przesuwa się razem.">
         <span>Dosuń:</span>
         <button type="button" data-slide="-x" title="W lewo">←</button>
         <button type="button" data-slide="+x" title="W prawo">→</button>
@@ -507,6 +513,7 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
     return `
       <div class="item cabinet" data-kind="cabinet" data-id="${c.id}">
         <div class="item-head">
+          <span class="drag-handle" draggable="true" data-drag-cabinet title="Przeciągnij, aby zmienić kolejność na liście">⠿</span>
           <button type="button" class="collapse-toggle" data-collapse-card>▾</button>
           <input type="text" data-f="name" value="${escapeHtml(c.name)}" aria-label="Nazwa mebla" />
           <button type="button" class="eye" data-toggle-hidden="cabinet">👁</button>
@@ -574,7 +581,14 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
     field.prop ? round1(panel[field.prop]) : (cabinet.panelOverrides?.[panel.key]?.[field.key] ?? 0);
 
   // Odświeża pola (np. po „Dopasuj do wnęki”), ostrzeżenia i elementy bez przebudowy DOM.
+  // Mapka zabudowy (ui/cabinetMap.js) — rysowana na nowo przy zmianie projektu i zaznaczenia.
+  function updateMap(project = store.get()) {
+    const map = root.querySelector('.cab-map');
+    if (map) map.innerHTML = cabinetMapSvg(project, selectedCabinetIds(ui.get()));
+  }
+
   function updateStatus(project) {
+    updateMap(project);
     let solids = null; // bryły projektu do wyznaczania widocznych krawędzi — liczone raz
     for (const c of project.furniture) {
       const el = root.querySelector(`[data-kind="cabinet"][data-id="${c.id}"]`);
@@ -828,6 +842,62 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
       }
     }
   }
+
+  // --- zmiana kolejności kart: przeciąganie za uchwyt ⠿ (upuszczenie nad / pod kartą — kreska pokazuje miejsce) ---
+  let dragId = null;
+  const clearDropMarks = () => root.querySelectorAll('.drop-before, .drop-after').forEach((el) => el.classList.remove('drop-before', 'drop-after'));
+  const dropTarget = (e) => {
+    const card = e.target.closest?.('[data-kind="cabinet"]');
+    if (!card || !dragId || card.dataset.id === dragId) return null;
+    const r = card.getBoundingClientRect();
+    return { card, after: e.clientY > r.top + r.height / 2 };
+  };
+  root.addEventListener('dragstart', (e) => {
+    const handle = e.target.closest?.('[data-drag-cabinet]');
+    if (!handle) return;
+    const card = handle.closest('[data-kind="cabinet"]');
+    dragId = card.dataset.id;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', dragId); // Firefox wymaga danych, żeby przeciąganie ruszyło
+    e.dataTransfer.setDragImage(card, 20, 16);
+    card.classList.add('dragging');
+  });
+  root.addEventListener('dragover', (e) => {
+    const t = dropTarget(e);
+    if (!t) return;
+    e.preventDefault(); // pozwalamy upuścić
+    e.dataTransfer.dropEffect = 'move';
+    clearDropMarks();
+    t.card.classList.add(t.after ? 'drop-after' : 'drop-before');
+  });
+  root.addEventListener('drop', (e) => {
+    const t = dropTarget(e);
+    clearDropMarks();
+    if (!t) return;
+    e.preventDefault();
+    const moved = dragId;
+    const targetId = t.card.dataset.id;
+    store.set((p) => {
+      const item = p.furniture.find((c) => c.id === moved);
+      const rest = p.furniture.filter((c) => c.id !== moved);
+      const at = rest.findIndex((c) => c.id === targetId) + (t.after ? 1 : 0);
+      return { ...p, furniture: [...rest.slice(0, at), item, ...rest.slice(at)] };
+    });
+  });
+  root.addEventListener('dragend', () => {
+    dragId = null;
+    clearDropMarks();
+    root.querySelectorAll('.dragging').forEach((el) => el.classList.remove('dragging'));
+  });
+
+  // Klik w korpus na mapce: zaznacza go (jak klik w 3D) i pokazuje jego kartę; Ctrl + klik — kilka korpusów.
+  root.addEventListener('click', (e) => {
+    const id = e.target.closest('[data-map-cab]')?.dataset.mapCab;
+    if (!id) return;
+    const state = ui.get();
+    const pick = e.ctrlKey || e.metaKey ? toggleCabinet(state, id) : { selectedId: id, selectedIds: [id] };
+    ui.set({ ...state, ...pick, selectedFronts: [], selectedBlends: [], selectedHole: null, selectedObstacle: null }, { reveal: true });
+  });
 
   // --- zdarzenia (delegacja) ---
   root.addEventListener('input', (e) => {
@@ -1195,6 +1265,9 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
       setCollapsed(store.get().furniture.map((c) => c.id), true);
     } else if (action === 'expand-all') {
       setCollapsed(store.get().furniture.map((c) => c.id), false);
+    } else if (action === 'sort-cabinets') {
+      // kolejność kart jak na mapce: od lewej do prawej, przy tej samej pozycji — od dołu (szafki dolne przed górnymi)
+      updateFurniture((list) => [...list].sort((a, b) => a.x - b.x || a.y - b.y || a.z - b.z));
     } else if (toggleHidden && id) {
       updateCabinet(id, (c) => ({ ...c, hidden: !c.hidden }));
     } else if (e.target.dataset.resetEdges !== undefined && id) {
@@ -1229,15 +1302,24 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
       updateCabinet(id, (c) => ({ ...c, stiffeners: c.stiffeners.filter((st) => st.id !== removeStiff) }));
     } else if (action === 'add-cabinet') {
       // Pierwszy na całą szerokość, kolejne wypełniają wolne miejsce albo dzielą rząd (model/layout.js).
-      const { project, cabinet } = addCabinetToLayout(store.get());
-      store.set(project);
-      ui.set({ ...ui.get(), selectedId: cabinet.id }, { reveal: true });
+      // Kilka wnęk (występ ściany, np. kominek) — najpierw pytamy, do której.
+      const add = (segment) => {
+        const { project, cabinet } = addCabinetToLayout(store.get(), { segment });
+        store.set(project);
+        ui.set({ ...ui.get(), selectedId: cabinet.id }, { reveal: true });
+      };
+      const alcoves = cabinetAlcoves(store.get());
+      if (alcoves.length > 1) alcoveDialog.ask(store.get().space, alcoves).then((segment) => segment && add(segment));
+      else add(null);
     } else if (action === 'duplicate' && id) {
       const copy = duplicateCabinet(store.get(), id);
       updateFurniture((list) => [...list, copy]);
       ui.set({ ...ui.get(), selectedId: copy.id }, { reveal: true });
     } else if (slide && id) {
-      updateCabinet(id, (c, p) => slideCabinet(p, c.id, slide));
+      // kilka korpusów zaznaczonych Ctrl + klik (np. cały rząd) — dosuwamy je razem
+      const ids = selectedCabinetIds(ui.get());
+      if (ids.has(id) && ids.size > 1) store.set((p) => slideCabinets(p, [...ids], slide));
+      else updateCabinet(id, (c, p) => slideCabinet(p, c.id, slide));
     } else if (action === 'fit' && id) {
       updateCabinet(id, (c, p) => fitCabinetToSpace(c, p));
     } else if (resetPart && id) {
@@ -1257,6 +1339,7 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
     root.querySelectorAll('[data-kind="cabinet"]').forEach((el) => {
       el.classList.toggle('selected', ids.has(el.dataset.id));
     });
+    updateMap();
     // Kilka zaznaczonych korpusów — łańcuszki wymiarów włączają się same (łączą zaznaczone korpusy);
     // powrót do jednego zaznaczonego — wyłączają się.
     const multi = ids.size > 1;
@@ -1264,11 +1347,54 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
     else if (wasMulti) DIM_LINKS.forEach((k) => linked[k].clear());
     if (multi !== wasMulti || multi) updateStatus(store.get());
     wasMulti = multi;
-    if (meta.reveal && selectedId) {
-      tabs.activate('furniture-panel');
+    if (meta.reveal && selectedId) tabs.activate('furniture-panel');
+    const changed = accordion(ids);
+    if ((changed || meta.reveal) && selectedId) {
       if (collapsed.has(selectedId)) setCollapsed([selectedId], false); // pokazujemy zaznaczony korpus
-      root.querySelector(`[data-kind="cabinet"][data-id="${selectedId}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      scrollUnderMap(selectedId);
     }
+  }
+
+  // Karta korpusu przewinięta tak, żeby zaczynała się tuż pod mapką zabudowy (przyklejoną u góry panelu).
+  function scrollUnderMap(id) {
+    const card = root.querySelector(`[data-kind="cabinet"][data-id="${id}"]`);
+    const scroller = root.closest('.panel');
+    if (!card || !scroller || root.hidden) return;
+    const mapHeight = root.querySelector('.cab-map')?.offsetHeight ?? 0;
+    const top = Math.max(0, scroller.scrollTop + card.getBoundingClientRect().top - scroller.getBoundingClientRect().top - mapHeight - 8);
+    // Karta blisko końca listy (pod nią mało treści, bo reszta zwinięta) — pusty odstęp na dole listy,
+    // żeby dało się ją przewinąć aż pod mapkę; tylko tyle, ile trzeba.
+    const spacer = root.querySelector('.scroll-spacer');
+    if (spacer) {
+      spacer.style.height = '0px';
+      const maxTop = scroller.scrollHeight - scroller.clientHeight;
+      if (top > maxTop) spacer.style.height = `${Math.ceil(top - maxTop)}px`;
+    }
+    scroller.scrollTo({ top, behavior: 'smooth' });
+  }
+
+  // Akordeon: po zmianie zaznaczenia karty zaznaczonych korpusów są rozwinięte, pozostałe zwinięte do nagłówka
+  // (karta głównego zaznaczonego przewija się potem pod mapkę — scrollUnderMap). Odznaczenie niczego nie zwija.
+  // Zwraca true, gdy zaznaczenie się zmieniło.
+  let lastSelection = '';
+  function accordion(ids) {
+    const key = [...ids].sort().join('|');
+    if (!ids.size || key === lastSelection) return false;
+    lastSelection = key;
+    const others = store.get().furniture.map((c) => c.id).filter((id) => !ids.has(id));
+    for (const id of others) collapsed.add(id);
+    for (const id of ids) collapsed.delete(id);
+    root.querySelectorAll('[data-kind="cabinet"]').forEach(applyCollapsed);
+    // W kartach zaznaczonych — wszystkie sekcje zwinięte (Korpus, Fronty, Półki…); sekcję klikniętego elementu
+    // (np. „Fronty” po kliknięciu frontu, „Nóżki” po kliknięciu nóżek) otwiera zaraz potem revealSection.
+    // Podsekcje wewnątrz sekcji („sub:…”, np. Front / Uchwyt) zostają, jak były.
+    for (const id of ids) {
+      root.querySelectorAll(`[data-kind="cabinet"][data-id="${id}"] details.section[data-section]`).forEach((d) => {
+        sectionState.set(`${id}:${d.dataset.section}`, false);
+        d.open = false;
+      });
+    }
+    return true;
   }
 
   render(store.get());
@@ -1291,7 +1417,8 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
       if (!section) return;
       sectionState.set(`${cabinetId}:${key}`, true);
       section.open = true;
-      section.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      // karta pod mapką zabudowy — pozostałe sekcje są zwinięte, więc otwarta sekcja jest zaraz pod nagłówkiem
+      scrollUnderMap(cabinetId);
     },
   };
 }

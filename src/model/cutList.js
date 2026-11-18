@@ -69,7 +69,7 @@ export function buildCutList(project, parts = ALL_PARTS) {
       const set = trimEdgeSet(t, seg, i, solids);
       const cut = panelCutSize({ ...box, material, edges: edgeCounts(box, TRIM_THICKNESS_AXIS[t.type], set) });
       // blat: frezy krawędzi i otwory (zlew, płyta grzewcza, przepusty…)
-      const work = t.type === 'countertop' ? [describeEdges(t.edges), describeHoles(t.holes)].filter(Boolean).join('; ') : '';
+      const work = t.type === 'countertop' ? [describeEdges(t.edges), describeHoles(t.holes, seg.width, seg.depth)].filter(Boolean).join('; ') : '';
       add(t.type === 'countertop' ? 'countertop' : 'blend', t.name || TRIM_TYPES[t.type].label, 'wspólne', material, cut, set, work);
     });
   }
@@ -79,7 +79,7 @@ export function buildCutList(project, parts = ALL_PARTS) {
     const material = boardMaterial(b, project);
     const box = boardBox(b, project);
     const cut = panelCutSize({ ...box, material, edges: { l: 0, w: 0 } });
-    const work = [describeEdges(b.edges), describeHoles(b.holes)].filter(Boolean).join('; ');
+    const work = [describeEdges(b.edges), describeHoles(b.holes, box.width, box.depth)].filter(Boolean).join('; ');
     add(b.kind === 'worktop' ? 'countertop' : 'body', b.name, b.kind === 'worktop' ? 'blat samodzielny' : 'półka samodzielna', material, cut, [], work);
   }
 

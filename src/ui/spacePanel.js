@@ -3,6 +3,9 @@ import {
   LIMITS,
   SLOPE_SIDES,
   OBSTACLE_PRESETS,
+  OBSTACLE_KINDS,
+  WALL_DECORS,
+  isWallObstacle,
   DEFAULT_COLORS,
   createSlope,
   isObstacleOutside,
@@ -108,7 +111,8 @@ export function createSpacePanel(root, store) {
 
       <h3>Przeszkody</h3>
       <p class="hint">Elementy zajmujące miejsce w przestrzeni: listwy, rury, parapety, gniazdka…
-        Pozycja to narożnik lewy‑dolny‑tylny przeszkody.</p>
+        Pozycja to narożnik lewy‑dolny‑tylny przeszkody. <b>Kominek / występ ściany</b> dzieli przestrzeń na wnęki
+        (np. zabudowa po obu stronach kominka) — rysowany jest jak ściana.</p>
       <div class="items">
         ${space.obstacles.map(renderObstacle).join('') || '<p class="empty">Brak przeszkód.</p>'}
       </div>
@@ -151,12 +155,21 @@ export function createSpacePanel(root, store) {
         <div class="item-head">
           ${COLLAPSE_BUTTON}
           <input type="text" data-f="name" value="${escapeHtml(o.name)}" aria-label="Nazwa przeszkody" />
+          <select data-f="kind" class="obstacle-kind" aria-label="Rodzaj" title="Występ ściany (kominek, filar) wygląda jak ściana i dzieli przestrzeń na osobne wnęki — „Dopasuj do wnęki” i „+ Korpus” wypełniają wnękę po jednej stronie">
+            ${OBSTACLE_KINDS.map((k) => `<option value="${k.key}" ${k.key === o.kind ? 'selected' : ''}>${k.label}</option>`).join('')}
+          </select>
           <button type="button" class="danger" data-remove="${o.id}" title="Usuń">✕</button>
         </div>
         <div class="card-sum" data-collapse-card title="Kliknij, aby rozwinąć"></div>
         <div class="grid-3">
           ${OBSTACLE_FIELDS.map((f) => numberField(f.label, f.key, o[f.key], { min: f.min, small: true })).join('')}
         </div>
+        <label class="field small obstacle-decor" title="Tylko wygląd w widoku 3D — nie zmienia formatek ani wymiarów">
+          <span>Wygląd (na przedniej ścianie)</span>
+          <select data-f="decor">
+            ${WALL_DECORS.map((d) => `<option value="${d.key ?? ''}" ${d.key === (o.decor ?? null) ? 'selected' : ''}>${d.label}</option>`).join('')}
+          </select>
+        </label>
         <p class="warning" hidden>Przeszkoda wystaje poza przestrzeń.</p>
       </div>`;
   }
@@ -173,6 +186,10 @@ export function createSpacePanel(root, store) {
         `${o.width} × ${o.height} × ${o.depth} mm · od lewej ${o.x}, od podłogi ${o.y}, od tyłu ${o.z}` +
         (outside ? ' · ⚠ wystaje poza przestrzeń' : '');
       el.classList.toggle('has-issues', outside);
+      el.classList.toggle('wall-part', isWallObstacle(o));
+      el.querySelector('[data-f="kind"]').value = o.kind;
+      el.querySelector('.obstacle-decor').hidden = !isWallObstacle(o);
+      el.querySelector('[data-f="decor"]').value = o.decor ?? '';
     }
     for (const s of space.slopes) {
       const el = itemEl('slope', s.id);
@@ -242,6 +259,7 @@ export function createSpacePanel(root, store) {
       field = 'run';
       value = run;
     }
+    if (field === 'decor') value = value || null; // „Sama ściana”
     updateItem(kind, id, { [field]: value });
   });
 
@@ -278,6 +296,18 @@ export function createSpacePanel(root, store) {
     sync(project, meta = {}) {
       if (meta.replace || structureKey(project) !== renderedKey) render(project);
       else updateStatus(project);
+    },
+    // Karta przeszkody (np. kominka klikniętego w 3D): rozwinięta i przewinięta do widoku.
+    reveal(id) {
+      const el = itemEl('obstacle', id);
+      if (!el) return;
+      cardCollapse.expand(el);
+      el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    },
+    // Wyróżnienie karty zaznaczonego w 3D występu ściany (null — żadnej).
+    markPicked(id) {
+      root.querySelectorAll('.item.obstacle.picked').forEach((el) => el.classList.remove('picked'));
+      if (id) itemEl('obstacle', id)?.classList.add('picked');
     },
   };
 }

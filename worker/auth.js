@@ -85,6 +85,13 @@ function jwtPayload(jwt) {
 
 async function googleStart(request, env) {
   if (!env.GOOGLE_CLIENT_ID) return json(503, { error: 'Logowanie nie jest jeszcze skonfigurowane.' });
+  // www.meblesamemu.pl → meblesamemu.pl: w Google Cloud wystarczy jeden adres powrotu (bez „www”), a sesja
+  // (ciasteczko) jest na adresie głównym.
+  const url0 = new URL(request.url);
+  if (url0.hostname.startsWith('www.')) {
+    url0.hostname = url0.hostname.slice(4);
+    return redirect(url0.toString());
+  }
   const state = randomId(16);
   const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
   url.search = new URLSearchParams({

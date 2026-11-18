@@ -44,9 +44,28 @@ export function createDefaultSpace() {
   };
 }
 
+// Rodzaje przeszkód: zwykła (listwa, rura…) albo występ ściany (kominek, filar, wnęka w ścianie) — rysowany
+// jak ściana i dzielący przestrzeń na osobne wnęki (patrz wallSegments): np. kominek z zabudową po obu stronach.
+export const OBSTACLE_KINDS = [
+  { key: 'obstacle', label: 'Przeszkoda' },
+  { key: 'wall', label: 'Występ ściany' },
+];
+export const isWallObstacle = (o) => o?.kind === 'wall';
+
+// Wygląd występu ściany (tylko widok 3D — nie wpływa na formatki, kolizje ani obrzeże): na przedniej ścianie
+// występu rysujemy kominek, wkład kominkowy albo telewizor (scene/wallDecor.js).
+export const WALL_DECORS = [
+  { key: null, label: 'Sama ściana' },
+  { key: 'fireplace', label: 'Kominek klasyczny' },
+  { key: 'insert', label: 'Kominek nowoczesny (wkład z szybą)' },
+  { key: 'tv', label: 'Telewizor' },
+];
+
 export function createObstacle(overrides = {}) {
   return {
     id: newId(),
+    kind: 'obstacle',
+    decor: null, // tylko występ ściany — patrz WALL_DECORS
     name: 'Przeszkoda',
     x: 0,
     y: 0,
@@ -77,7 +96,52 @@ export const OBSTACLE_PRESETS = [
     create: (space) =>
       createObstacle({ name: 'Rura', x: 50, y: 0, z: 0, width: 40, height: space.height, depth: 40 }),
   },
+  {
+    // na środku tylnej ściany, od podłogi do sufitu, wystaje na całą głębokość — po bokach dwie wnęki
+    key: 'chimney',
+    label: 'Kominek / występ ściany',
+    create: (space) => {
+      const width = Math.min(1000, Math.round(space.width / 3));
+      return createObstacle({
+        kind: 'wall',
+        decor: 'fireplace',
+        name: 'Kominek',
+        x: Math.round((space.width - width) / 2),
+        y: 0,
+        z: 0,
+        width,
+        height: space.height,
+        depth: space.depth,
+      });
+    },
+  },
 ];
+
+// Wnęki wzdłuż szerokości przestrzeni: odcinki [od, do] (mm, oś X) między ścianami bocznymi
+// a występami ścian (np. kominkiem). Bez występów — jedna wnęka na całą szerokość.
+export function wallSegments(space) {
+  const covered = space.obstacles
+    .filter(isWallObstacle)
+    .map((o) => [Math.max(0, o.x), Math.min(space.width, o.x + o.width)])
+    .filter(([a, b]) => b > a)
+    .sort((p, q) => p[0] - q[0]);
+  const segments = [];
+  let cursor = 0;
+  for (const [a, b] of covered) {
+    if (a > cursor) segments.push([cursor, a]);
+    cursor = Math.max(cursor, b);
+  }
+  if (cursor < space.width) segments.push([cursor, space.width]);
+  return segments;
+}
+
+// Wnęka, w której leży punkt x (albo najbliższa, gdy x wypada na występie ściany).
+export function segmentAt(space, x) {
+  const segments = wallSegments(space);
+  if (!segments.length) return [0, space.width];
+  const dist = ([a, b]) => (x < a ? a - x : x > b ? x - b : 0);
+  return segments.reduce((best, s) => (dist(s) < dist(best) ? s : best));
+}
 
 // --- skosy ---
 
@@ -223,6 +287,8 @@ function normalizeObstacle(raw = {}) {
   const def = createObstacle();
   return {
     id: typeof raw.id === 'string' && raw.id ? raw.id : def.id,
+    kind: raw.kind === 'wall' ? 'wall' : 'obstacle',
+    decor: WALL_DECORS.some((d) => d.key && d.key === raw.decor) ? raw.decor : null,
     name: typeof raw.name === 'string' ? raw.name : def.name,
     x: num(raw.x, 0, -LIMITS.spaceMax, LIMITS.spaceMax),
     y: num(raw.y, 0, -LIMITS.spaceMax, LIMITS.spaceMax),

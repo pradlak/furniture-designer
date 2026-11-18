@@ -1,4 +1,4 @@
-import { LIMITS, isPointInside, describeOutside, slopePlanes, DEFAULT_SLOPE_GAP, DEFAULT_CEILING_GAP } from './space.js';
+import { LIMITS, isPointInside, describeOutside, slopePlanes, DEFAULT_SLOPE_GAP, DEFAULT_CEILING_GAP, segmentAt } from './space.js';
 import { FRONT_DECORS, DECOR_LIMITS, DECOR_GAP_LIMITS, describeDecor } from './decor.js';
 import { cabinetMaterials, trimMaterial, normalizeColor, withColor } from './materials.js';
 import { boxSolid, clipSolid, isClippedBy, solidBounds, extentAlong, solidsOverlap, vertices, outline2d } from './solid.js';
@@ -759,7 +759,7 @@ export function maxHeightAt(space, x, z, w, d, y0 = 0) {
   return top - y0;
 }
 
-// Wypełnia całą wnękę razem z blendami bocznymi; wysokość korpusu obniżona o nóżki
+// Wypełnia całą wnękę (przy występie ściany, np. kominku — tę, w której stoi korpus) razem z blendami bocznymi; wysokość korpusu obniżona o nóżki
 // i tak, żeby mebel zmieścił się pod skosami.
 export function fitCabinetToSpace(cabinet, project) {
   const { space } = project;
@@ -770,16 +770,18 @@ export function fitCabinetToSpace(cabinet, project) {
   const extraBack = cabinet.z - b.z;
   const extraFront = b.z + b.depth - (cabinet.z + cabinet.depth);
   const { sizeMin } = CABINET_LIMITS;
+  // Wnęka, w której stoi korpus — przy występie ściany (np. kominku) tylko ta po jego stronie.
+  const [segLeft, segRight] = segmentAt(space, b.x + b.width / 2);
   const fitted = {
     ...cabinet,
-    x: extraL,
+    x: segLeft + extraL,
     y: 0,
     z: extraBack + (cabinet.backGap ?? 0),
-    width: Math.max(sizeMin, space.width - extraL - extraR),
+    width: Math.max(sizeMin, segRight - segLeft - extraL - extraR),
     depth: Math.max(sizeMin, space.depth - extraBack - extraFront - (cabinet.backGap ?? 0)),
   };
   // Wysokość pod sufitem i skosami (z nóżkami; przy skośnej górze — w najwyższym miejscu).
-  const height = Math.floor(maxCabinetHeight(fitted, project, 0, space.width));
+  const height = Math.floor(maxCabinetHeight(fitted, project, segLeft, segRight - segLeft));
   return { ...fitted, height: Math.max(sizeMin, height) };
 }
 

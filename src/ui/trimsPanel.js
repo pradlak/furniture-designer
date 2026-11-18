@@ -12,6 +12,7 @@ import {
   trimAllowance,
   trimAllowanceParts,
   trimSegments,
+  countertopFreeSpace,
 } from '../model/trims.js';
 import { trimMaterial } from '../model/materials.js';
 import { escapeHtml, numberField, readNumberInput, setIfNotFocused, round1, commitEmptyAsZero } from './dom.js';
@@ -45,7 +46,7 @@ const GROUPS = [
     type: 'countertop',
     title: 'Blaty na szafkach',
     add: '+ Blat na szafkach',
-    hint: 'Leży na korpusach, z przodu wysunięty (domyślnie 30 mm od frontu), domyślnie od ściany do ściany. Z frezami krawędzi i otworami (zlew, płyta grzewcza, przepust…).',
+    hint: 'Leży na korpusach, z przodu wysunięty (domyślnie 30 mm od frontu), domyślnie na długość korpusów, a gdy stoją przy ścianie (do 100 mm od niej) — do ściany. Z frezami krawędzi i otworami (zlew, płyta grzewcza, przepust…).',
   },
 ];
 
@@ -172,6 +173,15 @@ export function createTrimsPanel(root, store, ui, { mode = 'blends' } = {}) {
               .join('') || '<span>brak korpusów</span>'
           }
         </div>
+        ${
+          t.type === 'countertop'
+            ? `<div class="trim-cabinets trim-extend" title="Blat przykrywa też wolne miejsce obok szafek (np. pod zmywarkę lub pralkę) — aż do ściany albo sąsiedniego mebla">
+          <span>Też wolne miejsce:</span>
+          <label class="check small"><input type="checkbox" data-f="extendLeft" /> z lewej <span class="free-size" data-free="left"></span></label>
+          <label class="check small"><input type="checkbox" data-f="extendRight" /> z prawej <span class="free-size" data-free="right"></span></label>
+        </div>`
+            : ''
+        }
         <div class="grid-3">
           ${fields.join('')}
           ${materialSelect('Materiał', 'materialId', project)}
@@ -200,6 +210,15 @@ export function createTrimsPanel(root, store, ui, { mode = 'blends' } = {}) {
       if (t.type === 'countertop') {
         const cb = trimBox(t, project);
         if (cb) syncBoardFeatures(el, t, cb.width, cb.depth);
+        // wolne miejsce obok szafek: przełącznik tylko z tej strony, gdzie ono jest (albo gdy już włączony)
+        const free = countertopFreeSpace(t, project);
+        for (const side of ['left', 'right']) {
+          const key = side === 'left' ? 'extendLeft' : 'extendRight';
+          const label = el.querySelector(`[data-free="${side}"]`).closest('label');
+          label.hidden = !free[side] && !t[key];
+          label.querySelector('.free-size').textContent = free[side] ? `(${free[side]} mm)` : '';
+        }
+        el.querySelector('.trim-extend').hidden = [...el.querySelectorAll('.trim-extend label')].every((l) => l.hidden);
       }
       el.querySelectorAll('[data-f]').forEach((input) => {
         if (input.type === 'checkbox') {

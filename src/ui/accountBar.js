@@ -19,7 +19,7 @@ export function createAccountBar(root, account, { onOpen }) {
       status.textContent = '';
       return;
     }
-    const [text, title] = s.link ? (TEXT[s.saveStatus] ?? TEXT.saved) : ['tylko w przeglądarce', 'Bieżący projekt nie jest zapisany na koncie — „Moje projekty” → „Zapisz na koncie”'];
+    const [text, title] = s.link ? (TEXT[s.saveStatus] ?? TEXT.saved) : ['tylko w przeglądarce', 'Bieżący projekt nie jest zapisany na koncie — kliknij, a potem „Zapisz na koncie”'];
     status.textContent = text;
     status.title = s.saveError ? `${title}: ${s.saveError}` : title;
     status.className = `save-status ${s.saveStatus === 'error' || s.saveStatus === 'conflict' ? 'bad' : s.link ? 'ok' : 'local'}`;

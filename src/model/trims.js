@@ -47,7 +47,8 @@ export const TRIM_DEFAULTS = {
   // toCeiling — górą do sufitu / skosu (gdy objęte korpusy sięgają sufitu lub skosu); dolna krawędź bez zmian
   topBlend: { height: 60, gap: 3, toCeiling: true },
   // includeFront — wysunięcie liczone od frontu (front ma grubość blendy górnej / materiału blend)
-  countertop: { overhang: 30, includeFront: true, x: null, length: null, depth: null },
+  // extendLeft / extendRight — blat przykrywa też wolne miejsce z tej strony korpusów (do ściany / mebla)
+  countertop: { overhang: 30, includeFront: true, extendLeft: false, extendRight: false, x: null, length: null, depth: null },
 };
 
 // Pola, które mogą być automatyczne (null) — wyświetlamy wtedy wartość wyliczoną (z trimBox).
@@ -173,8 +174,34 @@ export function countertopOverhang(trim, project) {
   return trim.overhang + front;
 }
 
-// Blat: na korpusach; automatycznie od ściany do ściany (albo do sąsiedniego mebla / przeszkody).
+// Blat: na korpusach; automatycznie do ściany (albo sąsiedniego mebla / przeszkody), jeśli korpusy kończą się
+// najwyżej COUNTERTOP_REACH mm od niej — inaczej na krawędzi korpusów. Z extendLeft / extendRight blat
+// przykrywa też wolne miejsce z tej strony (np. pod zmywarkę albo pralkę) — aż do ściany / mebla / przeszkody.
+export const COUNTERTOP_REACH = 100;
 function countertopBox(trim, project, cabs, front, thickness) {
+  const { rowLeft, rowRight, leftLimit, rightLimit, top, back, depth } = countertopFrame(trim, project, cabs, front, thickness);
+  // Blat dochodzi do granicy tylko przy małej szczelinie (np. krzywa ściana) albo gdy ma przykryć wolne
+  // miejsce; inaczej kończy się na korpusach (np. po poszerzeniu wnęki nie wydłuża się nad pustym miejscem).
+  const reaches = (gap, extend) => Number.isFinite(gap) && (gap <= COUNTERTOP_REACH || extend);
+  const left = reaches(rowLeft - leftLimit, trim.extendLeft) ? leftLimit : rowLeft;
+  const right = reaches(rightLimit - rowRight, trim.extendRight) ? rightLimit : rowRight;
+
+  const x = trim.x ?? left;
+  return { x, y: top, z: back, width: trim.length ?? right - x, height: thickness, depth };
+}
+
+// Wolne miejsce obok korpusów blatu (mm) — z lewej i z prawej, do ściany / mebla / przeszkody;
+// 0, gdy go nie ma albo jest za małe, żeby o nim mówić; null — z tej strony nic nie ogranicza blatu.
+export function countertopFreeSpace(trim, project) {
+  const cabs = trimCabinets(trim, project);
+  if (!cabs.length) return { left: null, right: null };
+  const f = countertopFrame(trim, project, cabs, trimFront(trim, project), trimMaterial(trim, project).thickness);
+  const free = (gap) => (Number.isFinite(gap) ? (gap > COUNTERTOP_REACH ? Math.round(gap) : 0) : null);
+  return { left: free(f.rowLeft - f.leftLimit), right: free(f.rightLimit - f.rowRight) };
+}
+
+// Korpusy blatu i najbliższe granice z każdej strony: ściana, inny mebel albo przeszkoda (±Infinity — brak).
+function countertopFrame(trim, project, cabs, front, thickness) {
   const bounds = cabs.map((c) => cabinetBounds(c, project));
   const rowLeft = Math.min(...bounds.map((b) => b.x));
   const rowRight = Math.max(...bounds.map((b) => b.x + b.width));
@@ -194,16 +221,15 @@ function countertopBox(trim, project, cabs, front, thickness) {
       .filter((o) => inBand(o, 0.5)),
     ...project.space.obstacles.filter((o) => inBand(o)),
   ];
+  // Najbliższa przeszkoda z każdej strony: ściana, inny mebel albo przeszkoda.
   const { walls, width: spaceWidth } = project.space;
-  let left = walls.left ? 0 : rowLeft;
-  let right = walls.right ? spaceWidth : rowRight;
+  let leftLimit = walls.left ? 0 : -Infinity;
+  let rightLimit = walls.right ? spaceWidth : Infinity;
   for (const o of others) {
-    if (o.x + o.width <= rowLeft + 0.01) left = Math.max(left, o.x + o.width);
-    if (o.x >= rowRight - 0.01) right = Math.min(right, o.x);
+    if (o.x + o.width <= rowLeft + 0.01) leftLimit = Math.max(leftLimit, o.x + o.width);
+    if (o.x >= rowRight - 0.01) rightLimit = Math.min(rightLimit, o.x);
   }
-
-  const x = trim.x ?? left;
-  return { x, y: top, z: back, width: trim.length ?? right - x, height: thickness, depth };
+  return { rowLeft, rowRight, leftLimit, rightLimit, top, back, depth };
 }
 
 // Odcinki blendy: blenda dolna i górna są przerywane przez panele boczne stojące na ich drodze
@@ -310,6 +336,8 @@ export function normalizeTrim(raw = {}, cabinetIds) {
     const opt = (v, min, max) => (v == null ? null : num(v, null, min, max));
     trim.overhang = num(raw.overhang, def.overhang, -500, 1000);
     trim.includeFront = raw.includeFront !== false;
+    trim.extendLeft = raw.extendLeft === true;
+    trim.extendRight = raw.extendRight === true;
     trim.x = opt(raw.x, -20000, 20000);
     trim.length = opt(raw.length, 1, 20000);
     trim.depth = opt(raw.depth, 1, 20000);

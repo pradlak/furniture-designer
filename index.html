@@ -62,6 +62,7 @@
           <button type="button" data-tab="trims-panel">Blendy</button>
           <button type="button" data-tab="worktops-panel">Blaty i półki</button>
           <button type="button" data-tab="materials-panel">Materiały</button>
+          <button type="button" data-tab="notes-panel">Notatki</button>
         </nav>
         <div id="space-panel" class="tab-content"></div>
         <div id="furniture-panel" class="tab-content" hidden></div>
@@ -71,14 +72,17 @@
           <div id="boards-panel"></div>
         </div>
         <div id="materials-panel" class="tab-content" hidden></div>
+        <div id="notes-panel" class="tab-content" hidden></div>
       </aside>
       <div class="panel-resizer" id="panel-resizer" title="Przeciągnij, aby zmienić szerokość panelu (dwuklik — domyślna)"></div>
       <section id="viewport" class="viewport">
         <div class="viewport-help">
           <b>Klik</b> — zaznacz korpus · <b>przeciągnij</b> — przesuń (Shift: w pionie, Alt: bez przyciągania) ·
-          <b>przeciągnij półkę</b> — zmień jej wysokość · <b>przeciągnij front</b> — otwórz / zamknij · <b>Ctrl+klik</b> — kilka frontów · <b>prawy klik na froncie</b> — menu<br />
+          <b>przeciągnij półkę</b> — zmień jej wysokość · <b>przeciągnij front</b> — otwórz / zamknij · <b>Ctrl+klik</b> — kilka frontów · <b>prawy klik na froncie / korpusie</b> — menu (dosuń, rozszerz)<br />
           <b>Strzałki</b> — o 10 mm (Shift: 100 mm) · <b>PgUp/PgDn</b> — w pionie · <b>Ctrl+D</b> — duplikuj ·
-          <b>Del</b> — usuń (zaznaczone fronty — tylko fronty) · <b>Ctrl+Z</b> — cofnij
+          <b>Del</b> — usuń (zaznaczone fronty — tylko fronty) · <b>Ctrl+Z</b> — cofnij<br />
+          <b>Kółko</b> — przybliż w stronę kursora · <b>dwuklik</b> — przybliż do miejsca · <b>prawy przycisk + przeciągnij</b> — przesuń widok<br />
+          <b>Kominek / występ ściany</b>: przeciągnij krawędź — szerokość, środek — przesuń · <b>prawy klik</b> — rozszerz / przesuń do korpusu lub ściany
         </div>
         <!-- Menu ze stronami z treścią (o programie, poradniki) — w rogu podglądu 3D; rozwijane, linki
              są w HTML (widoczne dla wyszukiwarek także po zwinięciu) -->

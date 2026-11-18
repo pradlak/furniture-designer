@@ -37,6 +37,56 @@ export const HOLE_PRESETS = [
 
 export const HOLE_LIMITS = { min: 5, max: 3000 };
 
+// Położenie otworu (jak uchwytu na froncie): pos — null (własne: x, y wpisane ręcznie) albo dwie litery:
+// rząd f / c / b (przód / środek / tył) i kolumna l / c / r (lewa / środek / prawa), np. 'fl' — lewy przedni róg.
+// gx, gy — przy krawędzi: odstęp od krawędzi płyty do krawędzi otworu; przy środku: przesunięcie od środka.
+// Takie otwory przeliczają się przy każdej zmianie wymiarów płyty (np. blat wydłużony — otwór zostaje w rogu).
+export const HOLE_POSITIONS = [
+  { key: null, label: 'Własne (x, y)' },
+  { key: 'fl', label: 'Lewy przedni róg' },
+  { key: 'fc', label: 'Przód — środek' },
+  { key: 'fr', label: 'Prawy przedni róg' },
+  { key: 'cl', label: 'Lewa — środek' },
+  { key: 'cc', label: 'Środek płyty' },
+  { key: 'cr', label: 'Prawa — środek' },
+  { key: 'bl', label: 'Lewy tylny róg' },
+  { key: 'bc', label: 'Tył — środek' },
+  { key: 'br', label: 'Prawy tylny róg' },
+];
+export const HOLE_EDGE_GAP = 50; // domyślny odstęp otworu od krawędzi
+const halfSize = (h) => (h.shape === 'circle' ? [h.d / 2, h.d / 2] : [h.w / 2, h.h / 2]);
+
+// Otwór z wyliczonym środkiem (x, y) dla płyty width × depth — przy położeniu „własne” bez zmian.
+export function resolveHole(h, width, depth) {
+  if (!h?.pos || !(width > 0) || !(depth > 0)) return h;
+  const [hw, hd] = halfSize(h);
+  const [row, col] = h.pos;
+  const gx = h.gx ?? 0;
+  const gy = h.gy ?? 0;
+  const x = col === 'l' ? gx + hw : col === 'r' ? width - gx - hw : width / 2 + gx;
+  const y = row === 'f' ? gy + hd : row === 'b' ? depth - gy - hd : depth / 2 + gy;
+  return { ...h, x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10 };
+}
+export const resolveHoles = (holes, width, depth) => (holes ?? []).map((h) => resolveHole(h, width, depth));
+
+// Zmiana położenia (pos): odstępy — przy krawędzi zostają (albo domyślne 50 mm, gdy wcześniej był środek),
+// przy środku — 0 (dokładnie na środku).
+export function setHolePosition(h, pos) {
+  if (!pos) return { ...h, pos: null };
+  const edgeOrCenter = (oldAxis, newAxis, gap) => (newAxis === 'c' ? 0 : oldAxis && oldAxis !== 'c' ? (gap ?? HOLE_EDGE_GAP) : HOLE_EDGE_GAP);
+  return { ...h, pos, gx: edgeOrCenter(h.pos?.[1], pos[1], h.gx), gy: edgeOrCenter(h.pos?.[0], pos[0], h.gy) };
+}
+
+// Przesunięcie otworu o d mm w osi 'x' (w prawo) albo 'y' (w głąb) — strzałki na klawiaturze. Otwór
+// z położeniem zmienia odstęp od swojej krawędzi (zostaje zakotwiczony), własny — x / y.
+export function moveHole(h, axis, d) {
+  if (!h.pos) return { ...h, [axis]: h[axis] + d };
+  const anchor = axis === 'x' ? h.pos[1] : h.pos[0];
+  const key = axis === 'x' ? 'gx' : 'gy';
+  const sign = anchor === 'r' || anchor === 'b' ? -1 : 1;
+  return { ...h, [key]: (h[key] ?? 0) + sign * d };
+}
+
 // Wsunięcie krawędzi (o ile krawędź jest „ścięta” do środka płyty) na wysokości h (0 — spód, t — wierzch)
 // dla profilu krawędzi. Używane do rysowania profilu w 3D (płyta z warstw) i do opisu.
 export function edgeInset(edge, h, t) {
@@ -103,19 +153,23 @@ export function normalizeHoles(raw) {
   return raw
     .filter((h) => h && (h.shape === 'circle' || h.shape === 'rect'))
     .slice(0, 50)
-    .map((h) =>
-      h.shape === 'circle'
-        ? { shape: 'circle', label: typeof h.label === 'string' ? h.label.slice(0, 60) : '', x: n(h.x, 100), y: n(h.y, 100), d: n(h.d, 50, HOLE_LIMITS.min) }
-        : {
-            shape: 'rect',
-            label: typeof h.label === 'string' ? h.label.slice(0, 60) : '',
-            x: n(h.x, 200),
-            y: n(h.y, 200),
-            w: n(h.w, 200, HOLE_LIMITS.min),
-            h: n(h.h, 100, HOLE_LIMITS.min),
-            r: n(h.r, 0, 0, 500),
-          },
-    );
+    .map((h) => {
+      const hole =
+        h.shape === 'circle'
+          ? { shape: 'circle', label: typeof h.label === 'string' ? h.label.slice(0, 60) : '', x: n(h.x, 100), y: n(h.y, 100), d: n(h.d, 50, HOLE_LIMITS.min) }
+          : {
+              shape: 'rect',
+              label: typeof h.label === 'string' ? h.label.slice(0, 60) : '',
+              x: n(h.x, 200),
+              y: n(h.y, 200),
+              w: n(h.w, 200, HOLE_LIMITS.min),
+              h: n(h.h, 100, HOLE_LIMITS.min),
+              r: n(h.r, 0, 0, 500),
+            };
+      // położenie (róg / środek krawędzi z odstępem) — tylko poprawne klucze; bez niego — własne x, y
+      if (HOLE_POSITIONS.some((p) => p.key && p.key === h.pos)) Object.assign(hole, { pos: h.pos, gx: n(h.gx, 0), gy: n(h.gy, 0) });
+      return hole;
+    });
 }
 
 // Nowy otwór z gotowego wzoru — na środku płyty o wymiarach width × depth.
@@ -126,8 +180,9 @@ export function createHole(presetKey, width, depth) {
 }
 
 // Czy otwór mieści się w płycie (z zapasem 10 mm od krawędzi).
-export function holeFits(hole, width, depth, margin = 10) {
-  const [hw, hd] = hole.shape === 'circle' ? [hole.d / 2, hole.d / 2] : [hole.w / 2, hole.h / 2];
+export function holeFits(hole0, width, depth, margin = 10) {
+  const hole = resolveHole(hole0, width, depth);
+  const [hw, hd] = halfSize(hole);
   return hole.x - hw >= margin && hole.x + hw <= width - margin && hole.y - hd >= margin && hole.y + hd <= depth - margin;
 }
 
@@ -146,9 +201,10 @@ export function describeEdges(edges) {
 }
 
 // Opis otworów, np. „otwory: Ø60 (x 300; y 50), wycięcie 780 × 480 R10 (x 900; y 300) — środek od lewej i przedniej krawędzi”.
-export function describeHoles(holes) {
+// width, depth — wymiary płyty (do otworów z położeniem: róg, środek krawędzi).
+export function describeHoles(holes, width, depth) {
   if (!holes?.length) return '';
-  const list = holes.map((h) => {
+  const list = resolveHoles(holes, width, depth).map((h) => {
     const what = h.shape === 'circle' ? `Ø${fmt(h.d)}` : `wycięcie ${fmt(h.w)} × ${fmt(h.h)}${h.r ? ` R${fmt(h.r)}` : ''}`;
     return `${h.label ? `${h.label}: ` : ''}${what} (x ${fmt(h.x)}; y ${fmt(h.y)})`;
   });

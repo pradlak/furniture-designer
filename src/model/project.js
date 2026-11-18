@@ -3,8 +3,9 @@ import { normalizeCabinet } from './furniture.js';
 import { normalizeTrim, createTrim } from './trims.js';
 import { defaultMaterials, normalizeMaterials } from './materials.js';
 import { normalizeBoard } from './boards.js';
+import { normalizeNote } from './notes.js';
 
-// Projekt = przestrzeń + materiały + meble + blendy wspólne + ustawienia widoku.
+// Projekt = przestrzeń + materiały + meble + blendy wspólne + notatki + ustawienia widoku.
 export const PROJECT_VERSION = 5;
 const STORAGE_KEY = 'furnitureDesigner.project';
 
@@ -22,6 +23,7 @@ export function createDefaultProject() {
     furniture: [],
     trims: [],
     boards: [], // samodzielne blaty i półki (model/boards.js)
+    notes: [], // notatki użytkownika (model/notes.js)
     view: createDefaultView(),
   };
 }
@@ -40,6 +42,7 @@ export function normalizeProject(raw) {
     furniture,
     trims: (Array.isArray(raw.trims) ? raw.trims : []).map((t) => normalizeTrim(t, ids)).filter(Boolean),
     boards: (Array.isArray(raw.boards) ? raw.boards : []).map(normalizeBoard),
+    notes: (Array.isArray(raw.notes) ? raw.notes : []).map((n) => normalizeNote(n, ids)).filter(Boolean),
     view: {
       showWalls: raw.view?.showWalls !== false,
       showCountertops: raw.view?.showCountertops !== false,

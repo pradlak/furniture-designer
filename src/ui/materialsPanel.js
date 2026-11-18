@@ -5,6 +5,7 @@ import {
   createMaterial, TEXTURES, COLOR_PRESETS } from '../model/materials.js';
 import { colorOptions } from './widgets.js';
 import { COLLAPSE_BUTTON, COLLAPSE_ALL_BUTTONS, createCardCollapse } from './collapsible.js';
+import { GOOGLE_ICON } from './projectsDialog.js';
 import { listAccountMaterials, createAccountMaterial, updateAccountMaterial, deleteAccountMaterial } from '../state/account.js';
 import { normalizeMaterials } from '../model/materials.js';
 import { escapeHtml, readNumberInput, setIfNotFocused, commitEmptyAsZero } from './dom.js';
@@ -333,8 +334,9 @@ export function createMaterialsPanel(root, store) {
     }
     if (!s.user) {
       box.innerHTML = `<h3>Moje materiały na koncie</h3>
-        <p class="hint">Zaloguj się (☁ Moje projekty na pasku), żeby zapisywać swoje płyty — z kolorem, grubością
-          i obrzeżem — i wstawiać je w kolejnych projektach.</p>`;
+        <p class="hint">Po zalogowaniu zapiszesz tu swoje płyty — z kolorem, grubością i obrzeżem — i wstawisz je
+          w kolejnych projektach, na każdym urządzeniu. Konto znajdziesz też pod ikonką w prawym górnym rogu.</p>
+        <a class="google-login library-login" href="${account.loginUrl}">${GOOGLE_ICON}<span>Zaloguj przez Google</span></a>`;
       return;
     }
     const inProject = new Set(store.get().materials.map((m) => m.cloudId).filter(Boolean));

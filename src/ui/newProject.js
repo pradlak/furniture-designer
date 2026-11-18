@@ -115,8 +115,9 @@ export function createNewProjectDialog(store, { onExamples } = {}) {
   return { open };
 }
 
-// Małe szkice przestrzeni (widok z boku).
+// Małe szkice przestrzeni (wnęka i poddasze — widok z boku / z przodu; wnęki przy kominku — z góry).
 const SKETCHES = {
+  alcoves: `<svg viewBox="0 0 48 40" aria-hidden="true"><path d="M4 30V8h40v22M17 8v22h14V8" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M17 8h14v22H17z" fill="currentColor" opacity=".25"/></svg>`,
   niche: `<svg viewBox="0 0 48 40" aria-hidden="true"><path d="M6 4v32h36V4" fill="none" stroke="currentColor" stroke-width="2"/><path d="M6 4h36" stroke="currentColor" stroke-width="2"/></svg>`,
   attic: `<svg viewBox="0 0 48 40" aria-hidden="true"><path d="M6 36V20L24 4h18v32z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M6 36h36" stroke="currentColor" stroke-width="2"/></svg>`,
 };

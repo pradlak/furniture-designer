@@ -1,10 +1,11 @@
 import { createDefaultProject } from './project.js';
-import { createSlope, LIMITS } from './space.js';
+import { createSlope, createObstacle, LIMITS } from './space.js';
 
 // Szablony przestrzeni dla nowego projektu. Każdy ma pola do uzupełnienia (z wartościami domyślnymi)
 // i buduje z nich przestrzeń. Wymiary w mm.
 //  niche — wnęka / pomieszczenie prostokątne,
-//  attic — zabudowa poddasza: ścianka kolankowa z tyłu, skos opadający w stronę tylnej ściany.
+//  attic — zabudowa poddasza: ścianka kolankowa z tyłu, skos opadający w stronę tylnej ściany,
+//  alcoves — ściana z kominkiem (występem ściany) i dwie wnęki po bokach.
 
 const dims = (w, h, d) => [
   { key: 'width', label: 'Szerokość', unit: 'mm', value: w, min: LIMITS.spaceMin, max: LIMITS.spaceMax },
@@ -31,6 +32,19 @@ export const SPACE_TEMPLATES = [
       { key: 'angle', label: 'Kąt skosu', unit: '°', value: 45, min: 1, max: 89, step: 0.5 },
     ],
   },
+  {
+    key: 'alcoves',
+    label: 'Wnęki przy kominku',
+    description: 'Ściana z kominkiem (albo filarem) pośrodku i dwie wnęki po bokach — np. zabudowa po obu stronach kominka.',
+    name: 'Wnęki przy kominku',
+    fields: [
+      { ...dims(3200, 2500, 400)[0], label: 'Szerokość całej ściany' },
+      dims(3200, 2500, 400)[1],
+      { ...dims(3200, 2500, 400)[2], label: 'Głębokość wnęk' },
+      { key: 'chimneyWidth', label: 'Szerokość kominka', unit: 'mm', value: 1200, min: 1, max: LIMITS.spaceMax },
+      { key: 'chimneyLeft', label: 'Lewa wnęka (od ściany do kominka)', unit: 'mm', value: 1000, min: 0, max: LIMITS.spaceMax },
+    ],
+  },
 ];
 
 // Sprawdza wartości pól szablonu; zwraca listę problemów (pusta = można tworzyć).
@@ -42,6 +56,9 @@ export function templateIssues(template, values) {
   }
   if (template.key === 'attic' && values.kneeHeight >= values.height) {
     issues.push('Ścianka kolankowa musi być niższa niż wysokość pomieszczenia.');
+  }
+  if (template.key === 'alcoves' && values.chimneyLeft + values.chimneyWidth > values.width) {
+    issues.push('Lewa wnęka i kominek razem są szersze niż cała ściana.');
   }
   return issues;
 }
@@ -62,6 +79,22 @@ export function createProjectFromTemplate(key, values) {
     const rise = values.height - values.kneeHeight;
     const run = Math.max(1, Math.round(rise / Math.tan((values.angle * Math.PI) / 180)));
     space.slopes = [createSlope(space, { side: 'back', kneeHeight: values.kneeHeight, run })];
+  }
+  if (key === 'alcoves') {
+    // Kominek: od podłogi do sufitu, wystaje z tylnej ściany na całą głębokość wnęk.
+    space.obstacles = [
+      createObstacle({
+        kind: 'wall',
+        decor: 'fireplace',
+        name: 'Kominek',
+        x: values.chimneyLeft,
+        y: 0,
+        z: 0,
+        width: values.chimneyWidth,
+        height: values.height,
+        depth: values.depth,
+      }),
+    ];
   }
   return { ...project, space };
 }

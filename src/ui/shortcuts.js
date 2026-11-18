@@ -1,5 +1,6 @@
 import { duplicateCabinet } from '../model/placement.js';
 import { removeFronts } from '../model/furniture.js';
+import { moveHole } from '../model/boardFeatures.js';
 
 // Skróty klawiszowe (nie działają podczas pisania w polach formularza):
 //   Ctrl+Z / Ctrl+Y (Ctrl+Shift+Z) — cofnij / ponów
@@ -32,7 +33,7 @@ export function initShortcuts(store, ui) {
     }
 
     if (key === 'escape') {
-      ui.set({ ...ui.get(), selectedId: null, selectedFronts: [], selectedBlends: [], selectedHole: null });
+      ui.set({ ...ui.get(), selectedId: null, selectedFronts: [], selectedBlends: [], selectedHole: null, selectedObstacle: null });
       return;
     }
     // zaznaczony otwór blatu / półki: Delete — usuń, strzałki — przesuń (10 mm, z Shift 100 mm; ↑ — w głąb)
@@ -52,7 +53,7 @@ export function initShortcuts(store, ui) {
       } else if (arrows[key] && !ctrl) {
         e.preventDefault();
         const [axis, d] = arrows[key];
-        updateHoles((hs) => hs.map((h, i) => (i === hole.index ? { ...h, [axis]: h[axis] + d } : h)));
+        updateHoles((hs) => hs.map((h, i) => (i === hole.index ? moveHole(h, axis, d) : h))); // w rogu — zmienia odstęp
       }
       return;
     }

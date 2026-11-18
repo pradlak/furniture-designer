@@ -7,6 +7,7 @@ import { projectSolids, panelEdgeSet, trimEdgeSet, TRIM_THICKNESS_AXIS } from '.
 import { buildCabinetDimensions, buildPartDimensions, buildTotalDimensions } from './furnitureDims.js';
 import { decorSegments } from '../model/decor.js';
 import { buildSlab, needsSlab } from './slab.js';
+import { resolveHoles } from '../model/boardFeatures.js';
 import { boardBox, boardMaterial as boardPlateMaterial, boardIssues } from '../model/boards.js';
 import { getSettings } from '../state/settings.js';
 import { decorTexture, scaleBoxUVs } from './textures.js';
@@ -378,7 +379,7 @@ export function buildFurniture(project, selectedIds = new Set(), selectedFronts 
     trimGroup.userData.trimId = trim.id; // do wybierania myszką
     // Blat z otworami albo frezami krawędzi — kształt z wyciętymi otworami (scene/slab.js).
     if (trim.type === 'countertop' && needsSlab(trim.edges, trim.holes) && segments.length === 1 && !segments[0].solid) {
-      const slab = buildSlab(segments[0], { edges: trim.edges, holes: trim.holes, material: materialFor(tm.color, tm.texture), edgeMaterial: edgeMat, space: project.space, pickedHole: holeOf('trim', trim.id), pickedColor: pickedColor() });
+      const slab = buildSlab(segments[0], { edges: trim.edges, holes: resolveHoles(trim.holes, segments[0].width, segments[0].depth), material: materialFor(tm.color, tm.texture), edgeMaterial: edgeMat, space: project.space, pickedHole: holeOf('trim', trim.id), pickedColor: pickedColor() });
       slab.userData.slab = { kind: 'trim', id: trim.id, box: segments[0] }; // do przesuwania otworów myszką
       trimGroup.add(slab);
       group.add(trimGroup);
@@ -415,7 +416,7 @@ export function buildFurniture(project, selectedIds = new Set(), selectedFronts 
     const bm = picked ? pickedMaterial(boardPlateMaterial(board, project)) : boardPlateMaterial(board, project);
     const edgeMat = picked ? pickedEdge() : new THREE.LineBasicMaterial({ color: boardIssues(board, project).length ? EDGE_BAD : EDGE_OK });
     if (!picked) disposables.push(edgeMat);
-    const slab = buildSlab(box, { edges: board.edges, holes: board.holes, material: materialFor(bm.color, bm.texture), edgeMaterial: edgeMat, space: project.space, pickedHole: holeOf('board', board.id), pickedColor: pickedColor() });
+    const slab = buildSlab(box, { edges: board.edges, holes: resolveHoles(board.holes, box.width, box.depth), material: materialFor(bm.color, bm.texture), edgeMaterial: edgeMat, space: project.space, pickedHole: holeOf('board', board.id), pickedColor: pickedColor() });
     slab.userData.boardId = board.id; // do wybierania myszką
     slab.userData.slab = { kind: 'board', id: board.id, box }; // do przesuwania otworów myszką
     group.add(slab);

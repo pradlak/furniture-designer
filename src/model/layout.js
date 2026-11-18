@@ -1,5 +1,6 @@
-import { CABINET_LIMITS, cabinetBounds, createCabinet, maxCabinetHeight } from './furniture.js';
-import { rowOf } from './trims.js';
+import { CABINET_LIMITS, cabinetBounds, createCabinet, maxCabinetHeight, newId } from './furniture.js';
+import { rowOf, TRIM_TYPES } from './trims.js';
+import { wallSegments, segmentAt } from './space.js';
 
 // Automatyczny układ korpusów w rzędzie — żeby projektowanie było jak najprostsze:
 //  - pierwszy korpus zajmuje całą szerokość wnęki,
@@ -123,27 +124,53 @@ export function distributeRow(project, ids, [left, right], shares, fitted = {}) 
 }
 
 // Najbardziej wysunięty w prawo korpus (po krawędzi z blendami).
-function rightmostCabinet(project) {
+function rightmostCabinet(project, list = project.furniture) {
   const right = (c) => {
     const b = cabinetBounds(c, project);
     return b.x + b.width;
   };
-  return project.furniture.reduce((a, c) => (right(c) > right(a) ? c : a));
+  return list.reduce((a, c) => (right(c) > right(a) ? c : a));
+}
+
+// Korpusy stojące we wnęce [a, b] (środkiem).
+function cabinetsIn(project, [a, b]) {
+  return project.furniture.filter((c) => {
+    const bx = cabinetBounds(c, project);
+    const mid = bx.x + bx.width / 2;
+    return mid >= a - EPS && mid <= b + EPS;
+  });
+}
+
+// Wnęki, do których można dodać korpus (przy występach ścian, np. kominku — kilka), z opisem zajętości:
+// [{ segment: [od, do], count — ile korpusów stoi we wnęce, free — wolne miejsce z prawej strony korpusów (mm) }].
+export function cabinetAlcoves(project) {
+  return wallSegments(project.space)
+    .filter(([a, b]) => b - a >= MIN_FREE_FOR_NEW)
+    .map((segment) => {
+      const cabs = cabinetsIn(project, segment);
+      const right = cabs.length ? Math.max(...cabs.map((c) => { const b = cabinetBounds(c, project); return b.x + b.width; })) : segment[0];
+      return { segment, count: cabs.length, free: Math.max(0, Math.round(segment[1] - right)) };
+    });
 }
 
 // Dodaje nowy korpus według zasad z nagłówka. Zwraca { project, cabinet }.
-export function addCabinetToLayout(project) {
+// segment — wybrana wnęka [od, do] (przy występach ścian; bez niej — jak dotąd: obok ostatniego korpusu
+// albo w pierwszej pustej wnęce).
+export function addCabinetToLayout(project, { segment = null } = {}) {
   const { space } = project;
 
-  // Pierwszy korpus — na całą szerokość wnęki.
+  // Pierwszy korpus — na całą szerokość wnęki (przy występie ściany, np. kominku — wybranej albo pierwszej od lewej).
   if (!project.furniture.length) {
-    const c = { ...createCabinet(project), x: 0, width: space.width };
+    const [left, right] = segment ?? wallSegments(space).find(([a, b]) => b - a >= MIN_FREE_FOR_NEW) ?? [0, space.width];
+    const c = { ...createCabinet(project), x: left, width: right - left };
     const cabinet = { ...c, height: fittedHeight(c, project) };
     return { project: { ...project, furniture: [cabinet] }, cabinet };
   }
 
-  // Kolejny — wygląda jak sąsiad z lewej (wysokość, głębokość, nóżki, materiały, konstrukcja).
-  const last = rightmostCabinet(project);
+  // Kolejny — wygląda jak sąsiad z lewej (wysokość, głębokość, nóżki, materiały, konstrukcja);
+  // w wybranej wnęce — jak jej ostatni korpus, a w pustej — jak ostatni korpus całej zabudowy.
+  const inSegment = segment ? cabinetsIn(project, segment) : [];
+  const last = rightmostCabinet(project, inSegment.length ? inSegment : project.furniture);
   const lastBounds = cabinetBounds(last, project);
   const base = createCabinet(project);
   const template = {
@@ -168,17 +195,48 @@ export function addCabinetToLayout(project) {
     trims: p.trims.map((t) => (t.cabinetIds.includes(last.id) ? { ...t, cabinetIds: [...t.cabinetIds, cabinet.id] } : t)),
   });
 
-  // Jest wolne miejsce z prawej — nowy korpus je wypełnia.
-  const free = space.width - (lastBounds.x + lastBounds.width);
+  // Jest wolne miejsce z prawej (w tej samej wnęce) — nowy korpus je wypełnia.
+  const lastRight = lastBounds.x + lastBounds.width;
+  const free = segmentAt(space, lastBounds.x + lastBounds.width / 2)[1] - lastRight;
   const lastFitted = isFittedHeight(last, project);
-  if (free >= MIN_FREE_FOR_NEW) {
-    const placedCab = { ...template, x: lastBounds.x + lastBounds.width, width: free };
+  const sameAlcove = !segment || inSegment.length > 0; // nowy korpus stanie przy `last`
+  if (sameAlcove && free >= MIN_FREE_FOR_NEW) {
+    const placedCab = { ...template, x: lastRight, width: free };
     const next = { ...project, furniture: [...project.furniture, placedCab] };
     const cabinet = adjustHeight(placedCab, next, lastFitted); // dopasowanie do skosu w nowym miejscu
     return {
       project: withTrims({ ...project, furniture: [...project.furniture, cabinet] }, cabinet),
       cabinet,
     };
+  }
+
+  // Wnęka pełna, ale za występem ściany (np. po drugiej stronie kominka) jest pusta wnęka — nowy korpus
+  // ją wypełnia. Blendy wspólne i blat nie przechodzą przez kominek: korpus dostaje własne (kopie sąsiada).
+  const occupied = project.furniture.map((c) => cabinetBounds(c, project));
+  const emptySegment = segment
+    ? sameAlcove
+      ? null // wybrana wnęka ma już korpusy i jest pełna — dzielimy jej rząd
+      : segment
+    : wallSegments(space).find(([a, b]) => b - a >= MIN_FREE_FOR_NEW && !occupied.some((o) => o.x < b - EPS && o.x + o.width > a + EPS));
+  if (emptySegment) {
+    const [a, b] = emptySegment;
+    const placedCab = { ...template, x: a, width: b - a };
+    const next = { ...project, furniture: [...project.furniture, placedCab] };
+    const cabinet = adjustHeight(placedCab, next, lastFitted);
+    const copies = project.trims
+      .filter((t) => t.cabinetIds.includes(last.id))
+      .map((t) => {
+        const count = project.trims.filter((x) => x.type === t.type).length;
+        return {
+          ...structuredClone(t),
+          id: newId(),
+          name: `${TRIM_TYPES[t.type].label} ${count + 1}`,
+          cabinetIds: [cabinet.id],
+          // blat: bez otworów (zlew, płyta grzewcza są w blacie sąsiada) i bez ręcznego położenia / długości
+          ...(t.type === 'countertop' ? { holes: [], x: null, length: null } : {}),
+        };
+      });
+    return { project: { ...project, furniture: [...project.furniture, cabinet], trims: [...project.trims, ...copies] }, cabinet };
   }
 
   // Brak miejsca — dzielimy rząd na nowo. Nowy korpus staje na prawym końcu i przejmuje

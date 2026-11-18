@@ -71,7 +71,7 @@ export function createBoardsPanel(root, store) {
       setEye(el.querySelector('[data-board-hide]'), b.hidden, b.kind === 'worktop' ? 'blat' : 'półkę');
       syncBoardFeatures(el, b, b.width, b.depth);
       el.querySelector('.board-info').textContent =
-        `Formatka: ${b.width} × ${b.depth} × ${mat.thickness} mm` + [describeEdges(b.edges), describeHoles(b.holes)].filter(Boolean).map((t) => ` · ${t}`).join('');
+        `Formatka: ${b.width} × ${b.depth} × ${mat.thickness} mm` + [describeEdges(b.edges), describeHoles(b.holes, b.width, b.depth)].filter(Boolean).map((t) => ` · ${t}`).join('');
       const issues = boardIssues(b, project);
       el.classList.toggle('has-issues', issues.length > 0);
       el.querySelector('.board-issues').innerHTML = issues.map((t) => `<li>${escapeHtml(t)}</li>`).join('');

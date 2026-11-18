@@ -223,6 +223,9 @@ input.invalid { border-color: var(--danger); background: #fef2f2; }
   margin-bottom: 8px;
 }
 .item.slope { border-left-color: #64748b; }
+.item.obstacle.wall-part { border-left-color: #94a3b8; }
+.item.obstacle.picked { box-shadow: 0 0 0 2px var(--accent); }
+.obstacle-kind { flex: none; max-width: 130px; }
 .item.cabinet { border-left-color: #a0784c; }
 .item.cabinet.has-issues { border-left-color: var(--danger); }
 .item-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 4px 0 8px; }
@@ -283,6 +286,70 @@ select {
 .warning { color: var(--danger); font-size: 12px; margin: 0; }
 
 .add-row { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* --- mapka zabudowy (zakładka Meble) — przyklejona u góry panelu przy przewijaniu --- */
+.cab-map {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  margin: 0 -4px 10px;
+  padding: 6px 4px;
+  background: var(--panel, #fff);
+  border-bottom: 1px solid var(--border);
+}
+.cab-map svg { display: block; width: 100%; max-height: 150px; }
+#furniture-panel .item.cabinet { scroll-margin-top: 175px; } /* przewinięta karta nie chowa się pod mapką */
+
+/* Pasek nagłówka karty korpusu — najwyższy poziom, wyróżniony kolorem (sekcje w środku są niebieskawe) */
+.item.cabinet > .item-head {
+  margin: -8px -8px 8px;
+  padding: 7px 8px;
+  align-items: center;
+  background: #ead7bd;
+  border-bottom: 1px solid #cfae86;
+  border-radius: 2px 5px 0 0;
+}
+.item.cabinet.collapsed > .item-head { margin-bottom: 4px; }
+.item.cabinet.selected > .item-head { background: color-mix(in srgb, var(--accent) 22%, #fff); border-bottom-color: color-mix(in srgb, var(--accent) 45%, #fff); }
+.item.cabinet > .item-head input[type='text'] { font-weight: 600; }
+.drag-handle { flex: none; cursor: grab; color: #8a6a48; font-size: 16px; line-height: 1; padding: 2px 1px; user-select: none; }
+.drag-handle:active { cursor: grabbing; }
+.item.cabinet.dragging { opacity: 0.45; }
+.item.cabinet.drop-before { box-shadow: 0 -3px 0 0 var(--accent); }
+.item.cabinet.drop-after { box-shadow: 0 3px 0 0 var(--accent); }
+.map-space { fill: #f4f3ef; stroke: #94a3b8; stroke-width: 0.4%; vector-effect: non-scaling-stroke; }
+.map-wall { fill: #cbd5e1; stroke: #94a3b8; vector-effect: non-scaling-stroke; }
+.map-top { fill: #b8905e; }
+.map-legs { fill: #6b7280; }
+.map-cab { cursor: pointer; }
+.map-cab rect:not(.map-legs) { fill: #e8dcc8; stroke: #8a7a66; stroke-width: 1.2; vector-effect: non-scaling-stroke; }
+.map-cab:hover rect:not(.map-legs) { fill: #f5ecdc; stroke: var(--accent); stroke-width: 2; }
+.map-cab.sel rect:not(.map-legs) { stroke: #166534; stroke-width: 2; }
+.map-cab.bad rect:not(.map-legs) { stroke: var(--danger); stroke-width: 2; }
+.map-cab text { text-anchor: middle; dominant-baseline: central; fill: #1f2937; font-weight: 600; pointer-events: none; }
+
+/* --- notatki --- */
+.tabs { flex-wrap: wrap; }
+.notes-add { margin-bottom: 10px; }
+.item.note { border-left-color: #eab308; background: #fffbea; }
+.item.note.done { border-left-color: #94a3b8; background: none; }
+.item.note.done textarea { color: var(--muted); text-decoration: line-through; }
+.item.note textarea {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+  color: inherit;
+  resize: vertical;
+  min-height: 60px;
+}
+.note-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 6px; font-size: 12px; }
+.note-target { display: flex; align-items: center; gap: 4px; color: var(--muted); }
+.note-target select { flex: none; max-width: 160px; padding: 2px 5px; }
+.note-date { flex: 1; text-align: right; color: var(--muted); white-space: nowrap; }
 
 /* --- etykiety wymiarów w 3D --- */
 .dim-label {
@@ -570,8 +637,16 @@ body.resizing .viewport { pointer-events: none; }
 .welcome-note { font-size: 13px; color: var(--muted); }
 .welcome-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
 /* --- ekran powitalny: karty wyboru z obrazkami --- */
-.welcome:not(.new-project):not(.legs-dialog):not(.cut-list-dialog):not(.files-dialog):not(.feedback-dialog):not(.settings-dialog):not(.projects-dialog) { max-width: 660px; }
+.welcome:not(.new-project):not(.legs-dialog):not(.cut-list-dialog):not(.files-dialog):not(.feedback-dialog):not(.settings-dialog):not(.projects-dialog):not(.alcove-dialog) { max-width: 660px; }
 .legs-dialog { max-width: 480px; }
+.alcove-dialog { max-width: 440px; }
+.alcove-options { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; }
+.alcove-option { display: flex; align-items: center; gap: 12px; text-align: left; padding: 8px 10px; }
+.alcove-option svg { width: 124px; flex: none; }
+.alcove-option small { display: block; color: var(--muted); }
+.alcove-wall { fill: #cbd5e1; }
+.alcove-other { fill: #f1f5f9; }
+.alcove-pick { fill: #86efac; stroke: #15803d; stroke-width: 1; }
 .legs-dialog-all { margin-top: 10px; font-size: 13px; }
 .legs-dialog-all[hidden] { display: none; }
 .welcome-choices-title { margin: 14px 0 8px; font-size: 15px; }
@@ -769,7 +844,7 @@ button.primary:hover { color: #fff; filter: brightness(1.1); }
 .context-menu-decor .decor-preview-front { fill: #fff; stroke: #9ca3af; }
 .context-menu-decor .decor-preview-lines line { stroke: #4b5563; stroke-width: 1; }
 
-/* --- konto i „Moje projekty” --- */
+/* --- konto: stan zapisu na pasku i okienko „Moje projekty” --- */
 .account-group { gap: 8px; align-items: center; }
 .account-group[hidden] { display: none; }
 .account-btn { font-weight: 600; }
@@ -816,6 +891,8 @@ button.primary:hover { color: #fff; filter: brightness(1.1); }
 .bf-hole label { display: inline-flex; align-items: center; gap: 3px; color: var(--muted); }
 .bf-hole input { width: 62px; }
 .bf-hole-warn { color: var(--danger); font-size: 11px; }
+.bf-hole-pos select { font-size: 12px; padding: 2px 4px; }
+.bf-break { flex-basis: 100%; height: 0; }
 .bf-hole-warn[hidden] { display: none; }
 .bf-add select { max-width: 100%; }
 /* karta korpusu: „Blendy →”, „Blat →” / „+ Dodaj blat” */
@@ -914,3 +991,4 @@ body.has-user-menu .help-group .settings-btn { display: none; }
 .user-menu-note { font-size: 12px; color: var(--muted); margin: 2px 8px 6px; }
 .account-group .save-status { border: none; background: none; padding: 2px 4px; cursor: pointer; }
 .account-group .save-status:hover { text-decoration: underline; }
+.library-login { display: inline-flex; margin-top: 4px; }
