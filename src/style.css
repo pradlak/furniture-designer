@@ -363,6 +363,8 @@ select {
 }
 /* wymiary mebli (zaznaczonego korpusu) — niebieskie, odróżniają się od wymiarów przestrzeni */
 .dim-label-accent { border-color: #2563eb; color: #1d4ed8; }
+/* podpis wymiaru zasłonięty meblem (scene/Viewer.js) */
+.dim-label.dim-occluded { visibility: hidden; }
 
 @media (max-width: 760px) {
   .layout { flex-direction: column-reverse; }
@@ -459,6 +461,9 @@ button.eye.off { opacity: 0.35; text-decoration: line-through; }
 .context-menu-more { margin-left: auto; padding-left: 12px; color: var(--muted); }
 .context-color-input { position: absolute; left: 12px; top: 12px; width: 1px; height: 1px; opacity: 0; pointer-events: none; border: 0; padding: 0; }
 .context-menu-title { font-size: 11px; color: var(--muted); padding: 4px 8px 6px; border-bottom: 1px solid var(--border); margin-bottom: 4px; }
+/* wiersz tylko z informacją (np. wymiary i obrzeże płyty) */
+.context-menu-info { display: flex; align-items: baseline; gap: 8px; padding: 3px 8px; font-size: 12px; max-width: 340px; }
+.context-menu-info + button { margin-top: 4px; border-top: 1px solid var(--border); border-top-left-radius: 0; border-top-right-radius: 0; }
 .context-menu button {
   display: flex;
   align-items: center;
@@ -542,6 +547,7 @@ details.subsection > summary.subsection-title:hover { color: var(--accent); }
 .tabs button { padding: 6px 9px; }
 .item.trim.related, .item.board.related { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent); }
 .add-target { font-style: italic; }
+.cab-depth { color: var(--muted); font-size: 11px; white-space: nowrap; }
 /* pasek sekcji bez rozwijania (np. „Blendy” w karcie korpusu) — wygląda jak nagłówek sekcji;
    do innej zakładki przenosi tylko przycisk na pasku */
 .section-bar {
@@ -780,6 +786,12 @@ button.primary:hover { color: #fff; filter: brightness(1.1); }
 .cut-list-group .check { align-items: flex-start; font-size: 13px; }
 .cut-list-group .check input { margin-top: 3px; }
 .cut-list-group small { color: var(--muted); }
+/* „Które meble” / „Które materiały” — długa lista przewija się w ramce */
+.cut-list-scroll { display: flex; flex-direction: column; gap: 4px; max-height: 150px; overflow-y: auto; }
+.cut-list-group.inactive { opacity: 0.5; }
+/* pole bez formatek przy obecnym wyborze w innych grupach (zależności — ui/cutListDialog.js) */
+.cut-list-group .check.unavailable { opacity: 0.45; cursor: default; }
+.cut-list-group .cut-count { white-space: nowrap; }
 .link-button { border: 0; background: none; padding: 0; color: var(--accent); font-weight: 400; font-size: 12px; cursor: pointer; text-decoration: underline; }
 
 /* --- frez dekoracyjny: wybór wzoru z podglądem --- */
@@ -875,8 +887,22 @@ button.primary:hover { color: #fff; filter: brightness(1.1); }
 #boards-panel { margin-top: 24px; padding-top: 12px; border-top: 1px solid var(--border); }
 .boards-title { margin-top: 0; }
 .bf { margin: 10px 0 0; display: flex; flex-direction: column; gap: 6px; }
-.bf-title { font-weight: 600; font-size: 13px; margin-top: 6px; }
-.bf-title small { font-weight: 400; color: var(--muted); }
+/* nagłówki „Frezy krawędzi” / „Otwory” — pasek jak nagłówki sekcji w karcie korpusu (zakładka Meble) */
+.bf-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 6px;
+  padding: 7px 10px;
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--text, #1f2937);
+  background: color-mix(in srgb, var(--accent) 12%, #f6f7f9);
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border));
+  border-radius: 6px;
+}
+.bf-title::before { content: '▾'; color: var(--accent); font-size: 13px; width: 12px; }
+.bf-title small { font-weight: 400; font-size: 11px; color: var(--muted); }
 .bf-edges { display: flex; flex-direction: column; gap: 4px; }
 .bf-edge { display: grid; grid-template-columns: 48px 1fr auto; align-items: center; gap: 6px; font-size: 12px; }
 .bf-edge-name { color: var(--muted); }

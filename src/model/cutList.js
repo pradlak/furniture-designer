@@ -25,13 +25,37 @@ export const CUT_LIST_PARTS = [
 export const ALL_PARTS = new Set(CUT_LIST_PARTS.map((p) => p.key));
 
 // parts — które rodzaje płyt (klucze z CUT_LIST_PARTS); domyślnie wszystkie.
-export function buildCutList(project, parts = ALL_PARTS) {
+// filter — zawężenie eksportu (okienko „Formatki”); brak pola = bez ograniczenia:
+//   cabinetIds: Set — tylko te korpusy (i blendy dolne / górne / blaty obejmujące choć jeden z nich),
+//   boards: false — bez samodzielnych blatów i półek,
+//   materials: Set — tylko te materiały (nazwy jak na liście formatek, z kolorem, np. „Płyta biała 18 — dąb”).
+// Krawędzie do oklejenia liczone są zawsze dla całego projektu (sąsiednie meble zasłaniają krawędzie).
+export function buildCutList(project, parts = ALL_PARTS, filter = {}) {
+  return mergeRows(collectRows(project, parts, filter));
+}
+
+// Pozycja „Samodzielne blaty i półki” na liście mebli (okienko „Formatki”) — w cabinetIds elementów.
+export const BOARDS_KEY = '__boards';
+
+// Pojedyncze elementy (bez łączenia), każdy z tym, skąd pochodzi — do zależności w okienku „Formatki”:
+// [{ category (klucz z CUT_LIST_PARTS), cabinetIds (korpusy, których dotyczy; samodzielna płyta — [BOARDS_KEY]),
+//    material (nazwa), materialType }].
+export function cutListItems(project) {
+  return collectRows(project, ALL_PARTS, {}).map(({ category, cabinetIds, material, materialType }) => ({ category, cabinetIds, material, materialType }));
+}
+
+function collectRows(project, parts, filter) {
   const rows = [];
   const solids = projectSolids(project);
+  const { cabinetIds, boards: withBoards = true, materials } = filter;
   // milling — opis frezów frontu (uchwytowy / dekoracyjny), dopisywany do kolumny cięć
-  const add = (category, name, owner, material, cut, edgeSet, milling = '') => {
+  // cabIds — korpusy, których dotyczy element (do zależności w okienku „Formatki”)
+  const add = (category, name, owner, material, cut, edgeSet, milling, cabIds) => {
     if (!parts.has(category)) return;
+    if (materials && !materials.has(material.name)) return;
     rows.push({
+      category,
+      cabinetIds: cabIds,
       name,
       owner,
       material: material.name,
@@ -52,15 +76,17 @@ export function buildCutList(project, parts = ALL_PARTS) {
   };
 
   for (const c of project.furniture) {
+    if (cabinetIds && !cabinetIds.has(c.id)) continue;
     for (const p of cabinetPanels(c, project).filter((x) => x.valid)) {
       const set = panelEdgeSet(p, c, project, solids);
       const work = [describeMilling(p), describeHandle(p), describeHinges(p)].filter(Boolean).join('; '); // frezy i otwory frontu
-      add(p.group, p.name, c.name, p.material, panelCutSize({ ...p, edges: edgeCounts(p, p.thicknessAxis, set) }), set, work);
+      add(p.group, p.name, c.name, p.material, panelCutSize({ ...p, edges: edgeCounts(p, p.thicknessAxis, set) }), set, work, [c.id]);
     }
   }
 
   for (const t of project.trims ?? []) {
     if (!parts.has(t.type === 'countertop' ? 'countertop' : 'blend')) continue;
+    if (cabinetIds && !t.cabinetIds.some((id) => cabinetIds.has(id))) continue;
     const material = trimMaterial(t, project);
     const a = trimAllowance(t, project);
     const segments = trimSegments(t, project);
@@ -70,20 +96,23 @@ export function buildCutList(project, parts = ALL_PARTS) {
       const cut = panelCutSize({ ...box, material, edges: edgeCounts(box, TRIM_THICKNESS_AXIS[t.type], set) });
       // blat: frezy krawędzi i otwory (zlew, płyta grzewcza, przepusty…)
       const work = t.type === 'countertop' ? [describeEdges(t.edges), describeHoles(t.holes, seg.width, seg.depth)].filter(Boolean).join('; ') : '';
-      add(t.type === 'countertop' ? 'countertop' : 'blend', t.name || TRIM_TYPES[t.type].label, 'wspólne', material, cut, set, work);
+      add(t.type === 'countertop' ? 'countertop' : 'blend', t.name || TRIM_TYPES[t.type].label, 'wspólne', material, cut, set, work, t.cabinetIds);
     });
   }
 
   // Samodzielne płyty (blaty, półki) — z frezami krawędzi i otworami.
-  for (const b of project.boards ?? []) {
+  for (const b of withBoards ? (project.boards ?? []) : []) {
     const material = boardMaterial(b, project);
     const box = boardBox(b, project);
     const cut = panelCutSize({ ...box, material, edges: { l: 0, w: 0 } });
     const work = [describeEdges(b.edges), describeHoles(b.holes, box.width, box.depth)].filter(Boolean).join('; ');
-    add(b.kind === 'worktop' ? 'countertop' : 'body', b.name, b.kind === 'worktop' ? 'blat samodzielny' : 'półka samodzielna', material, cut, [], work);
+    add(b.kind === 'worktop' ? 'countertop' : 'body', b.name, b.kind === 'worktop' ? 'blat samodzielny' : 'półka samodzielna', material, cut, [], work, [BOARDS_KEY]);
   }
+  return rows;
+}
 
-  // Łączenie jednakowych formatek (nazwy i meble zbieramy w jedną kolumnę).
+// Łączenie jednakowych formatek (nazwy i meble zbieramy w jedną kolumnę).
+function mergeRows(rows) {
   const merged = new Map();
   for (const r of rows) {
     const key = [r.material, r.thickness, r.length, r.width, r.edgesL, r.edgesW, r.band, r.allowance, r.edgeNames, r.shape].join('|');
@@ -93,7 +122,8 @@ export function buildCutList(project, parts = ALL_PARTS) {
       if (!m.names.includes(r.name)) m.names.push(r.name);
       if (!m.owners.includes(r.owner)) m.owners.push(r.owner);
     } else {
-      merged.set(key, { ...r, qty: 1, names: [r.name], owners: [r.owner] });
+      const { category: _category, cabinetIds: _cabinetIds, ...row } = r;
+      merged.set(key, { ...row, qty: 1, names: [r.name], owners: [r.owner] });
     }
   }
   return [...merged.values()].sort(
@@ -102,12 +132,14 @@ export function buildCutList(project, parts = ALL_PARTS) {
 }
 
 // Akcesoria (nóżki, zawiasy, prowadnice, uchwyty) — osobno, bo to nie formatki.
-export function buildAccessories(project) {
+// cabinetIds (Set) — tylko akcesoria tych korpusów; brak — wszystkich.
+export function buildAccessories(project, cabinetIds) {
   const legs = new Map();
   let hinges = 0;
   let slides = 0;
   const handles = new Map(); // nazwa uchwytu (z rozstawem) → ilość
   for (const c of project.furniture) {
+    if (cabinetIds && !cabinetIds.has(c.id)) continue;
     for (const l of cabinetLegs(c, project)) legs.set(l.height, (legs.get(l.height) ?? 0) + 1);
     const fronts = cabinetPanels(c, project).filter((p) => p.valid && p.key.startsWith('front-'));
     const type = c.fronts?.type;
@@ -159,8 +191,8 @@ export const CUT_LIST_NOTES = [
 ];
 
 // Wiersze tabeli formatek: obiekty z kluczami jak w CUT_LIST_COLUMNS (puste komórki — '').
-export function cutListRows(project, parts = ALL_PARTS) {
-  return buildCutList(project, parts).map((r, i) => ({
+export function cutListRows(project, parts = ALL_PARTS, filter = {}) {
+  return buildCutList(project, parts, filter).map((r, i) => ({
     lp: i + 1,
     material: r.material,
     thickness: r.thickness,
@@ -183,8 +215,9 @@ export function cutListRows(project, parts = ALL_PARTS) {
 // CSV: kolumny oddzielone tabulatorami (w Notatniku widać kolumny), przecinek dziesiętny.
 // Kodowanie UTF-16 LE z BOM — Excel otwiera taki plik od razu w kolumnach (niezależnie od ustawień
 // regionalnych) i z polskimi znakami. Zwraca Uint8Array gotowy do zapisu.
-// options: { parts — rodzaje płyt (domyślnie wszystkie), accessories — czy dołączyć akcesoria (domyślnie tak) }.
-export function cutListCsv(project, { parts = ALL_PARTS, accessories: withAccessories = true } = {}) {
+// options: { parts — rodzaje płyt (domyślnie wszystkie), accessories — czy dołączyć akcesoria (domyślnie tak),
+//            filter — które meble i materiały (patrz buildCutList) }.
+export function cutListCsv(project, { parts = ALL_PARTS, accessories: withAccessories = true, filter = {} } = {}) {
   const num = (v) => (typeof v === 'number' ? String(v).replace('.', ',') : String(v ?? ''));
   const cell = (v) => {
     const s = num(v).replace(/(\d)\.(\d)/g, '$1,$2');
@@ -192,10 +225,10 @@ export function cutListCsv(project, { parts = ALL_PARTS, accessories: withAccess
   };
   const row = (cells) => cells.map(cell).join('\t');
   const lines = [row(CUT_LIST_COLUMNS.map((c) => c.title))];
-  const rows = cutListRows(project, parts);
+  const rows = cutListRows(project, parts, filter);
   for (const r of rows) lines.push(row(CUT_LIST_COLUMNS.map((c) => r[c.key])));
   if (!rows.length) lines.pop(); // same akcesoria — bez pustej tabeli formatek
-  const accessories = withAccessories ? buildAccessories(project) : [];
+  const accessories = withAccessories ? buildAccessories(project, filter.cabinetIds) : [];
   if (accessories.length) {
     if (lines.length) lines.push('');
     lines.push(row(['Akcesoria', 'Ilość [szt.]']), ...accessories.map((a) => row([a.name, a.qty])));
@@ -216,11 +249,11 @@ function utf16le(text) {
 
 // XLSX: arkusze „Formatki” (z pogrubionym, zamrożonym nagłówkiem i szerokimi kolumnami),
 // „Akcesoria” i „Objaśnienia”. Zwraca Uint8Array (plik .xlsx). options — jak w cutListCsv.
-export function cutListXlsx(project, { parts = ALL_PARTS, accessories: withAccessories = true } = {}) {
+export function cutListXlsx(project, { parts = ALL_PARTS, accessories: withAccessories = true, filter = {} } = {}) {
   const header = CUT_LIST_COLUMNS.map((c) => c.title);
-  const rows = cutListRows(project, parts).map((r) => CUT_LIST_COLUMNS.map((c) => r[c.key]));
+  const rows = cutListRows(project, parts, filter).map((r) => CUT_LIST_COLUMNS.map((c) => r[c.key]));
   const sheets = rows.length ? [{ name: 'Formatki', header, rows, widths: CUT_LIST_COLUMNS.map((c) => c.width) }] : [];
-  const accessories = withAccessories ? buildAccessories(project) : [];
+  const accessories = withAccessories ? buildAccessories(project, filter.cabinetIds) : [];
   if (accessories.length) {
     sheets.push({ name: 'Akcesoria', header: ['Akcesoria', 'Ilość [szt.]'], rows: accessories.map((a) => [a.name, a.qty]), widths: [50, 12] });
   }
@@ -249,11 +282,11 @@ export const MEBLEPL_CUTTING = {
 };
 
 // → [{ material, type, csv: Uint8Array, count, outOfRange: [opis formatki] }] — po jednym na materiał.
-export function cutListMeblePl(project, { parts = ALL_PARTS } = {}) {
+export function cutListMeblePl(project, { parts = ALL_PARTS, filter = {} } = {}) {
   const band = (n) => (n >= 2 ? '=' : n === 1 ? '-' : '');
   const clean = (s) => String(s).replace(/[;\r\n"]/g, ' ').trim();
   const byMaterial = new Map();
-  for (const r of buildCutList(project, parts).filter((x) => x.materialType in MEBLEPL_CUTTING)) {
+  for (const r of buildCutList(project, parts, filter).filter((x) => x.materialType in MEBLEPL_CUTTING)) {
     if (!byMaterial.has(r.material)) byMaterial.set(r.material, []);
     byMaterial.get(r.material).push(r);
   }

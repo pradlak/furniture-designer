@@ -1,4 +1,4 @@
-import { panelCutSize } from '../model/furniture.js';
+import { panelCutSize, cabinetPanels } from '../model/furniture.js';
 import { projectSolids, trimEdgeSet, edgeCounts, TRIM_THICKNESS_AXIS, EDGE_LABELS } from '../model/edges.js';
 import {
   createTrim,
@@ -171,6 +171,7 @@ export function createTrimsPanel(root, store, ui, { mode = 'blends' } = {}) {
             <label class="check small">
               <input type="checkbox" data-trim-cabinet="${c.id}" />
               <span class="cab-name" data-cab-name="${c.id}">${escapeHtml(c.name)}</span>
+              ${t.type === 'countertop' ? `<small class="cab-depth" data-cab-depth="${c.id}" title="Głębokość korpusu (bez frontu)"></small>` : ''}
             </label>`,
               )
               .join('') || '<span>brak korpusów</span>'
@@ -240,6 +241,11 @@ export function createTrimsPanel(root, store, ui, { mode = 'blends' } = {}) {
       el.querySelectorAll('[data-trim-cabinet]').forEach((cb) => (cb.checked = t.cabinetIds.includes(cb.dataset.trimCabinet)));
       el.querySelectorAll('[data-cab-name]').forEach((span) => {
         span.textContent = project.furniture.find((c) => c.id === span.dataset.cabName)?.name ?? '';
+      });
+      // blat: głębokość każdego korpusu obok nazwy — do porównania z głębokością blatu
+      el.querySelectorAll('[data-cab-depth]').forEach((span) => {
+        const c = project.furniture.find((f) => f.id === span.dataset.cabDepth);
+        span.textContent = c ? `(gł. ${round1(c.depth)} mm)` : '';
       });
 
       const box = trimBox(t, project);
@@ -329,7 +335,10 @@ export function createTrimsPanel(root, store, ui, { mode = 'blends' } = {}) {
       el.classList.toggle('related', !!(selected && t?.cabinetIds.includes(selected.id)) || picked.includes(`trim:${el.dataset.id}`));
     });
     root.querySelectorAll('[data-kind="side-blends"]').forEach((el) => {
-      const sidePicked = picked.some((id) => id.startsWith(`${el.dataset.id}:`) && !id.endsWith(':legs'));
+      // tylko blendy boczne (płyty z grupy „blend”) — nie np. bok korpusu zaznaczony z menu w 3D
+      const cab = project.furniture.find((c) => c.id === el.dataset.id);
+      const blendKeys = cab ? new Set(cabinetPanels(cab, project).filter((p) => p.group === 'blend').map((p) => `${cab.id}:${p.key}`)) : new Set();
+      const sidePicked = picked.some((id) => blendKeys.has(id));
       el.classList.toggle('related', el.dataset.id === selected?.id || sidePicked);
     });
     const target = root.querySelector('.add-target');

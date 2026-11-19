@@ -19,11 +19,14 @@ import { COLOR_PRESETS } from '../model/materials.js';
 import { WALL_DECORS } from '../model/space.js';
 import { resolveHoles } from '../model/boardFeatures.js';
 import { FRONT_DECORS, decorPreviewSvg } from '../model/decor.js';
+import { panelInfoMenu } from '../ui/panelInfo.js';
 
 const CLICK_TOLERANCE_PX = 4;
 
 // Obsługa myszy w widoku 3D:
-//  - klik w korpus zaznacza go, klik w puste miejsce odznacza,
+//  - klik w korpus zaznacza go, klik w puste miejsce odznacza; kolejny klik w zaznaczony korpus zaznacza
+//    samą klikniętą płytę (bok, wieniec, półkę…) — z jej wymiarami, a prawy klik pokazuje jej obrzeże;
+//    klik w zaznaczoną płytę wraca do całego korpusu,
 //  - przeciąganie korpusu przesuwa go po podłodze (X/Z),
 //    z Shift — w pionie (Y), z Alt — bez przyciągania do ścian i innych mebli,
 //  - przeciąganie półki w górę / w dół zmienia jej wysokość w korpusie,
@@ -141,7 +144,8 @@ export function attachCabinetInteraction(viewer, store, ui) {
 
   // Menu korpusu (albo grupy zaznaczonej Ctrl + klik): dosuń w lewo / w prawo / do tyłu / w dół do najbliższego
   // korpusu, przeszkody albo ściany; rozszerz w lewo / w prawo (jeden korpus); dopasuj do wnęki, duplikuj, usuń.
-  function showCabinetMenu(cabinetId, clientX, clientY) {
+  // panelKey — kliknięta płyta korpusu (np. „left” — bok lewy): na górze menu „wymiary i obrzeże” tej płyty.
+  function showCabinetMenu(cabinetId, clientX, clientY, panelKey = null) {
     const project = store.get();
     const cabinet = project.furniture.find((c) => c.id === cabinetId);
     if (!cabinet) return;
@@ -149,6 +153,8 @@ export function attachCabinetInteraction(viewer, store, ui) {
     const ids = selected.has(cabinetId) && selected.size > 1 ? [...selected] : [cabinetId];
     const many = ids.length > 1;
     const items = [];
+    const panelItem = panelInfoItem(cabinetId, panelKey);
+    if (panelItem) items.push(panelItem);
     const mm = (v) => `${Math.round(Math.abs(v))} mm`;
     if (!many) {
       for (const [side, dir, icon] of [['left', 'w lewo', '⇤'], ['right', 'w prawo', '⇥']]) {
@@ -168,7 +174,7 @@ export function attachCabinetInteraction(viewer, store, ui) {
       if (Math.abs(t?.delta ?? 0) >= 0.5)
         items.push({ icon, label: `${many ? 'Dosuń wszystkie' : 'Dosuń'} ${dir} do ${t.label} (${mm(t.delta)})`, run: () => store.set((p) => slideCabinets(p, ids, direction)) });
     }
-    if (!items.length) items.push({ icon: '·', label: 'Dotyka sąsiadów i ścian — nie ma dokąd dosunąć', run: () => {} });
+    if (items.length === (panelItem ? 1 : 0)) items.push({ icon: '·', label: 'Dotyka sąsiadów i ścian — nie ma dokąd dosunąć', run: () => {} });
     if (!many) {
       items.push({ icon: '⤢', label: 'Dopasuj do wnęki', run: () => store.set((p) => ({ ...p, furniture: p.furniture.map((c) => (c.id === cabinetId ? fitCabinetToSpace(c, p) : c)) })) });
       items.push({
@@ -192,6 +198,44 @@ export function attachCabinetInteraction(viewer, store, ui) {
     });
     const title = many ? `Zaznaczone korpusy: ${ids.length}` : `${cabinet.name} · ${cabinet.width} mm`;
     menu.show(clientX, clientY, title, items);
+  }
+
+  // Zaznaczenie jednej płyty korpusu (bok, wieniec, półka, front, blenda boczna): wyróżniona w 3D,
+  // z wymiarami (jak zaznaczony front) — korpus zostaje wybrany w panelu.
+  function selectPanel(cabinetId, panelKey) {
+    const id = `${cabinetId}:${panelKey}`;
+    const front = panelKey.startsWith('front-');
+    ui.set({
+      ...ui.get(),
+      selectedId: cabinetId,
+      selectedIds: [cabinetId],
+      selectedFronts: front ? [id] : [],
+      selectedBlends: front ? [] : [id],
+      selectedHole: null,
+      selectedObstacle: null,
+    });
+  }
+
+  // Pozycja menu: „Bok lewy — wymiary i obrzeże…” — zaznacza płytę i pokazuje jej wymiary i obrzeże.
+  function panelInfoItem(cabinetId, panelKey) {
+    if (!panelKey || panelKey.startsWith('leg-')) return null;
+    const cabinet = store.get().furniture.find((c) => c.id === cabinetId);
+    const panel = cabinet && cabinetPanels(cabinet, store.get()).find((p) => p.key === panelKey);
+    if (!panel) return null;
+    return {
+      icon: '📐',
+      label: `${panel.name} — zaznacz, wymiary i obrzeże…`,
+      run: () => {
+        selectPanel(cabinetId, panelKey);
+        return panelInfoMenu(store, cabinetId, panelKey);
+      },
+    };
+  }
+
+  function showPanelInfo(cabinetId, panelKey, clientX, clientY) {
+    selectPanel(cabinetId, panelKey);
+    const m = panelInfoMenu(store, cabinetId, panelKey);
+    if (m) menu.show(clientX, clientY, m.title, m.items);
   }
 
   // Zaznaczenie występu ściany (zamiast korpusów, frontów, blend i otworów).
@@ -408,7 +452,11 @@ export function attachCabinetInteraction(viewer, store, ui) {
     const parts = [...new Set([...ids, ...selectedParts()])];
     const multi = parts.length > 1;
     const title = multi ? `Zaznaczone: ${partsLabel(parts)}` : nameOf(ids[0]);
+    // jedna blenda boczna (płyta korpusu) — także jej wymiary i obrzeże
+    const [cabId, key] = ids[0].split(':');
+    const info = !multi && !ids[0].startsWith('trim:') && !ids[0].startsWith('board:') ? panelInfoItem(cabId, key) : null;
     menu.show(clientX, clientY, title, [
+      ...(info ? [info] : []),
       colorItem(`Zmień kolor${multi ? ' wszystkich' : ''}…`, multi ? `Kolor: ${partsLabel(parts)}` : `Kolor: ${nameOf(ids[0])}`, 'jak w korpusie / materiale', parts),
     ]);
   }
@@ -473,6 +521,11 @@ export function attachCabinetInteraction(viewer, store, ui) {
         }),
       });
     }
+    if (!many) {
+      const [cabId, key] = ids[0].split(':');
+      const info = panelInfoItem(cabId, key);
+      if (info) items.push({ ...info, label: 'Wymiary i obrzeże…' });
+    }
     const title = many ? `Zaznaczone fronty: ${fronts.length}` : fronts[0].panel.name;
     menu.show(clientX, clientY, title, items);
   }
@@ -531,12 +584,18 @@ export function attachCabinetInteraction(viewer, store, ui) {
       return;
     }
     if (hit?.id && !isFront(hit)) {
+      // Prawy klik na zaznaczonej płycie korpusu (np. boku wybranym z menu) — od razu jej wymiary i obrzeże.
+      if (hit.panelKey && (ui.get().selectedBlends ?? []).includes(`${hit.id}:${hit.panelKey}`)) {
+        showPanelInfo(hit.id, hit.panelKey, e.clientX, e.clientY);
+        return;
+      }
       // Prawy klik na korpusie (boku, wieńcu, półce, nóżkach…): menu korpusu — albo całej grupy, gdy kliknięty
-      // korpus jest w zaznaczeniu (Ctrl + klik); inny korpus — zaznaczamy tylko jego.
+      // korpus jest w zaznaczeniu (Ctrl + klik); inny korpus — zaznaczamy tylko jego. Na górze menu —
+      // wymiary i obrzeże klikniętej płyty.
       if (!selectedCabinetIds(ui.get()).has(hit.id)) {
         ui.set({ ...ui.get(), selectedId: hit.id, selectedIds: [hit.id], selectedFronts: [], selectedBlends: [] }, { reveal: true });
       }
-      showCabinetMenu(hit.id, e.clientX, e.clientY);
+      showCabinetMenu(hit.id, e.clientX, e.clientY, hit.panelKey);
       return;
     }
     if (!isFront(hit)) return;
@@ -637,10 +696,21 @@ export function attachCabinetInteraction(viewer, store, ui) {
         el.setPointerCapture(e.pointerId);
         return;
       }
-      ui.set(
-        { ...ui.get(), selectedId: hit.id, selectedIds: [hit.id], selectedFronts: frontId ? [frontId] : [], selectedBlends: blendId ? [blendId] : [] },
-        { reveal: true },
-      );
+      // Klik w płytę już zaznaczonego korpusu (bok, wieniec, półka…) — zaznacza samą tę płytę (po puszczeniu
+      // przycisku, bez ruchu); klik w zaznaczoną płytę — z powrotem cały korpus. Przeciąganie dalej przesuwa
+      // korpus (półkę), więc zaznaczenia przy wciśnięciu nie zmieniamy.
+      const before = ui.get();
+      const bodyPanel = !!hit.panelKey && !frontId && !blendId;
+      const drill =
+        bodyPanel && before.selectedId === hit.id && selectedCabinetIds(before).size === 1
+          ? { cabinetId: hit.id, panelKey: hit.panelKey, again: (before.selectedBlends ?? []).includes(`${hit.id}:${hit.panelKey}`) }
+          : null;
+      if (!drill) {
+        ui.set(
+          { ...before, selectedId: hit.id, selectedIds: [hit.id], selectedFronts: frontId ? [frontId] : [], selectedBlends: blendId ? [blendId] : [] },
+          { reveal: true },
+        );
+      }
       const project = store.get();
       const cabinet = project.furniture.find((c) => c.id === hit.id);
       const shelfHit = isShelf(hit);
@@ -689,6 +759,7 @@ export function attachCabinetInteraction(viewer, store, ui) {
       } else {
         drag = { id: hit.id, plane, start, from: { x: cabinet.x, y: cabinet.y, z: cabinet.z }, vertical: e.shiftKey };
       }
+      if (drill) drag.drill = drill;
       viewer.controls.enabled = false;
       el.setPointerCapture(e.pointerId);
     },
@@ -780,6 +851,12 @@ export function attachCabinetInteraction(viewer, store, ui) {
   el.addEventListener('pointerup', (e) => {
     const moved = down && Math.hypot(e.clientX - down.x, e.clientY - down.y) > CLICK_TOLERANCE_PX;
     if (drag) {
+      // klik (bez ruchu) w płytę zaznaczonego korpusu — zaznaczenie samej płyty albo z powrotem korpusu
+      if (drag.drill && !moved) {
+        const { cabinetId, panelKey, again } = drag.drill;
+        if (again) ui.set({ ...ui.get(), selectedId: cabinetId, selectedIds: [cabinetId], selectedFronts: [], selectedBlends: [] });
+        else selectPanel(cabinetId, panelKey);
+      }
       el.style.cursor = drag.shelfId ? 'ns-resize' : drag.frontId ? 'pointer' : 'grab';
       drag = null;
       viewer.controls.enabled = true;

@@ -69,8 +69,31 @@ export class Viewer {
       this.animateFocus(dt);
       this.controls.update();
       this.renderer.render(this.scene, this.camera);
+      this.updateLabelOcclusion();
       this.labelRenderer.render(this.scene, this.camera);
     });
+  }
+
+  // Podpisy wymiarów to elementy HTML nad obrazem 3D — zawsze byłyby na wierzchu. Podpis zasłonięty
+  // meblem (między kamerą a podpisem jest płyta) chowamy; linie wymiarowe chowa sam WebGL (test głębi).
+  updateLabelOcclusion() {
+    if (!this.labels?.length || !this.occluders?.length) return;
+    this.raycaster ??= new THREE.Raycaster();
+    const cam = this.camera.position;
+    const pos = new THREE.Vector3();
+    const shown = (o) => {
+      for (let x = o; x; x = x.parent) if (!x.visible) return false;
+      return true;
+    };
+    for (const label of this.labels) {
+      label.getWorldPosition(pos);
+      const dir = pos.sub(cam);
+      const dist = dir.length();
+      this.raycaster.set(cam, dir.normalize());
+      this.raycaster.far = Math.max(0, dist - 0.02); // 2 cm luzu — podpis tuż przy płycie nie miga
+      const hidden = this.raycaster.intersectObjects(this.occluders, false).some((h) => shown(h.object));
+      label.element.classList.toggle('dim-occluded', hidden);
+    }
   }
 
   // Fronty dochodzą do stanu docelowego (otwarty / zamknięty) w FRONT_ANIMATION sekund.
@@ -133,6 +156,16 @@ export class Viewer {
     });
     this.spaceGroup.add(this.furnitureGroup);
     this.scene.add(this.spaceGroup);
+    // podpisy wymiarów i bryły mebli, które mogą je zasłaniać (bez półprzezroczystych — przez nie widać)
+    this.labels = [];
+    this.spaceGroup.traverse((o) => o.isCSS2DObject && this.labels.push(o));
+    this.occluders = [];
+    this.furnitureGroup.traverse((o) => {
+      if (!o.isMesh) return;
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      if (mats.every((m) => m.transparent && m.opacity < 0.6)) return;
+      this.occluders.push(o);
+    });
     if (first || refit) this.setView('perspective');
   }
 

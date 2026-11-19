@@ -787,7 +787,7 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
       el.classList.toggle('has-issues', issues.length > 0);
       // Podsumowanie widoczne w zwiniętej karcie.
       el.querySelector('.card-sum').textContent =
-        `${c.width} × ${c.height} × ${c.depth} mm` +
+        `szer. ${c.width} × wys. ${c.height} × gł. ${c.depth} mm` +
         (issues.length ? ` · ⚠ ${issues.length} ${issues.length === 1 ? 'problem' : issues.length < 5 ? 'problemy' : 'problemów'}` : '');
       el.querySelector('.issues').innerHTML = issues.length
         ? issues.map((i) => `<li>${escapeHtml(i)}</li>`).join('')

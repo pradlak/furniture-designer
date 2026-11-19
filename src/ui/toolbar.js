@@ -1,5 +1,5 @@
 import { createDefaultProject, normalizeProject } from '../model/project.js';
-import { cutListCsv, cutListXlsx, cutListMeblePl, MEBLEPL_LIMITS, MEBLEPL_CUTTING } from '../model/cutList.js';
+import { cutListCsv, cutListXlsx, cutListMeblePl, cutListRows, buildAccessories, MEBLEPL_LIMITS, MEBLEPL_CUTTING } from '../model/cutList.js';
 import { createCutListDialog } from './cutListDialog.js';
 import { createFilesDialog, svgToPng } from './filesDialog.js';
 import { mdfOrderItems, mdfOrderXlsx, mdfDrawingSvg } from '../model/mdfOrder.js';
@@ -78,7 +78,7 @@ export function createToolbar(root, store, viewer, { onHelp, onNew, onFeedback, 
     if (action === 'import') fileInput.click();
     if (action === 'cut-list') {
       if (!store.get().furniture.length) alert('Projekt nie ma jeszcze żadnych mebli — dodaj korpus w zakładce „Meble”.');
-      else cutListDialog.open();
+      else cutListDialog.open(store.get());
     }
     if (action === 'help') onHelp?.();
     if (action === 'feedback') onFeedback?.();
@@ -164,10 +164,10 @@ function track(event, data) {
 }
 
 // format: 'xlsx' (Excel) albo 'csv' (tabulatory, UTF-16 — Excel otwiera go od razu w kolumnach);
-// parts / accessories — co wyeksportować (patrz cutListDialog).
-function downloadCutList(project, { format, parts, accessories }) {
+// parts / accessories — co wyeksportować, filter — które meble i materiały (patrz cutListDialog).
+function downloadCutList(project, { format, parts, accessories, filter = {} }) {
   if (format === 'meblepl') {
-    downloadMeblePl(project, parts);
+    downloadMeblePl(project, parts, filter);
     return;
   }
   if (format === 'mdf') {
@@ -179,7 +179,11 @@ function downloadCutList(project, { format, parts, accessories }) {
     return;
   }
   const xlsx = format === 'xlsx';
-  const options = { parts, accessories };
+  const options = { parts, accessories, filter };
+  if (!cutListRows(project, parts, filter).length && !(accessories && buildAccessories(project, filter.cabinetIds).length)) {
+    alert('Wśród wybranych mebli i materiałów nie ma nic do eksportu — zmień wybór w okienku „Formatki”.');
+    return;
+  }
   const blob = xlsx
     ? new Blob([cutListXlsx(project, options)], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
     : new Blob([cutListCsv(project, options)], { type: 'text/csv;charset=utf-16le' });
@@ -196,10 +200,10 @@ const fileSafe = (s) => s.replace(/[^\p{L}\p{N}_-]+/gu, '_');
 
 // Rozkrój na meble.pl: płyty meblowe i HDF (plecy) — także fronty i blendy, jeśli są z płyty meblowej;
 // po jednym pliku na płytę (dekor).
-function downloadMeblePl(project, parts) {
-  const files = cutListMeblePl(project, { parts });
+function downloadMeblePl(project, parts, filter = {}) {
+  const files = cutListMeblePl(project, { parts, filter });
   if (!files.length) {
-    alert('Wśród wybranych elementów nie ma płyt meblowych (laminowanych) ani HDF. Fronty i blendy z MDF lakierowanego zapiszesz w formacie „Fronty i blendy MDF”.');
+    alert('Wśród wybranych elementów, mebli i materiałów nie ma płyt meblowych (laminowanych) ani HDF. Fronty i blendy z MDF lakierowanego zapiszesz w formacie „Fronty i blendy MDF”.');
     return;
   }
   const bad = files.flatMap((f) => f.outOfRange);

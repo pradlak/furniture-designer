@@ -61,10 +61,12 @@ function wallSlabs(space) {
 }
 
 // Wszystkie bryły projektu, które mogą zasłaniać krawędzie (liczone raz na odświeżenie).
+// Bez frontów: drzwi się otwierają, szuflady wysuwają — krawędzie korpusu za frontem (np. przód
+// wieńca dolnego, boków, półek) widać wtedy, więc też dostają obrzeże.
 export function projectSolids(project) {
   const solids = [];
   for (const c of project.furniture) {
-    for (const p of cabinetPanels(c, project)) if (p.valid) solids.push({ ...p, id: `${c.id}:${p.key}` });
+    for (const p of cabinetPanels(c, project)) if (p.valid && p.group !== 'front') solids.push({ ...p, id: `${c.id}:${p.key}` });
   }
   for (const t of project.trims ?? []) {
     trimSegments(t, project).forEach((s, i) => solids.push({ ...s, id: `trim:${t.id}:${i}` }));
@@ -74,10 +76,29 @@ export function projectSolids(project) {
   return solids;
 }
 
+// Górna krawędź przykryta z góry: nad nią (najwyżej COVER_ABOVE mm wyżej) leży coś, co zakrywa ją
+// w ≥ 90% — np. blat nad niższym korpusem (blat leży na najwyższym korpusie, więc nad niższym jest
+// szpara) albo korpus bez nóżek obok korpusów na nóżkach. Takiej krawędzi nie widać.
+const COVER_ABOVE = 100;
+function coveredFromAbove(box, selfId, solids) {
+  const top = box.y + box.height;
+  const area = box.width * box.depth;
+  if (area <= 0) return false;
+  let covered = 0;
+  for (const s of solids) {
+    if (s.id === selfId || s.y < top - 0.01 || s.y > top + COVER_ABOVE) continue;
+    const w = Math.min(box.x + box.width, s.x + s.width) - Math.max(box.x, s.x);
+    const d = Math.min(box.z + box.depth, s.z + s.depth) - Math.max(box.z, s.z);
+    if (w > 0 && d > 0) covered += w * d;
+  }
+  return covered / area >= COVERED;
+}
+
 // Widoczne krawędzie bryły (do domyślnego obrzeża).
 export function visibleEdges(box, thicknessAxis, selfId, solids) {
   return edgeKeys(thicknessAxis).filter((key) => {
     if (key === 'yMin') return false; // krawędzie od spodu — domyślnie bez obrzeża
+    if (key === 'yMax' && coveredFromAbove(box, selfId, solids)) return false;
     const probe = probeBox(box, key);
     const volume = probe.width * probe.height * probe.depth;
     if (volume <= 0) return false;
@@ -88,11 +109,12 @@ export function visibleEdges(box, thicknessAxis, selfId, solids) {
 }
 
 // Oklejone krawędzie płyty korpusu: ręczny wybór (panelOverrides[key].edgeSet) albo widoczne.
-// Poprzeczki usztywniające są w środku korpusu — domyślnie bez obrzeża.
+// Poprzeczki tylne (wzmocnienia) — domyślnie obrzeże u góry i u dołu: długie krawędzie widać po otwarciu
+// frontu, a boki stykają się z bokami korpusu.
 export function panelEdgeSet(panel, cabinet, project, solids) {
   const manual = cabinet.panelOverrides?.[panel.key]?.edgeSet;
   if (Array.isArray(manual)) return manual;
-  if (panel.key.startsWith('stiff-')) return [];
+  if (panel.key.startsWith('stiff-')) return ['yMax', 'yMin'].filter((k) => edgeKeys(panel.thicknessAxis).includes(k));
   // Półka: oklejamy tylko przód (boki stykają się z bokami korpusu, tył — z plecami / jest niewidoczny).
   if (panel.key.startsWith('shelf-')) return ['zMax'];
   // Front: widoczny ze wszystkich stron — oklejamy wszystkie cztery krawędzie.
@@ -100,6 +122,10 @@ export function panelEdgeSet(panel, cabinet, project, solids) {
   const edges = visibleEdges(panel, panel.thicknessAxis, `${cabinet.id}:${panel.key}`, solids ?? projectSolids(project));
   // Panel przy ścianie: tylna krawędź jest schowana między ścianą a blendą boczną.
   if (panel.key === 'wallPanelLeft' || panel.key === 'wallPanelRight') return edges.filter((k) => k !== 'zMin');
+  // Korpus z plecami (HDF albo z płyty): tylne krawędzie boków i wieńców są z tyłu mebla, przy plecach —
+  // bez obrzeża. (Plecy HDF są mniejsze od korpusu o 5 mm z każdej strony, więc samo sprawdzanie
+  // zasłonięcia uznałoby tylną krawędź boku za widoczną.) Ręcznie można ją okleić w karcie korpusu.
+  if (cabinet.backType !== 'none') return edges.filter((k) => k !== 'zMin');
   return edges;
 }
 

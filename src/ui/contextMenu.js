@@ -4,6 +4,8 @@ import { escapeHtml } from './dom.js';
 // znika po wybraniu akcji, kliknięciu obok, Esc albo przewinięciu.
 // items: [{ label, icon?, run }] albo [{ label, icon?, submenu: () => ({ title, items }) }] — podlista
 // (np. kolory) pokazuje się w tym samym miejscu zamiast menu. icon — tekst albo HTML (np. kółko koloru).
+// [{ label, info: true }] — wiersz tylko z informacją (nie do kliknięcia), np. wymiary płyty.
+// run może zwrócić { title, items } — menu zostaje otwarte z nową zawartością (np. po przełączeniu obrzeża).
 export function createContextMenu(container) {
   const menu = document.createElement('div');
   menu.className = 'context-menu';
@@ -26,7 +28,9 @@ export function createContextMenu(container) {
       items
         .map(
           (it, i) =>
-            `<button type="button" role="menuitem" data-menu-item="${i}">${it.icon ? `<span class="context-menu-icon">${it.icon}</span>` : ''}${escapeHtml(it.label)}${it.submenu ? '<span class="context-menu-more">›</span>' : ''}</button>`,
+            it.info
+              ? `<div class="context-menu-info">${it.icon ? `<span class="context-menu-icon">${it.icon}</span>` : ''}<span>${escapeHtml(it.label)}</span></div>`
+              : `<button type="button" role="menuitem" data-menu-item="${i}">${it.icon ? `<span class="context-menu-icon">${it.icon}</span>` : ''}${escapeHtml(it.label)}${it.submenu ? '<span class="context-menu-more">›</span>' : ''}</button>`,
         )
         .join('');
     menu.hidden = false;
@@ -50,7 +54,8 @@ export function createContextMenu(container) {
       return;
     }
     hide();
-    action?.run();
+    const next = action?.run();
+    if (next?.items) show(at.x, at.y, next.title, next.items);
   });
   // zamykanie: klik poza menu, Esc, kółko myszy (obrót / przybliżenie widoku)
   document.addEventListener('pointerdown', (e) => {
