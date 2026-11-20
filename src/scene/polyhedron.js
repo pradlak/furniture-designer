@@ -106,3 +106,40 @@ export function facesToEdgePositions(faces, transform) {
   }
   return positions;
 }
+
+// Ściana o zadanej normalnej na zewnątrz (punkty ułożone zgodnie z nią) — do budowania brył spoza boxPolyhedron.
+export const orientedFace = (tag, points, outward) => face(tag, points, outward);
+
+// Pionowy graniastosłup nad trójkątem podłogi [[x, z] ×3] (mm) wysokości h: podłoga, sufit i boki
+// ze znacznikiem 'inner' (boki dzielące wnętrze — nie są ścianami, pomijamy je przy rysowaniu).
+export function prismPolyhedron(tri, h) {
+  const P = (x, y, z) => new THREE.Vector3(x, y, z);
+  const cx = (tri[0][0] + tri[1][0] + tri[2][0]) / 3;
+  const cz = (tri[0][1] + tri[1][1] + tri[2][1]) / 3;
+  const faces = [
+    face('floor', tri.map(([x, z]) => P(x, 0, z)), P(0, -1, 0)),
+    face('ceiling', tri.map(([x, z]) => P(x, h, z)), P(0, 1, 0)),
+  ];
+  for (let i = 0; i < 3; i++) {
+    const [ax, az] = tri[i];
+    const [bx, bz] = tri[(i + 1) % 3];
+    const out = P((ax + bx) / 2 - cx, 0, (az + bz) / 2 - cz);
+    faces.push(face('inner', [P(ax, 0, az), P(bx, 0, bz), P(bx, h, bz), P(ax, h, az)], out));
+  }
+  return faces;
+}
+
+// Przycina płaski wielokąt (Vector3[]) półprzestrzenią normal · p <= offset.
+export function clipPolygon(points, normal, offset) {
+  const dist = (p) => normal.dot(p) - offset;
+  const out = [];
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i];
+    const q = points[(i + 1) % points.length];
+    const dp = dist(p);
+    const dq = dist(q);
+    if (dp <= EPS) out.push(p);
+    if ((dp < -EPS && dq > EPS) || (dp > EPS && dq < -EPS)) out.push(p.clone().lerp(q, dp / (dp - dq)));
+  }
+  return out;
+}

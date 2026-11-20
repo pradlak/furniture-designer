@@ -11,10 +11,23 @@ import {
   isObstacleOutside,
   slopeAngle,
   runFromAngle,
+  OUTLINE_PRESETS,
+  applyOutlinePreset,
 } from '../model/space.js';
+import {
+  spaceOutline,
+  outlineEdges,
+  edgeLength,
+  isFrontPoint,
+  canRemovePoint,
+  insertPoint,
+  cleanOutline,
+  selfIntersects,
+  resizeOutline,
+} from '../model/outline.js';
 import { escapeHtml, numberField, readNumberInput, setIfNotFocused, round1, commitEmptyAsZero } from './dom.js';
 import { createCardCollapse, COLLAPSE_BUTTON, COLLAPSE_ALL_BUTTONS } from './collapsible.js';
-import { updateSpaceRefit } from '../model/layout.js';
+import { updateSpaceRefit, refillRows, refillDepth } from '../model/layout.js';
 
 const SPACE_FIELDS = [
   { key: 'width', label: 'Szerokość' },
@@ -46,10 +59,11 @@ export function createSpacePanel(root, store) {
   const cardCollapse = createCardCollapse(root); // zwijane karty skosów i przeszkód (jak karty korpusów)
 
   const structureKey = ({ space }) =>
-    [...space.slopes.map((s) => s.id), '#', ...space.obstacles.map((o) => o.id)].join('|');
+    [...space.slopes.map((s) => s.id), '#', `outline:${space.outline?.length ?? 0}`, '#', ...space.obstacles.map((o) => o.id)].join('|');
 
   // Po każdej zmianie przestrzeni (wymiary, skosy) korpusy z wysokością automatyczną dopasowują się same.
-  const updateSpace = (fn) => store.set((p) => updateSpaceRefit(p, fn));
+  // (zmiana szerokości / głębokości — korpusy od ściany do ściany wypełniają nowe wymiary)
+  const updateSpace = (fn) => store.set((p) => refillDepth(p, refillRows(p, updateSpaceRefit(p, fn))));
   const updateItem = (kind, id, patch) =>
     updateSpace((s) => ({
       ...s,
@@ -109,6 +123,22 @@ export function createSpacePanel(root, store) {
         <button type="button" data-action="add-slope">+ Skos</button>
       </div>
 
+      <h3>Kształt ścian</h3>
+      <p class="hint">Ściany nie muszą stać pod kątem prostym. Kształt podłogi (widok z góry) wyznaczają punkty —
+        można je dodawać, przesuwać i usuwać, np. skośna ściana, ścięty narożnik, wnęka w kształcie litery L.
+        Punkty na przodzie (od tyłu = głębokość) tworzą otwarty przód przestrzeni.</p>
+      <p class="hint"><b>Myszką w widoku 3D</b> (gdy ta zakładka jest otwarta): przeciągaj niebieskie kulki (punkty);
+        zielona kulka na środku ściany — przeciągnij, żeby dodać tam punkt; <b>fioletowy krążek</b> — przesuwa całą ścianę
+        (lewą, prawą, tylną, sufit albo ścianę z punktów; meble zostają na miejscu). Prawy klik w punkt — „Usuń punkt”,
+        w ścianę — „Dodaj punkt tutaj” i gotowe kształty. Alt — bez przyciągania.</p>
+      <div class="plan-preview" title="Rzut z góry: tylna ściana u góry, przód przestrzeni na dole"></div>
+      <div class="outline-points">${renderPoints(space)}</div>
+      <div class="add-row">
+        ${OUTLINE_PRESETS.map((p) => `<button type="button" data-outline-preset="${p.key}" title="${p.title}">+ ${p.label}</button>`).join('')}
+        <button type="button" data-action="outline-add-point" title="Nowy punkt na środku najdłuższej ściany">+ Punkt</button>
+        ${space.outline ? '<button type="button" data-action="outline-reset">Prostokąt</button>' : ''}
+      </div>
+
       <h3>Przeszkody</h3>
       <p class="hint">Elementy zajmujące miejsce w przestrzeni: listwy, rury, parapety, gniazdka…
         Pozycja to narożnik lewy‑dolny‑tylny przeszkody. <b>Kominek / występ ściany</b> dzieli przestrzeń na wnęki
@@ -149,6 +179,56 @@ export function createSpacePanel(root, store) {
       </div>`;
   }
 
+  // Lista punktów kształtu podłogi: od lewej (X), od tyłu (Z), długość ściany do następnego punktu, usuń.
+  function renderPoints(space) {
+    if (!space.outline) return '<p class="empty">Prostokąt — wszystkie ściany pod kątem prostym.</p>';
+    return space.outline
+      .map(
+        ([x, z], i) => `
+        <div class="outline-pt" data-pt="${i}">
+          <span class="pt-no">${i + 1}</span>
+          <label>X <input type="number" data-pt-x="${i}" value="${x}" min="0" max="${space.width}" step="1" /></label>
+          <label>Z <input type="number" data-pt-z="${i}" value="${z}" min="0" max="${space.depth}" step="1" /></label>
+          <small class="pt-len"></small>
+          <button type="button" class="icon danger" data-pt-remove="${i}" title="Usuń punkt">✕</button>
+        </div>`,
+      )
+      .join('');
+  }
+
+  // Rzut z góry: obrys podłogi (z odciętymi narożnikami), występy ścian, korpusy.
+  function planSvg(project) {
+    const { space } = project;
+    const W = space.width;
+    const D = space.depth;
+    const pad = Math.max(W, D) * 0.03;
+    const outline = spaceOutline(space);
+    const pts = outline.map(([x, z]) => `${x},${z}`).join(' ');
+    const walls = space.obstacles
+      .filter(isWallObstacle)
+      .map((o) => `<rect x="${o.x}" y="${o.z}" width="${o.width}" height="${o.depth}" class="plan-wall" />`)
+      .join('');
+    const cabs = project.furniture
+      .filter((c) => !c.hidden)
+      .map((c) => `<rect x="${c.x}" y="${c.z}" width="${c.width}" height="${c.depth}" class="plan-cab" />`)
+      .join('');
+    const cutLines = space.outline
+      ? outlineEdges(space)
+          .filter((e) => e.tag.startsWith('edge:'))
+          .map((e) => `<line x1="${e.a[0]}" y1="${e.a[1]}" x2="${e.b[0]}" y2="${e.b[1]}" class="plan-cut" />`)
+          .join('')
+      : '';
+    const r = Math.max(W, D) * 0.012;
+    const dots = space.outline
+      ? outline.map(([x, z], i) => `<circle cx="${x}" cy="${z}" r="${r}" class="plan-pt"><title>Punkt ${i + 1}</title></circle>`).join('')
+      : '';
+    return `<svg viewBox="${-pad} ${-pad} ${W + 2 * pad} ${D + 2 * pad}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Rzut z góry">
+      <rect x="0" y="0" width="${W}" height="${D}" class="plan-box" />
+      <polygon points="${pts}" class="plan-floor" />${walls}${cabs}${cutLines}${dots}
+      <line x1="0" y1="${D}" x2="${W}" y2="${D}" class="plan-front" />
+    </svg>`;
+  }
+
   function renderObstacle(o) {
     return `
       <div class="item obstacle" data-kind="obstacle" data-id="${o.id}">
@@ -175,7 +255,26 @@ export function createSpacePanel(root, store) {
   }
 
   // Odświeża wartości wyliczane i ostrzeżenia bez przebudowy DOM.
-  function updateStatus({ space }) {
+  function updateStatus(project) {
+    const { space } = project;
+    const plan = root.querySelector('.plan-preview');
+    if (plan) plan.innerHTML = planSvg(project);
+    if (space.outline) {
+      const edges = outlineEdges(space);
+      space.outline.forEach(([x, z], i) => {
+        const row = root.querySelector(`.outline-pt[data-pt="${i}"]`);
+        if (!row) return;
+        setIfNotFocused(row.querySelector('[data-pt-x]'), x);
+        const zInput = row.querySelector('[data-pt-z]');
+        setIfNotFocused(zInput, z);
+        const front = isFrontPoint([x, z], space);
+        zInput.disabled = front;
+        zInput.title = front ? 'Punkt na przodzie przestrzeni (otwarty przód)' : '';
+        const e = edges[i];
+        row.querySelector('.pt-len').textContent = e.open ? 'przód' : `ściana ${Math.round(edgeLength(e))} mm`;
+        row.querySelector('[data-pt-remove]').disabled = !canRemovePoint(space, i);
+      });
+    }
     for (const o of space.obstacles) {
       const el = itemEl('obstacle', o.id);
       if (!el) continue;
@@ -237,6 +336,24 @@ export function createSpacePanel(root, store) {
       return;
     }
 
+    // punkt kształtu podłogi (X / Z)
+    const ptIndex = input.dataset.ptX ?? input.dataset.ptZ;
+    if (ptIndex !== undefined) {
+      const value = readNumberInput(input);
+      if (value === undefined) return;
+      const { space } = store.get();
+      const pts = spaceOutline(space).map((q) => [...q]);
+      const k = input.dataset.ptX !== undefined ? 0 : 1;
+      pts[ptIndex][k] = Math.round(Math.min(k ? space.depth : space.width, Math.max(0, value)));
+      if (selfIntersects(pts)) {
+        input.classList.add('invalid');
+        return;
+      }
+      input.classList.remove('invalid');
+      updateSpace((s) => ({ ...s, outline: pts }));
+      return;
+    }
+
     let field = input.dataset.f;
     if (!field) return;
     let value = input.value;
@@ -247,7 +364,12 @@ export function createSpacePanel(root, store) {
 
     const itemNode = input.closest('[data-kind]');
     if (!itemNode) {
-      updateSpace((s) => ({ ...s, [field]: value }));
+      // zmiana szerokości / głębokości — punkty na prawej ścianie i na przodzie idą razem z nią
+      updateSpace((s) => {
+        const next = { ...s, [field]: value };
+        if (s.outline && (field === 'width' || field === 'depth')) next.outline = resizeOutline(s.outline, s.width, s.depth, next.width, next.depth);
+        return next;
+      });
       return;
     }
     const { kind, id } = itemNode.dataset;
@@ -275,12 +397,28 @@ export function createSpacePanel(root, store) {
 
   root.addEventListener('click', (e) => {
     if (cardCollapse.handleClick(e.target)) return;
-    const { action, addObstacle, remove } = e.target.dataset ?? {};
+    const { action, addObstacle, outlinePreset, ptRemove, remove } = e.target.dataset ?? {};
+    const space = store.get().space;
     if (action === 'add-slope') {
       updateSpace((s) => ({ ...s, slopes: [...s.slopes, createSlope(s)] }));
     } else if (action === 'reset-colors') {
       updateSpace((s) => ({ ...s, colors: { ...DEFAULT_COLORS } }));
       root.querySelectorAll('[data-color]').forEach((el) => (el.value = DEFAULT_COLORS[el.dataset.color]));
+    } else if (outlinePreset) {
+      const outline = applyOutlinePreset(space, outlinePreset);
+      if (outline) updateSpace((s) => ({ ...s, outline }));
+      else alert('Ten narożnik ma już zmieniony kształt — przesuń jego punkty albo zacznij od prostokąta.');
+    } else if (action === 'outline-add-point') {
+      // na środku najdłuższej ściany (bez przodu)
+      const longest = outlineEdges(space)
+        .filter((ed) => !ed.open)
+        .sort((m, k) => edgeLength(k) - edgeLength(m))[0];
+      if (longest) updateSpace((s) => ({ ...s, outline: insertPoint(s, longest.i).outline }));
+    } else if (action === 'outline-reset') {
+      updateSpace((s) => ({ ...s, outline: null }));
+    } else if (ptRemove !== undefined) {
+      const pts = spaceOutline(space).filter((_, j) => j !== Number(ptRemove));
+      if (canRemovePoint(space, Number(ptRemove)) && !selfIntersects(pts)) updateSpace((s) => ({ ...s, outline: cleanOutline(pts, s) }));
     } else if (addObstacle) {
       const preset = OBSTACLE_PRESETS.find((p) => p.key === addObstacle);
       updateSpace((s) => ({ ...s, obstacles: [...s.obstacles, preset.create(s)] }));
@@ -298,8 +436,8 @@ export function createSpacePanel(root, store) {
       else updateStatus(project);
     },
     // Karta przeszkody (np. kominka klikniętego w 3D): rozwinięta i przewinięta do widoku.
-    reveal(id) {
-      const el = itemEl('obstacle', id);
+    reveal(id, kind = 'obstacle') {
+      const el = itemEl(kind, id);
       if (!el) return;
       cardCollapse.expand(el);
       el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });

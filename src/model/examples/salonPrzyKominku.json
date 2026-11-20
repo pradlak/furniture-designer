@@ -1,0 +1,363 @@
+{
+  "version": 5,
+  "space": {
+    "name": "Przykład: salon przy kominku",
+    "width": 4306,
+    "height": 1110,
+    "depth": 645,
+    "ceilingGap": 10,
+    "walls": { "floor": true, "back": true, "left": true, "right": true, "ceiling": true },
+    "colors": { "walls": "#f4f3ef", "floor": "#d9c9ad" },
+    "slopes": [],
+    "obstacles": [
+      {
+        "id": "c732279a-b335-4a01-8cc5-03c8b5ed7613",
+        "kind": "wall",
+        "decor": "insert",
+        "name": "Kominek",
+        "x": 1370,
+        "y": 0,
+        "z": 0,
+        "width": 1560,
+        "height": 1110,
+        "depth": 645
+      }
+    ]
+  },
+  "materials": [
+    { "id": "mat-white", "name": "Płyta biała 18", "type": "chipboard", "thickness": 18, "color": "#f2f2ef", "edgeBanding": 0.8, "edgeColor": null },
+    { "id": "mat-mdf-green", "name": "MDF lakierowany zielony 18", "type": "mdf", "thickness": 18, "color": "#5f7f5c", "edgeBanding": 0, "edgeColor": null },
+    { "id": "mat-hdf", "name": "HDF biały 3", "type": "hdf", "thickness": 3, "color": "#ecebe6", "edgeBanding": 0, "edgeColor": null },
+    { "id": "mat-worktop", "name": "Blat laminowany dąb 38", "type": "worktop", "thickness": 38, "color": "#b8905e", "edgeBanding": 0, "edgeColor": null }
+  ],
+  "furniture": [
+    {
+      "id": "1c746288-7157-44a3-b943-45f84c744e1e",
+      "name": "korpus 1",
+      "hidden": false,
+      "x": 52,
+      "y": 0,
+      "z": 30,
+      "width": 650,
+      "height": 950,
+      "depth": 532,
+      "backType": "hdf",
+      "bottomJoint": "overlay",
+      "topJoint": "inset",
+      "topType": "rails",
+      "railWidth": 120,
+      "stiffeners": [
+        { "id": "f81dac1c-c2a3-426c-80a9-05dbe6c5b7ae", "position": "even", "height": 100, "y": 475 },
+        { "id": "99307bb2-b02e-4a6b-a301-ec318980ca69", "position": "even", "height": 100, "y": 475 }
+      ],
+      "shelves": [{ "id": "09e54941-569a-4379-a3d5-b9ff38929202", "position": "even", "y": 475, "depth": null }],
+      "backGap": 30,
+      "ceilingGap": null,
+      "slopeTop": { "enabled": true, "gap": null },
+      "materialId": "mat-white",
+      "colors": { "body": null, "blend": { "hex": "#d6cbbd", "name": "kaszmirowy" }, "front": null },
+      "blendMaterialId": "mat-mdf-green",
+      "frontMaterialId": "mat-mdf-green",
+      "fronts": {
+        "type": "door",
+        "drawers": 3,
+        "hingeSide": "left",
+        "gap": 5,
+        "gapV": 3,
+        "groove": "none",
+        "decor": "none",
+        "decorMargin": 60,
+        "decorSpacing": 100,
+        "decorGap": 20,
+        "hidden": false,
+        "handle": { "type": "bar", "spacing": 128, "hole": 5, "position": "center", "edgeOffset": 40, "offsetX": null, "offsetY": null }
+      },
+      "legs": { "enabled": true, "height": 80, "mode": "keep" },
+      "sideBlends": {
+        "left": { "type": "filler", "width": null, "wallPanel": true, "wallPanelDepth": 60, "fullPanelDepth": null, "flushFront": true, "extend": 0, "allowance": 0, "hidden": false, "toCeiling": true },
+        "right": { "type": "none", "width": null, "wallPanel": false, "wallPanelDepth": 60, "fullPanelDepth": null, "flushFront": false, "extend": 0, "allowance": 0, "hidden": false, "toCeiling": true }
+      },
+      "panelOverrides": {
+        "left": { "edgeSet": ["zMax"] },
+        "bottom": { "edgeSet": ["zMax"] },
+        "railFront": { "edgeSet": ["zMax", "zMin"] },
+        "railBack": { "edgeSet": ["zMax"] },
+        "wallPanelLeft": { "color": { "hex": "#d6cbbd", "name": "kaszmirowy" } },
+        "front-0": { "color": { "hex": "#d6cbbd", "name": "kaszmirowy" }, "decor": "chamferFrame" }
+      }
+    },
+    {
+      "id": "eb06640c-041a-4c83-8c8c-4c80ac8c97e7",
+      "name": "korpus 2",
+      "hidden": false,
+      "x": 702,
+      "y": 0,
+      "z": 30,
+      "width": 650,
+      "height": 950,
+      "depth": 532,
+      "backType": "hdf",
+      "bottomJoint": "overlay",
+      "topJoint": "inset",
+      "topType": "rails",
+      "railWidth": 120,
+      "stiffeners": [
+        { "id": "d6d391d2-e175-4f4d-969f-c04526e516a4", "position": "even", "height": 100, "y": 475 },
+        { "id": "9d23e578-da62-45b5-bb9c-9eb7690feb9f", "position": "even", "height": 100, "y": 475 }
+      ],
+      "shelves": [{ "id": "15ac8dac-c298-4ede-8cdf-8267ca1b20e6", "position": "at", "y": 454, "depth": null }],
+      "backGap": 30,
+      "ceilingGap": null,
+      "slopeTop": { "enabled": true, "gap": null },
+      "materialId": "mat-white",
+      "colors": { "body": null, "blend": null, "front": null },
+      "blendMaterialId": "mat-mdf-green",
+      "frontMaterialId": "mat-mdf-green",
+      "fronts": {
+        "type": "door",
+        "drawers": 3,
+        "hingeSide": "right",
+        "gap": 5,
+        "gapV": 3,
+        "groove": "none",
+        "decor": "none",
+        "decorMargin": 60,
+        "decorSpacing": 100,
+        "decorGap": 20,
+        "hidden": false,
+        "handle": { "type": "bar", "spacing": 128, "hole": 5, "position": "center", "edgeOffset": 40, "offsetX": null, "offsetY": null }
+      },
+      "legs": { "enabled": true, "height": 80, "mode": "keep" },
+      "sideBlends": {
+        "left": { "type": "none", "width": null, "wallPanel": false, "wallPanelDepth": 60, "fullPanelDepth": null, "flushFront": false, "extend": 0, "allowance": 0, "hidden": false, "toCeiling": true },
+        "right": { "type": "full", "width": null, "wallPanel": false, "wallPanelDepth": 60, "fullPanelDepth": 60, "flushFront": true, "extend": 0, "allowance": 0, "hidden": false, "toCeiling": true }
+      },
+      "panelOverrides": {
+        "railFront": { "edgeSet": ["zMax", "zMin"] },
+        "railBack": { "edgeSet": ["zMax"] },
+        "blendRight": { "color": { "hex": "#d6cbbd", "name": "kaszmirowy" } },
+        "front-0": { "color": { "hex": "#d6cbbd", "name": "kaszmirowy" }, "decor": "chamferFrame" }
+      }
+    },
+    {
+      "id": "a9866954-db97-4a19-88f4-90e05a47cbf6",
+      "name": "korpus 3",
+      "hidden": false,
+      "x": 2948,
+      "y": 0,
+      "z": 30,
+      "width": 650,
+      "height": 950,
+      "depth": 532,
+      "backType": "hdf",
+      "bottomJoint": "overlay",
+      "topJoint": "inset",
+      "topType": "rails",
+      "railWidth": 120,
+      "stiffeners": [
+        { "id": "21d55e1b-a64b-47bd-b350-bbd3dfc82f6c", "position": "even", "height": 100, "y": 475 },
+        { "id": "d2ecb78d-c866-4c47-968e-61f5a06136de", "position": "even", "height": 100, "y": 475 }
+      ],
+      "shelves": [{ "id": "234b78e2-9831-41c7-8d7c-16d63bd8f7e6", "position": "even", "y": 475, "depth": null }],
+      "backGap": 30,
+      "ceilingGap": null,
+      "slopeTop": { "enabled": true, "gap": null },
+      "materialId": "mat-white",
+      "colors": { "body": null, "blend": null, "front": null },
+      "blendMaterialId": "mat-mdf-green",
+      "frontMaterialId": "mat-mdf-green",
+      "fronts": {
+        "type": "door",
+        "drawers": 3,
+        "hingeSide": "left",
+        "gap": 5,
+        "gapV": 3,
+        "groove": "none",
+        "decor": "frame",
+        "decorMargin": 60,
+        "decorSpacing": 100,
+        "decorGap": 20,
+        "hidden": false,
+        "handle": { "type": "bar", "spacing": 128, "hole": 5, "position": "center", "edgeOffset": 40, "offsetX": null, "offsetY": null }
+      },
+      "legs": { "enabled": true, "height": 80, "mode": "keep" },
+      "sideBlends": {
+        "left": { "type": "full", "width": null, "wallPanel": false, "wallPanelDepth": 60, "fullPanelDepth": 60, "flushFront": true, "extend": 0, "allowance": 0, "hidden": false, "toCeiling": true },
+        "right": { "type": "none", "width": null, "wallPanel": false, "wallPanelDepth": 60, "fullPanelDepth": null, "flushFront": false, "extend": 0, "allowance": 0, "hidden": false, "toCeiling": true }
+      },
+      "panelOverrides": {
+        "bottom": { "edgeSet": ["zMax"] },
+        "top": { "edgeSet": ["zMax"] },
+        "railFront": { "edgeSet": ["zMax", "zMin"] },
+        "blendLeft": { "color": { "hex": "#d6cbbd", "name": "kaszmirowy" } },
+        "front-0": { "color": { "hex": "#d6cbbd", "name": "kaszmirowy" }, "decor": "chamferFrame" }
+      }
+    },
+    {
+      "id": "98bb4dd3-1cda-430d-90e2-960cb885fd41",
+      "name": "korpus 4",
+      "hidden": false,
+      "x": 3598,
+      "y": 0,
+      "z": 30,
+      "width": 650,
+      "height": 950,
+      "depth": 532,
+      "backType": "hdf",
+      "bottomJoint": "overlay",
+      "topJoint": "inset",
+      "topType": "rails",
+      "railWidth": 120,
+      "stiffeners": [
+        { "id": "870fff21-87b4-4aa7-b682-088fbcc55ca8", "position": "even", "height": 100, "y": 475 },
+        { "id": "2a751237-3d94-410e-9eb4-6c12663e0688", "position": "even", "height": 100, "y": 475 }
+      ],
+      "shelves": [{ "id": "7d858811-bf08-4803-8832-4da2d28fc43a", "position": "at", "y": 465, "depth": null }],
+      "backGap": 30,
+      "ceilingGap": null,
+      "slopeTop": { "enabled": true, "gap": null },
+      "materialId": "mat-white",
+      "colors": { "body": null, "blend": null, "front": null },
+      "blendMaterialId": "mat-mdf-green",
+      "frontMaterialId": "mat-mdf-green",
+      "fronts": {
+        "type": "door",
+        "drawers": 3,
+        "hingeSide": "right",
+        "gap": 5,
+        "gapV": 3,
+        "groove": "none",
+        "decor": "frame",
+        "decorMargin": 60,
+        "decorSpacing": 100,
+        "decorGap": 20,
+        "hidden": false,
+        "handle": { "type": "bar", "spacing": 128, "hole": 5, "position": "center", "edgeOffset": 40, "offsetX": null, "offsetY": null }
+      },
+      "legs": { "enabled": true, "height": 80, "mode": "keep" },
+      "sideBlends": {
+        "left": { "type": "none", "width": null, "wallPanel": false, "wallPanelDepth": 60, "fullPanelDepth": null, "flushFront": false, "extend": 0, "allowance": 0, "hidden": false, "toCeiling": true },
+        "right": { "type": "filler", "width": 40, "wallPanel": true, "wallPanelDepth": 60, "fullPanelDepth": null, "flushFront": true, "extend": 0, "allowance": 0, "hidden": false, "toCeiling": true }
+      },
+      "panelOverrides": {
+        "bottom": { "edgeSet": ["zMax"] },
+        "top": { "edgeSet": ["zMax"] },
+        "railFront": { "edgeSet": ["zMax", "zMin"] },
+        "railBack": { "edgeSet": ["zMax"] },
+        "blendRight": { "color": { "hex": "#d6cbbd", "name": "kaszmirowy" } },
+        "wallPanelRight": { "color": { "hex": "#d6cbbd", "name": "kaszmirowy" } },
+        "front-0": { "color": { "hex": "#d6cbbd", "name": "kaszmirowy" }, "decor": "chamferFrame" }
+      }
+    }
+  ],
+  "trims": [
+    {
+      "id": "1656f4be-f89f-4e49-ac05-ab1b447b3991",
+      "type": "topBlend",
+      "name": "Blenda górna 1",
+      "hidden": false,
+      "cabinetIds": ["a9866954-db97-4a19-88f4-90e05a47cbf6", "98bb4dd3-1cda-430d-90e2-960cb885fd41"],
+      "materialId": "mat-mdf-green",
+      "color": { "hex": "#d6cbbd", "name": "kaszmirowy" },
+      "height": 60,
+      "gap": 3,
+      "toCeiling": true
+    },
+    {
+      "id": "c7be9957-01db-457f-aa27-0bbc58445fd2",
+      "type": "plinth",
+      "name": "Blenda dolna 1",
+      "hidden": false,
+      "cabinetIds": ["a9866954-db97-4a19-88f4-90e05a47cbf6", "98bb4dd3-1cda-430d-90e2-960cb885fd41"],
+      "materialId": "mat-mdf-green",
+      "color": { "hex": "#d6cbbd", "name": "kaszmirowy" },
+      "height": null,
+      "gap": 5,
+      "setback": 20,
+      "allowanceLeft": 0,
+      "allowanceRight": 0
+    },
+    {
+      "id": "1b07cb9d-36cf-4dea-a531-e0d00c167eef",
+      "type": "countertop",
+      "name": "Blat 1",
+      "hidden": false,
+      "cabinetIds": ["a9866954-db97-4a19-88f4-90e05a47cbf6", "98bb4dd3-1cda-430d-90e2-960cb885fd41"],
+      "materialId": "mat-worktop",
+      "color": { "hex": "#ddc196", "name": "dąb jasny", "texture": "wood" },
+      "overhang": 30,
+      "includeFront": false,
+      "extendLeft": false,
+      "extendRight": false,
+      "x": null,
+      "length": null,
+      "depth": null,
+      "edges": {
+        "front": { "profile": "none", "size": 0 },
+        "back": { "profile": "none", "size": 0 },
+        "left": { "profile": "none", "size": 0 },
+        "right": { "profile": "none", "size": 0 }
+      },
+      "holes": [{ "shape": "circle", "label": "gniazdko", "x": 1307, "y": 505, "d": 60, "pos": "br", "gx": 50, "gy": 50 }]
+    },
+    {
+      "id": "de93d838-e885-458c-99f2-5f4686ec76db",
+      "type": "topBlend",
+      "name": "Blenda górna 3",
+      "hidden": false,
+      "cabinetIds": ["1c746288-7157-44a3-b943-45f84c744e1e", "eb06640c-041a-4c83-8c8c-4c80ac8c97e7"],
+      "materialId": "mat-mdf-green",
+      "color": { "hex": "#d6cbbd", "name": "kaszmirowy" },
+      "height": 60,
+      "gap": 3,
+      "toCeiling": true
+    },
+    {
+      "id": "3bdbd564-07b9-45bc-af34-198d4bd6f581",
+      "type": "plinth",
+      "name": "Blenda dolna 3",
+      "hidden": false,
+      "cabinetIds": ["1c746288-7157-44a3-b943-45f84c744e1e", "eb06640c-041a-4c83-8c8c-4c80ac8c97e7"],
+      "materialId": "mat-mdf-green",
+      "color": { "hex": "#d6cbbd", "name": "kaszmirowy" },
+      "height": null,
+      "gap": 5,
+      "setback": 20,
+      "allowanceLeft": 0,
+      "allowanceRight": 0
+    },
+    {
+      "id": "4554ea72-a043-4b7b-9ddc-3ae475ae507a",
+      "type": "countertop",
+      "name": "Blat 3",
+      "hidden": false,
+      "cabinetIds": ["1c746288-7157-44a3-b943-45f84c744e1e", "eb06640c-041a-4c83-8c8c-4c80ac8c97e7"],
+      "materialId": "mat-worktop",
+      "color": { "hex": "#ddc196", "name": "dąb jasny", "texture": "wood" },
+      "overhang": 30,
+      "includeFront": false,
+      "extendLeft": false,
+      "extendRight": false,
+      "x": null,
+      "length": null,
+      "depth": null,
+      "edges": {
+        "front": { "profile": "none", "size": 0 },
+        "back": { "profile": "none", "size": 0 },
+        "left": { "profile": "none", "size": 0 },
+        "right": { "profile": "none", "size": 0 }
+      },
+      "holes": []
+    }
+  ],
+  "boards": [],
+  "notes": [],
+  "view": {
+    "showWalls": true,
+    "showCountertops": true,
+    "showBlends": true,
+    "showFronts": true,
+    "openFronts": true,
+    "showDims": true
+  }
+}

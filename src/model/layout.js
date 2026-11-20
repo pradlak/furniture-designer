@@ -1,6 +1,7 @@
 import { CABINET_LIMITS, cabinetBounds, createCabinet, maxCabinetHeight, newId } from './furniture.js';
 import { rowOf, TRIM_TYPES } from './trims.js';
 import { wallSegments, segmentAt } from './space.js';
+import { freeWidth, straightenSlantedSides, backLimit, frontLimit } from './outline.js';
 
 // Automatyczny układ korpusów w rzędzie — żeby projektowanie było jak najprostsze:
 //  - pierwszy korpus zajmuje całą szerokość wnęki,
@@ -49,11 +50,8 @@ function adjustHeight(cabinet, project, fitted) {
   return { ...cabinet, height };
 }
 
-// Lewa i prawa krawędź rzędu (z blendami i panelami bocznymi).
-function rowExtent(project, ids) {
-  const bounds = ids.map((id) => cabinetBounds(byId(project, id), project));
-  return [Math.min(...bounds.map((b) => b.x)), Math.max(...bounds.map((b) => b.x + b.width))];
-}
+// Lewa i prawa krawędź rzędu (z blendami i panelami bocznymi; przy skośnym boku — sam korpus, patrz rowReach).
+const rowExtent = (project, ids) => rowReach(project, ids);
 
 // Inne meble i przeszkody na wysokości i w głębokości rzędu.
 function blockersAround(project, ids) {
@@ -98,7 +96,8 @@ export function distributeRow(project, ids, [left, right], shares, fitted = {}) 
   const isFitted = Object.fromEntries(cabs.map((c) => [c.id, fitted[c.id] ?? isFittedHeight(c, project)]));
   const extras = cabs.map((c) => {
     const b = cabinetBounds(c, project);
-    return [c.x - b.x, b.x + b.width - (c.x + c.width)];
+    // (nie mniej niż 0 — skośny bok przy skośnej ścianie bywa węższy niż sam korpus)
+    return [Math.max(0, c.x - b.x), Math.max(0, b.x + b.width - (c.x + c.width))];
   });
   const available = right - left - extras.reduce((s, [l, r]) => s + l + r, 0);
   const weights = cabs.map((c) => shares[c.id] ?? c.width);
@@ -171,7 +170,6 @@ export function addCabinetToLayout(project, { segment = null } = {}) {
   // w wybranej wnęce — jak jej ostatni korpus, a w pustej — jak ostatni korpus całej zabudowy.
   const inSegment = segment ? cabinetsIn(project, segment) : [];
   const last = rightmostCabinet(project, inSegment.length ? inSegment : project.furniture);
-  const lastBounds = cabinetBounds(last, project);
   const base = createCabinet(project);
   const template = {
     ...base,
@@ -196,8 +194,9 @@ export function addCabinetToLayout(project, { segment = null } = {}) {
   });
 
   // Jest wolne miejsce z prawej (w tej samej wnęce) — nowy korpus je wypełnia.
-  const lastRight = lastBounds.x + lastBounds.width;
-  const free = segmentAt(space, lastBounds.x + lastBounds.width / 2)[1] - lastRight;
+  // (krawędź z korpusem — skośny bok bywa węższy niż sam korpus)
+  const [lastLeft, lastRight] = rowReach(project, [last.id]);
+  const free = segmentAt(space, (lastLeft + lastRight) / 2)[1] - lastRight;
   const lastFitted = isFittedHeight(last, project);
   const sameAlcove = !segment || inSegment.length > 0; // nowy korpus stanie przy `last`
   if (sameAlcove && free >= MIN_FREE_FOR_NEW) {
@@ -246,7 +245,7 @@ export function addCabinetToLayout(project, { segment = null } = {}) {
   const shares = Object.fromEntries(row.map((id) => [id, byId(project, id).width]));
   const cabinet = {
     ...template,
-    x: lastBounds.x + lastBounds.width,
+    x: lastRight,
     width: last.width,
     sideBlends: { left: { ...base.sideBlends.left }, right: { ...last.sideBlends.right } },
   };
@@ -326,6 +325,116 @@ export function updateSpaceRefit(project, fn) {
     ...next,
     furniture: next.furniture.map((c) => (fitted.has(c.id) ? adjustHeight(c, next, fitted.get(c.id)) : c)),
   };
+}
+
+// Zmiana szerokości przestrzeni (pole „Szerokość”, przesunięcie ściany w 3D): rząd korpusów, który przed zmianą
+// dochodził do przesuwanej ściany i był „pełny” (z drugiej strony też do ściany albo do innego elementu),
+// po zmianie znów ją wypełnia — korpusy poszerzają się / zwężają proporcjonalnie (blendy i panele boczne
+// zachowują wymiary), a wysokości automatyczne dopasowują się na nowo. Rzędy stojące swobodnie zostają, jakie są.
+// before — projekt przed zmianą, after — po zmianie; dx — o ile przesunęły się w modelu współrzędne X
+// (lewa ściana jest początkiem układu: jej przesunięcie przesuwa wszystko inne o dx).
+export function refillRows(before, after, dx = 0) {
+  if (Math.abs(before.space.width - after.space.width) < EPS) return after;
+  const done = new Set();
+  let next = after;
+  for (const c of before.furniture) {
+    if (done.has(c.id)) continue;
+    const row = rowOf(c.id, before);
+    row.forEach((id) => done.add(id));
+    if (!row.every((id) => byId(after, id))) continue;
+    // zasięg rzędu: korpusy z wystającymi elementami (skośny bok bywa węższy niż korpus — wtedy sam korpus)
+    const [L, R] = rowReach(before, row);
+    const [wallL, wallR] = rowWalls(before, row);
+    const others = blockersAround(before, row);
+    const leftWall = L <= wallL + EPS;
+    const rightWall = R >= wallR - EPS;
+    const leftShut = leftWall || others.some((o) => Math.abs(o.x + o.width - L) <= EPS);
+    const rightShut = rightWall || others.some((o) => Math.abs(o.x - R) <= EPS);
+    const [newWallL, newWallR] = rowWalls(after, row);
+    let target;
+    if (leftShut && rightShut && (leftWall || rightWall)) {
+      // pełny rząd przy ścianie — wypełnia nową szerokość
+      target = [leftWall ? newWallL : L + dx, rightWall ? newWallR : R + dx];
+    } else {
+      // rząd stojący swobodnie albo między elementami: zmienia się tylko, gdy mieścił się między ścianami,
+      // a po zmianie wystawałby za ścianę — wtedy zwęża się do ściany (proporcjonalnie)
+      const inside = L >= wallL - EPS && R <= wallR + EPS;
+      const [l1, r1] = [L + dx, R + dx];
+      if (!inside || (l1 >= newWallL - EPS && r1 <= newWallR + EPS)) continue;
+      target = [Math.max(l1, newWallL), Math.min(r1, newWallR)];
+    }
+    if (target[1] - target[0] < CABINET_LIMITS.sizeMin) continue;
+    const shares = Object.fromEntries(row.map((id) => [id, byId(before, id).width]));
+    const fitted = Object.fromEntries(row.map((id) => [id, isFittedHeight(byId(before, id), before)]));
+    next = distributeRow(next, row, target, shares, fitted) ?? next;
+  }
+  return next;
+}
+
+// Zmiana głębokości przestrzeni (pole „Głębokość”, przesunięcie tylnej ściany w 3D):
+//  - korpus dopasowany na całą głębokość (tył przy tylnej ścianie, front przy przodzie przestrzeni) znów ją wypełnia,
+//  - korpus dosunięty tylko do tylnej ściany jedzie razem z nią (zachowuje głębokość),
+//  - pozostałe zostają, jakie są.
+// Tylna ściana i przód — z kształtu podłogi na szerokości korpusu (skośne ściany boczne jak proste).
+// before / after — projekt przed i po zmianie; dz — o ile przesunęły się w modelu współrzędne Z (tylna ściana
+// jest początkiem układu: jej przesunięcie przesuwa wszystko inne o dz).
+export function refillDepth(before, after, dz = 0) {
+  if (Math.abs(before.space.depth - after.space.depth) < EPS) return after;
+  const limits = (project, c) => {
+    const { space } = project;
+    if (!space.outline) return [0, space.depth];
+    const shape = c.wallFit?.enabled === false ? space : { ...space, outline: straightenSlantedSides(space) };
+    const back = backLimit(shape, c.x, c.x + c.width);
+    return [back, frontLimit(shape, c.x, c.x + c.width, back)];
+  };
+  let next = after;
+  for (const c of before.furniture) {
+    const now = byId(next, c.id);
+    if (!now) continue;
+    const b = cabinetBounds(c, before);
+    const gap = c.backGap ?? 0;
+    const extraFront = Math.max(0, b.z + b.depth - (c.z + c.depth));
+    const [back0, front0] = limits(before, c);
+    const [back1, front1] = limits(next, now);
+    const TOUCH = 2; // (mm — korpus „przy ścianie” mimo drobnej różnicy, np. po przyciągnięciu)
+    const atBack = Math.abs(c.z - gap - back0) <= TOUCH;
+    const atFront = Math.abs(c.z + c.depth + extraFront - front0) <= TOUCH;
+    const inside = c.z + c.depth + extraFront <= front0 + TOUCH; // przed zmianą mieścił się do przodu
+    const behind = now.z < back1 + gap - EPS; // po zmianie wystawałby za tylną ścianę
+    if (!atBack && !behind) continue;
+    const z = back1 + gap;
+    // na całą głębokość — wypełnia nową; mieścił się, a teraz wystawałby z przodu — skraca się do przodu
+    const fill = atFront || (inside && z + c.depth + extraFront > front1 + EPS);
+    const depth = fill ? Math.max(CABINET_LIMITS.sizeMin, Math.floor(front1 - z - extraFront)) : c.depth;
+    if (Math.abs(now.z - z) < 0.01 && now.depth === depth) continue;
+    const fitted = isFittedHeight(c, before);
+    const moved = { ...next, furniture: next.furniture.map((x) => (x.id === c.id ? { ...x, z, depth } : x)) };
+    next = { ...moved, furniture: moved.furniture.map((x) => (x.id === c.id ? adjustHeight(x, moved, fitted) : x)) };
+  }
+  return next;
+}
+
+// Lewa i prawa krawędź rzędu: korpusy razem z wystającymi elementami (blendy, panele).
+function rowReach(project, ids) {
+  const parts = ids.map((id) => {
+    const c = byId(project, id);
+    const b = cabinetBounds(c, project);
+    return [Math.min(c.x, b.x), Math.max(c.x + c.width, b.x + b.width)];
+  });
+  return [Math.min(...parts.map((p) => p[0])), Math.max(...parts.map((p) => p[1]))];
+}
+
+// Ściany po lewej i prawej stronie rzędu na jego głębokości — prostokąt albo kształt podłogi (skośne ściany boczne
+// liczone jak proste: korpus dostaje przy nich skośny bok).
+function rowWalls(project, ids) {
+  const { space } = project;
+  if (!space.outline) return [0, space.width];
+  const cabs = ids.map((id) => byId(project, id));
+  const z0 = Math.max(0, Math.min(...cabs.map((c) => c.z)));
+  const z1 = Math.min(space.depth, Math.max(...cabs.map((c) => c.z + c.depth)));
+  const shape = cabs.some((c) => c.wallFit?.enabled === false) ? space : { ...space, outline: straightenSlantedSides(space) };
+  const [l, r] = freeWidth(shape, z0, z1, 0, space.width);
+  return r > l ? [l, r] : [0, space.width];
 }
 
 // Przesunięcie rzędu w bok tak, żeby po zmianie mieścił się między ścianami i sąsiednimi elementami

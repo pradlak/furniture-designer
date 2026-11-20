@@ -26,7 +26,7 @@ export function createBoardsPanel(root, store, ui) {
           ${DRAG_HANDLE}
           ${COLLAPSE_BUTTON}
           <input type="text" data-f="name" value="${escapeHtml(b.name)}" aria-label="Nazwa" />
-          <button type="button" class="icon eye" data-board-hide title="Ukryj w widoku 3D">👁</button>
+          <button type="button" class="eye" data-board-hide title="Ukryj w widoku 3D">👁</button>
           <button type="button" class="danger" data-board-remove title="Usuń">✕</button>
         </div>
         <div class="card-sum" data-collapse-card title="Kliknij, aby rozwinąć"></div>

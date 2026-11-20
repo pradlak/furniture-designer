@@ -1,4 +1,5 @@
 import { LIMITS, isPointInside, describeOutside, slopePlanes, DEFAULT_SLOPE_GAP, DEFAULT_CEILING_GAP, segmentAt } from './space.js';
+import { freeWidth, backLimit, frontLimit, outlineEdges, edgeOutward, straightenSlantedSides, isSideWallNormal } from './outline.js';
 import { FRONT_DECORS, DECOR_LIMITS, DECOR_GAP_LIMITS, describeDecor } from './decor.js';
 import { cabinetMaterials, trimMaterial, normalizeColor, withColor } from './materials.js';
 import { boxSolid, clipSolid, isClippedBy, solidBounds, extentAlong, solidsOverlap, vertices, outline2d } from './solid.js';
@@ -171,7 +172,85 @@ export const defaultFronts = () => ({
   decorSpacing: 100, // rozstaw rowków
   decorGap: 20, // odstęp między liniami ramki podwójnej / potrójnej, ścięcie albo promień narożnika
   handle: defaultHandle(),
+  bottomDrawers: defaultBottomDrawers(),
 });
+
+// Układ frontów korpusu (od dołu): szuflady (fronts.bottomDrawers) i nad nimi drzwi albo nic (fronts.type):
+//  - bottomDrawers.count — liczba szuflad (0 — bez szuflad),
+//  - bottomDrawers.zone — do jakiej wysokości (mm od dołu frontów) sięgają szuflady; null — automatycznie:
+//    bez drzwi na całą wysokość, z drzwiami po DRAWER_FRONT_DEFAULT mm na szufladę,
+//  - bottomDrawers.heights — wysokości frontów (czół) kolejnych szuflad od góry (szuflada 1 — najwyżej);
+//    null — automatycznie (szuflady bez wysokości dzielą resztę strefy po równo); gdy wszystkie mają wysokość,
+//    strefa szuflad wynika z ich sumy,
+//  - bottomDrawers.kind — 'external' (fronty szuflad w linii frontów; drzwi nad nimi) albo 'internal'
+//    (czoła szuflad za drzwiami, między bokami; drzwi na całą wysokość, zawiasy omijają szuflady),
+//  - fronts.type — nad szufladami: 'none' (otwarte), 'door', 'doubleDoor'. (Dawny rodzaj 'drawers' — same
+//    szuflady na całą wysokość — to 'none' + szuflady bez wysokości; patrz frontLayout.)
+export const BOTTOM_DRAWER_KINDS = [
+  { key: 'external', label: 'zewnętrzne (front w linii)' },
+  { key: 'internal', label: 'wewnętrzne (za drzwiami)' },
+];
+export const UPPER_FRONTS = [
+  { key: 'none', label: 'Brak (otwarte)' },
+  { key: 'door', label: 'Drzwi pojedyncze' },
+  { key: 'doubleDoor', label: 'Drzwi podwójne' },
+];
+export const DRAWER_FRONT_DEFAULT = 180;
+export const FIRST_DRAWER_HEIGHT = 250; // nowa sekcja szuflad — wysokość frontu pierwszej szuflady
+export const BOTTOM_DRAWER_LIMITS = { countMax: 10, zoneMin: 60 };
+export function defaultBottomDrawers() {
+  return { count: 0, zone: null, kind: 'external', heights: [] };
+}
+// Układ frontów niezależnie od zapisu: { upper: 'none' | 'door' | 'doubleDoor', count, zone, kind }.
+const fitHeights = (heights, count) => Array.from({ length: count }, (_, i) => heights?.[i] ?? null);
+export function frontLayout(fr) {
+  const f = fr ?? { type: 'none' };
+  if (f.type === 'drawers') {
+    const count = Math.max(1, Math.round(f.drawers ?? 1));
+    return { upper: 'none', count, zone: null, kind: 'external', heights: fitHeights([], count) };
+  }
+  const bd = f.bottomDrawers ?? defaultBottomDrawers();
+  const count = Math.max(0, Math.round(bd.count ?? 0));
+  return {
+    upper: f.type === 'door' || f.type === 'doubleDoor' ? f.type : 'none',
+    count,
+    zone: bd.zone ?? null,
+    kind: bd.kind === 'internal' ? 'internal' : 'external',
+    heights: fitHeights(bd.heights, count),
+  };
+}
+
+// Wysokości frontów szuflad (od góry) w strefie o wysokości zone (mm) ze szczeliną gv między nimi:
+// wpisane zostają, automatyczne dzielą resztę po równo. → { heights, zone (gdy wszystkie wpisane — ich suma) }.
+export function drawerHeights(lay, zone, gv) {
+  const n = lay.count;
+  const fixed = lay.heights.filter((h) => h != null);
+  if (fixed.length === n) return { heights: [...lay.heights], zone: fixed.reduce((s, h) => s + h, 0) + (n - 1) * gv };
+  const auto = (zone - (n - 1) * gv - fixed.reduce((s, h) => s + h, 0)) / (n - fixed.length);
+  return { heights: lay.heights.map((h) => h ?? auto), zone };
+}
+// Zmiana układu frontów (patch: upper, count, zone, kind). Gdy korpus dostaje fronty po raz pierwszy, a ich
+// materiał jest domyślny (bez wybranego koloru frontów) — fronty dostają materiał i kolor korpusu.
+export function setFrontLayout(cabinet, patch, project) {
+  const before = cabinet.fronts ?? defaultFronts();
+  const l = { ...frontLayout(before), ...patch };
+  l.count = Math.max(0, Math.min(BOTTOM_DRAWER_LIMITS.countMax, Math.round(l.count ?? 0)));
+  const fronts = { ...before, type: l.upper, bottomDrawers: { count: l.count, zone: l.zone ?? null, kind: l.kind, heights: fitHeights(l.heights, l.count) } };
+  const next = { ...cabinet, fronts };
+  const defaultMdf = project?.materials?.find((m) => m.type === 'mdf')?.id ?? null;
+  const autoMaterial = !cabinet.frontMaterialId || cabinet.frontMaterialId === defaultMdf;
+  if (!hasAnyFronts(before) && hasAnyFronts(fronts) && autoMaterial && !cabinet.colors?.front) {
+    return { ...next, frontMaterialId: cabinet.materialId, colors: { ...cabinet.colors, front: cabinet.colors?.body ?? null } };
+  }
+  return next;
+}
+// Czoło szuflady wewnętrznej: luz od boków korpusu i od wieńca dolnego, cofnięcie od krawędzi korpusu
+// (drzwi zamykają się przed nim).
+const INTERNAL_DRAWER = { sideGap: 2, bottomGap: 3, setback: 2 };
+// Zapas między środkiem zawiasu a szufladą wewnętrzną (prowadnik zawiasu na boku korpusu ma ok. 50 mm wysokości).
+export const HINGE_DRAWER_CLEAR = 35;
+// Najmniejsza odległość środka zawiasu od górnej / dolnej krawędzi drzwi.
+const HINGE_MIN_END = 70;
 
 // Uchwyt na froncie (panel — płyta frontu w układzie przestrzeni): otwory { x, y } na licu frontu,
 // kierunek (vertical / horizontal) i czy mieści się na froncie (z zapasem 10 mm od krawędzi).
@@ -231,26 +310,201 @@ export function describeMilling(panel) {
 }
 export const frontKey = (i) => `front-${i}`;
 
-// Usunięcie jednego frontu (zaznaczonego w widoku 3D): drzwi pojedyncze — korpus bez frontu;
-// jedno skrzydło drzwi podwójnych — zostają drzwi pojedyncze z zawiasami po stronie pozostałego skrzydła;
-// szuflada — o jedną szufladę mniej (ostatnia — korpus bez frontu).
-export function removeFront(cabinet, key) {
-  const fr = cabinet.fronts ?? defaultFronts();
-  const index = Number(String(key).split('-')[1]);
-  if (fr.type === 'drawers' && (fr.drawers ?? 1) > 1) return { ...cabinet, fronts: { ...fr, drawers: fr.drawers - 1 } };
-  if (fr.type === 'doubleDoor') return { ...cabinet, fronts: { ...fr, type: 'door', hingeSide: index === 0 ? 'right' : 'left' } };
-  return { ...cabinet, fronts: { ...fr, type: 'none' } };
+
+// --- układ frontów jako lista sekcji (od dołu do góry) ---
+// fronts.sections: [{ type, height, … }] — kolejne sekcje frontu od dołu korpusu:
+//  - type: 'drawers' (szuflady: count, heights — wysokości frontów od góry, null — automatycznie),
+//          'door' (drzwi pojedyncze: hingeSide), 'doubleDoor' (drzwi podwójne), 'open' (bez frontu),
+//  - height: wysokość sekcji (mm, z jej frontami); null — automatycznie: sekcje bez wysokości dzielą resztę po równo
+//    (szuflady ze wszystkimi wysokościami wpisanymi mają wysokość z ich sumy),
+//  - inner (drzwi / otwarte): szuflady wewnętrzne w tej sekcji { count, zone (do wysokości od dołu sekcji; null —
+//    po DRAWER_FRONT_DEFAULT na szufladę), heights } — za drzwiami; zawiasy tych drzwi je omijają.
+// Starsze zapisy (fronts.type + bottomDrawers, dawny rodzaj „Szuflady”) — przeliczane w frontSections.
+export const SECTION_TYPES = [
+  { key: 'drawers', label: 'Szuflady' },
+  { key: 'door', label: 'Drzwi pojedyncze' },
+  { key: 'doubleDoor', label: 'Drzwi podwójne' },
+  { key: 'open', label: 'Otwarte (bez frontu)' },
+];
+export const SECTION_LIMITS = { sections: 12, drawers: 10, minHeight: 1 };
+const fitList = (list, count) => Array.from({ length: count }, (_, i) => (list?.[i] == null || !Number.isFinite(Number(list[i])) ? null : Math.max(SECTION_LIMITS.minHeight, Number(list[i]))));
+const optNum = (v) => (v == null || v === '' || !Number.isFinite(Number(v)) ? null : Math.max(SECTION_LIMITS.minHeight, Number(v)));
+
+export function normalizeSection(s, fr) {
+  const type = SECTION_TYPES.some((t) => t.key === s?.type) ? s.type : 'open';
+  const out = { type, height: optNum(s?.height) };
+  if (type === 'drawers') {
+    out.count = Math.max(1, Math.min(SECTION_LIMITS.drawers, Math.round(Number(s.count) || 1)));
+    out.heights = fitList(s.heights, out.count);
+  } else {
+    if (type === 'door') out.hingeSide = (s.hingeSide ?? fr?.hingeSide) === 'right' ? 'right' : 'left';
+    const ic = Math.max(0, Math.min(SECTION_LIMITS.drawers, Math.round(Number(s.inner?.count) || 0)));
+    if (ic) out.inner = { count: ic, zone: optNum(s.inner.zone), heights: fitList(s.inner.heights, ic) };
+  }
+  return out;
 }
 
-// Usunięcie kilku frontów jednego korpusu naraz (np. zaznaczonych z Ctrl): szuflady — o tyle mniej,
-// jedno skrzydło drzwi podwójnych — jak removeFront, wszystkie fronty — korpus bez frontu.
-export function removeFronts(cabinet, keys) {
-  const fr = cabinet.fronts ?? defaultFronts();
-  const n = new Set(keys).size;
-  if (fr.type === 'drawers' && (fr.drawers ?? 1) > n) return { ...cabinet, fronts: { ...fr, drawers: fr.drawers - n } };
-  if (fr.type === 'doubleDoor' && n === 1) return removeFront(cabinet, keys[0]);
-  return { ...cabinet, fronts: { ...fr, type: 'none' } };
+// Sekcje frontu (znormalizowane, od dołu) — także ze starszych zapisów.
+export function frontSections(fr) {
+  const f = fr ?? { type: 'none' };
+  if (Array.isArray(f.sections)) return f.sections.slice(0, SECTION_LIMITS.sections).map((s) => normalizeSection(s, f));
+  const l = frontLayout(f);
+  const gv = f.gapV ?? DEFAULT_FRONT_GAP_V;
+  const secs = [];
+  if (l.count && l.kind !== 'internal') {
+    // dawne szuflady od dołu: strefa wpisana albo (z drzwiami) po DRAWER_FRONT_DEFAULT na szufladę
+    const zone = l.zone ?? (l.upper !== 'none' && l.heights.some((h) => h == null) ? l.heights.reduce((s, h) => s + (h ?? DRAWER_FRONT_DEFAULT), 0) + (l.count - 1) * gv : null);
+    secs.push({ type: 'drawers', height: zone, count: l.count, heights: l.heights });
+    if (l.upper !== 'none') secs.push({ type: l.upper, height: null, hingeSide: f.hingeSide });
+    else if (l.zone != null) secs.push({ type: 'open', height: null });
+  } else if (l.count) {
+    secs.push({ type: l.upper === 'none' ? 'open' : l.upper, height: null, hingeSide: f.hingeSide, inner: { count: l.count, zone: l.zone, heights: l.heights } });
+  } else if (l.upper !== 'none') secs.push({ type: l.upper, height: null, hingeSide: f.hingeSide });
+  return secs.map((s) => normalizeSection(s, f));
 }
+
+// --- układ frontów: wnętrze (szuflady, wolne przestrzenie) i drzwi przykrywające wybrane części wnętrza ---
+// fronts.parts: [{ id, type: 'drawer' | 'space', height }] — części wnętrza od dołu; height null — automatycznie
+//   (części bez wysokości dzielą resztę po równo),
+// fronts.doors: [{ id, type: 'door' | 'doubleDoor', hingeSide, covers: [id części] }] — drzwi przykrywają ciągły zakres
+//   części (od najniższej do najwyższej z covers). Szuflada przykryta drzwiami jest wewnętrzna (czoło za drzwiami,
+//   zawiasy ją omijają), nieprzykryta — ma własny front; wolna przestrzeń nieprzykryta — korpus tam jest otwarty.
+// Starsze zapisy (sekcje, fronts.type + bottomDrawers, dawny rodzaj „Szuflady”) — przeliczane w frontParts.
+export const PART_TYPES = [
+  { key: 'drawer', label: 'Szuflada (z frontem)' },
+  { key: 'innerDrawer', label: 'Szuflada wewnętrzna' },
+  { key: 'space', label: 'Wolna przestrzeń' },
+];
+export const PART_LIMITS = { parts: 16, doors: 6, minHeight: 1 };
+export const FRONT_PART_MIN = 40; // najmniejsza szuflada / część przy zmianie wysokości myszką
+const partHeight = (v) => (v == null || v === '' || !Number.isFinite(Number(v)) ? null : Math.max(PART_LIMITS.minHeight, Number(v)));
+
+// Zakres części [od, do] (indeksy) przykrytych drzwiami.
+export function doorSpan(door, parts) {
+  const idx = door.covers.map((id) => parts.findIndex((p) => p.id === id)).filter((i) => i >= 0);
+  return idx.length ? [Math.min(...idx), Math.max(...idx)] : null;
+}
+
+function normalizeParts(raw) {
+  const parts = (Array.isArray(raw?.parts) ? raw.parts : [])
+    .slice(0, PART_LIMITS.parts)
+    .map((p) => ({ id: typeof p?.id === 'string' && p.id ? p.id : newId(), type: p?.type === 'drawer' || p?.type === 'innerDrawer' ? p.type : 'space', height: partHeight(p?.height) }));
+  const used = new Set();
+  const doors = [];
+  for (const d of (Array.isArray(raw?.doors) ? raw.doors : []).slice(0, PART_LIMITS.doors)) {
+    const span = doorSpan({ covers: Array.isArray(d?.covers) ? d.covers : [] }, parts);
+    if (!span) continue;
+    // ciągły zakres; części należące już do innych drzwi — pomijamy (drzwi się nie nakładają)
+    const covers = parts.slice(span[0], span[1] + 1).map((p) => p.id).filter((id) => !used.has(id));
+    if (!covers.length) continue;
+    covers.forEach((id) => used.add(id));
+    doors.push({ id: typeof d?.id === 'string' && d.id ? d.id : newId(), type: d?.type === 'doubleDoor' ? 'doubleDoor' : 'door', hingeSide: d?.hingeSide === 'right' ? 'right' : 'left', covers });
+  }
+  return { parts, doors };
+}
+
+// Starsze sekcje → części wnętrza i drzwi.
+function partsFromSections(secs, gv) {
+  const parts = [];
+  const doors = [];
+  const add = (type, height) => {
+    const p = { id: newId(), type, height: height ?? null };
+    parts.push(p);
+    return p.id;
+  };
+  for (const s of secs) {
+    if (s.type === 'drawers') {
+      [...s.heights].reverse().forEach((h) => add('drawer', h)); // (w sekcji od góry, części — od dołu)
+      continue;
+    }
+    const covered = [];
+    if (s.inner) {
+      // szuflady wewnętrzne bez wysokości: dzieliły strefę „do wysokości” (albo po DRAWER_FRONT_DEFAULT mm)
+      const n = s.inner.count;
+      const fixed = s.inner.heights.filter((h) => h != null);
+      const zone = s.inner.zone ?? (n * DRAWER_FRONT_DEFAULT + (n - 1) * gv);
+      const auto = n > fixed.length ? Math.max(FRONT_PART_MIN, (zone - (n - 1) * gv - fixed.reduce((a, b) => a + b, 0)) / (n - fixed.length)) : null;
+      [...s.inner.heights].reverse().forEach((h) => covered.push(add('drawer', h ?? Math.round(auto))));
+    }
+    const innerSum = s.inner && s.inner.heights.every((h) => h != null) ? s.inner.heights.reduce((a, b) => a + b, 0) + s.inner.count * gv : s.inner ? null : 0;
+    const rest = s.height != null && innerSum != null ? s.height - innerSum : null;
+    covered.push(add('space', rest != null && rest > 0 ? rest : s.inner ? null : s.height));
+    if (s.type === 'door' || s.type === 'doubleDoor') doors.push({ type: s.type, hingeSide: s.hingeSide, covers: covered });
+  }
+  return { parts, doors };
+}
+
+// Wnętrze i drzwi (znormalizowane) — także ze starszych zapisów.
+export function frontParts(fr) {
+  const f = fr ?? {};
+  if (Array.isArray(f.parts)) return normalizeParts(f);
+  return normalizeParts(partsFromSections(frontSections(f), f.gapV ?? DEFAULT_FRONT_GAP_V));
+}
+
+export const hasAnyFronts = (fr) => {
+  const st = frontParts(fr);
+  return st.doors.length > 0 || st.parts.some((p) => p.type !== 'space');
+};
+
+// Zapis wnętrza i drzwi. Gdy korpus dostaje fronty po raz pierwszy, a ich materiał jest domyślny (bez wybranego
+// koloru frontów) — fronty dostają materiał i kolor korpusu.
+export function setFrontParts(cabinet, state, project) {
+  const before = cabinet.fronts ?? defaultFronts();
+  const st = normalizeParts(state);
+  const fronts = { ...before, parts: st.parts, doors: st.doors };
+  const next = { ...cabinet, fronts };
+  const defaultMdf = project?.materials?.find((m) => m.type === 'mdf')?.id ?? null;
+  const autoMaterial = !cabinet.frontMaterialId || cabinet.frontMaterialId === defaultMdf;
+  if (!hasAnyFronts(before) && hasAnyFronts(fronts) && autoMaterial && !cabinet.colors?.front) {
+    return { ...next, frontMaterialId: cabinet.materialId, colors: { ...cabinet.colors, front: cabinet.colors?.body ?? null } };
+  }
+  return next;
+}
+
+// Zakresy części [od, do] (mm) w obrębie frontów [y0, y1] ze szczeliną gv między częściami.
+export function partRanges(parts, y0, y1, gv) {
+  const fixed = parts.filter((p) => p.height != null).reduce((a, p) => a + p.height, 0);
+  const autos = parts.filter((p) => p.height == null).length;
+  const autoH = autos ? Math.max(0, (y1 - y0 - (parts.length - 1) * gv - fixed) / autos) : 0;
+  let cur = y0;
+  return parts.map((p) => {
+    const h = p.height ?? autoH;
+    const r = [cur, cur + h];
+    cur += h + gv;
+    return r;
+  });
+}
+
+// Kolejność frontów (klucze front-N): najpierw drzwi (od najwyżej sięgających) — drzwi zachowują front-0 / front-1
+// i swoje ustawienia; potem fronty szuflad nieprzykrytych (od góry). Czoła szuflad przykrytych — idrawer-N (od góry).
+// → { fronts: [{ door, part: 'door' | 'left' | 'right' } | { index, part: 'drawer' }], inner: [{ index, door }] }
+export function frontSlots(st) {
+  const { parts, doors } = st;
+  const coveredBy = new Map();
+  doors.forEach((d, j) => d.covers.forEach((id) => coveredBy.set(id, j)));
+  const order = doors.map((_, j) => j).sort((a, b) => (doorSpan(doors[b], parts)?.[1] ?? 0) - (doorSpan(doors[a], parts)?.[1] ?? 0));
+  const fronts = [];
+  for (const j of order) {
+    if (doors[j].type === 'door') fronts.push({ door: j, part: 'door' });
+    else fronts.push({ door: j, part: 'left' }, { door: j, part: 'right' });
+  }
+  const inner = [];
+  for (let i = parts.length - 1; i >= 0; i--) {
+    if (parts[i].type === 'space') continue;
+    // szuflada wewnętrzna (zawsze) albo szuflada przykryta drzwiami — czoło w korpusie; inaczej — własny front
+    if (parts[i].type === 'innerDrawer' || coveredBy.has(parts[i].id)) inner.push({ index: i, door: coveredBy.get(parts[i].id) ?? null });
+    else fronts.push({ index: i, part: 'drawer' });
+  }
+  return { fronts, inner };
+}
+
+// Zmiana rodzaju frontu (dawne pole „Rodzaj”): drzwi na całą wysokość albo bez frontów.
+export function setFrontType(cabinet, type, project) {
+  if (type !== 'door' && type !== 'doubleDoor') return setFrontParts(cabinet, { parts: [], doors: [] }, project);
+  const id = newId();
+  return setFrontParts(cabinet, { parts: [{ id, type: 'space', height: null }], doors: [{ type, hingeSide: 'left', covers: [id] }] }, project);
+}
+
 
 // Liczba zawiasów puszkowych na drzwi o danej wysokości (typowe zalecenia producentów).
 export const hingesFor = (height) => (height <= 900 ? 2 : height <= 1600 ? 3 : height <= 2000 ? 4 : 5);
@@ -259,6 +513,33 @@ export const hingesFor = (height) => (height <= 900 ? 2 : height <= 1600 ? 3 : h
 // środek 22,5 mm od krawędzi z zawiasami; skrajne zawiasy 100 mm od górnej i dolnej krawędzi,
 // pozostałe — równo między nimi. Liczba zawiasów — hingesFor(wysokość).
 export const HINGE_CUP = { diameter: 35, depth: 12, edgeDistance: 22.5, endDistance: 100 };
+
+// Zawiasy drzwi z pasami zakazanymi (bands — [od, do] w mm w układzie przestrzeni, np. wysokości szuflad
+// wewnętrznych z zapasem): standardowe położenia, a gdy któryś zawias wypada w zakazanym pasie — zawiasy
+// przenoszą się na najdłuższy wolny odcinek drzwi (skrajne co najmniej HINGE_MIN_END od krawędzi, zwykle
+// endDistance), rozłożone równo. → { holes, moved (przesunięte), conflict (nie da się ominąć) }.
+export function hingePlacement(panel, bands = []) {
+  const holes = hingeHoles(panel);
+  if (!holes.length || !bands.length) return { holes, moved: false, conflict: false };
+  const { y, height: h } = panel;
+  const forb = bands.map(([a, b]) => [a - y, b - y]).filter(([a, b]) => b > 0 && a < h);
+  const ok = (v) => forb.every(([a, b]) => v <= a || v >= b);
+  if (holes.every((p) => ok(p.y - y))) return { holes, moved: false, conflict: false };
+  // wolne odcinki [HINGE_MIN_END, h − HINGE_MIN_END] bez pasów zakazanych
+  let free = [[HINGE_MIN_END, h - HINGE_MIN_END]];
+  for (const [a, b] of forb) free = free.flatMap(([p, q]) => [[p, Math.min(q, a)], [Math.max(p, b), q]]).filter(([p, q]) => q > p);
+  const best = free.reduce((m, s) => (s[1] - s[0] > m[1] - m[0] ? s : m), [0, -1]);
+  const { endDistance: d } = HINGE_CUP;
+  const lo = Math.max(best[0], Math.min(d, best[1]));
+  const hi = Math.min(best[1], Math.max(h - d, best[0]));
+  const span = hi - lo;
+  if (span < 100) return { holes, moved: false, conflict: true }; // za mało miejsca na dwa zawiasy
+  const n = Math.max(2, Math.min(holes.length, Math.floor(span / 100) + 1));
+  const x = holes[0].x;
+  const moved = Array.from({ length: n }, (_, i) => ({ x, y: y + lo + (span * i) / (n - 1) }));
+  return { holes: moved, moved: true, conflict: false };
+}
+
 export function hingeHoles(panel) {
   const side = panel.opening?.hinge;
   if (!side) return [];
@@ -287,6 +568,9 @@ export function createShelf(cabinet) {
   return { id: newId(), position: 'even', y: Math.round(cabinet.height / 2), depth: null };
 }
 export const shelfKey = (s) => `shelf-${s.id}`;
+
+// Usunięcie półek korpusu po kluczach płyt („shelf-<id>”); pozostałe półki rozłożone równo dalej się rozkładają.
+export const removeShelves = (cabinet, keys) => ({ ...cabinet, shelves: (cabinet.shelves ?? []).filter((s) => !keys.includes(shelfKey(s))) });
 
 // Ręczna zmiana wysokości jednej półki: pozostałe półki zostają dokładnie tam, gdzie są
 // (równo rozłożone są „zamrażane” na swoich wysokościach), a zmieniana dostaje wysokość y.
@@ -371,6 +655,8 @@ export const PANEL_DEFS = [
   { key: 'bottom', name: 'Wieniec dolny', thicknessAxis: 'y' },
   { key: 'top', name: 'Wieniec górny', thicknessAxis: 'y' },
   { key: 'topSlope', name: 'Wieniec górny skośny', thicknessAxis: 'y' },
+  { key: 'sideSlopeLeft', name: 'Bok lewy skośny', thicknessAxis: 'x' },
+  { key: 'sideSlopeRight', name: 'Bok prawy skośny', thicknessAxis: 'x' },
   { key: 'railFront', name: 'Trawers przedni', thicknessAxis: 'y' },
   { key: 'railBack', name: 'Trawers tylny', thicknessAxis: 'y' },
   { key: 'back', name: 'Plecy', thicknessAxis: 'z' },
@@ -461,6 +747,45 @@ export function slopeTopPlane(cabinet, project) {
     if (cuts) return { normal, outer, side: pl.side };
   }
   return null;
+}
+
+// --- korpus przy skośnej ścianie (kształt podłogi, model/outline.js) ---
+// Korpus przysunięty do skośnej ściany bocznej dostaje skośny bok równoległy do ściany (jak skośna góra pod skosem):
+// wieńce, półki, poprzeczki i plecy są docięte pod kątem, a prosty bok zostaje tylko tam, gdzie mieści się za
+// skośnym. `gap` — luz między skośnym bokiem a ścianą (mm, prostopadle do ściany); null — WALL_FIT_GAP.
+export const WALL_FIT_GAP = 10;
+export const defaultWallFit = () => ({ enabled: true, gap: null });
+export const SIDE_SLOPE_KEY = { left: 'sideSlopeLeft', right: 'sideSlopeRight' };
+
+// Płaszczyzny skośnych ścian, w które wchodzi korpus: [{ side: 'left' | 'right', normal (jednostkowy, poziomy),
+// outer (normal · p <= outer — po stronie korpusu, z luzem), angle (° od ściany bocznej) }] — najwyżej jedna na stronę.
+// Ściany skośne „tylne” (za korpusem, bliżej poziomu w rzucie) pomijamy — wtedy korpus odsuwa się do przodu
+// (fitCabinetToSpace); ściany boczne pod każdym kątem (także ścinające przedni narożnik) dają skośny bok.
+export function wallFitPlanes(cabinet, project) {
+  const space = project?.space;
+  if (!space?.outline || cabinet.wallFit?.enabled === false) return [];
+  const gap = cabinet.wallFit?.gap ?? WALL_FIT_GAP;
+  const [x0, x1, z0, z1] = [cabinet.x, cabinet.x + cabinet.width, cabinet.z, cabinet.z + cabinet.depth];
+  const corners = [[x0, z0], [x1, z0], [x0, z1], [x1, z1]];
+  const found = {};
+  for (const e of outlineEdges(space)) {
+    if (e.open) continue;
+    const [dx, dz] = [e.b[0] - e.a[0], e.b[1] - e.a[1]];
+    if (Math.abs(dx) < 1 || Math.abs(dz) < 1) continue; // ściana prosta — korpus jej nie dociąga
+    const [nx, nz] = edgeOutward(e, space.outline);
+    if (!isSideWallNormal(nx, nz)) continue; // ściana za korpusem (skośna tylna) albo prawie równoległa do przodu
+    // ściana musi biec wzdłuż korpusu (w jego głębokości), a środek korpusu — być po wewnętrznej stronie
+    if (Math.max(e.a[1], e.b[1]) < z0 || Math.min(e.a[1], e.b[1]) > z1) continue;
+    const outer = nx * e.a[0] + nz * e.a[1] - gap;
+    if (nx * (x0 + x1) / 2 + nz * (z0 + z1) / 2 > outer) continue;
+    const depth = Math.max(...corners.map(([x, z]) => nx * x + nz * z - outer));
+    if (depth <= 0.5) continue;
+    const side = nx < 0 ? 'left' : 'right';
+    if (!found[side] || depth > found[side].depth) {
+      found[side] = { side, normal: [nx, 0, nz], outer, depth, angle: (Math.atan2(Math.abs(nz), Math.abs(nx)) * 180) / Math.PI, zRange: [Math.min(e.a[1], e.b[1]), Math.max(e.a[1], e.b[1])] };
+    }
+  }
+  return Object.values(found);
 }
 
 // Największa wysokość korpusu (bez nóżek) w danym miejscu: pod sufitem i skosami.
@@ -578,7 +903,8 @@ export function createCabinet(project, overrides = {}) {
     depth,
     materialId: project.materials?.find((m) => m.type === 'chipboard')?.id ?? null,
     blendMaterialId: project.materials?.find((m) => m.type === 'mdf')?.id ?? null,
-    frontMaterialId: project.materials?.find((m) => m.type === 'mdf')?.id ?? null,
+    // fronty domyślnie z tego samego materiału co korpus (inny — do wybrania w sekcji „Fronty”)
+    frontMaterialId: project.materials?.find((m) => m.type === 'chipboard')?.id ?? null,
     // kolory niezależne od materiału (null — jak w materiale), patrz model/materials.js
     colors: { body: null, blend: null, front: null },
     fronts: defaultFronts(),
@@ -591,6 +917,7 @@ export function createCabinet(project, overrides = {}) {
     shelves: [],
     backGap: 0, // odstęp pleców od tylnej ściany (np. na rury) — patrz setBackGap
     slopeTop: defaultSlopeTop(),
+    wallFit: defaultWallFit(), // skośny bok przy skośnej ścianie (patrz wallFitPlanes)
     ceilingGap: null, // luz do sufitu — z przestrzeni (patrz ceilingGapFor)
     ...defaultAccessories(),
     panelOverrides: {},
@@ -717,7 +1044,7 @@ export function cabinetContext(cabinet, project) {
   // inaczej zakładamy front z materiału blend korpusu.
   const topBlend = trims.find((t) => t.type === 'topBlend' && t.cabinetIds.includes(cabinet.id));
   const mats = cabinetMaterials(cabinet, project);
-  const hasFronts = (cabinet.fronts?.type ?? 'none') !== 'none';
+  const hasFronts = hasAnyFronts(cabinet.fronts);
   const frontThickness = hasFronts
     ? mats.front.thickness
     : topBlend
@@ -765,24 +1092,62 @@ export function fitCabinetToSpace(cabinet, project) {
   const { space } = project;
   // Ile elementy (np. panele boczne, listwy) wystają poza korpus z każdej strony.
   const b = cabinetBounds(cabinet, project);
-  const extraL = cabinet.x - b.x;
-  const extraR = b.x + b.width - (cabinet.x + cabinet.width);
-  const extraBack = cabinet.z - b.z;
-  const extraFront = b.z + b.depth - (cabinet.z + cabinet.depth);
+  // (nie mniej niż 0 — skośny bok przy skośnej ścianie bywa węższy niż sam korpus)
+  const extraL = Math.max(0, cabinet.x - b.x);
+  const extraR = Math.max(0, b.x + b.width - (cabinet.x + cabinet.width));
+  const extraBack = Math.max(0, cabinet.z - b.z);
+  const extraFront = Math.max(0, b.z + b.depth - (cabinet.z + cabinet.depth));
   const { sizeMin } = CABINET_LIMITS;
   // Wnęka, w której stoi korpus — przy występie ściany (np. kominku) tylko ta po jego stronie.
-  const [segLeft, segRight] = segmentAt(space, b.x + b.width / 2);
+  let [segLeft, segRight] = segmentAt(space, b.x + b.width / 2);
+  // Kształt podłogi (skośne / wklęsłe ściany): dwie możliwości — mebel od tylnej ściany (węższy, mieści się
+  // na całej głębokości) albo odsunięty do przodu (szerszy, płytszy); wybieramy tę o większej podstawie.
+  let backZ = 0;
+  let frontZ = space.depth; // z przodu: przód przestrzeni albo ściana prawie równoległa do przodu
+  if (space.outline) {
+    // korpus z bokiem pod skośną ścianę może sięgać do ściany — skośne ściany boczne liczymy jak proste
+    const shape = cabinet.wallFit?.enabled === false ? space : { ...space, outline: straightenSlantedSides(space) };
+    const f1 = frontLimit(shape, segLeft, segRight, 0);
+    const [l1, r1] = freeWidth(shape, 0, f1, segLeft, segRight);
+    const zb = backLimit(shape, segLeft, segRight);
+    const f2 = frontLimit(shape, segLeft, segRight, zb);
+    const [l2, r2] = freeWidth(shape, zb, f2, segLeft, segRight);
+    const useBack = (r2 - l2) * (f2 - zb) > (r1 - l1) * f1 + 1;
+    [segLeft, segRight] = useBack ? [l2, r2] : [l1, r1];
+    backZ = useBack ? zb : 0;
+    frontZ = Math.floor(useBack ? f2 : f1);
+    segLeft = Math.ceil(segLeft);
+    segRight = Math.floor(segRight);
+    backZ = Math.ceil(backZ);
+  }
   const fitted = {
     ...cabinet,
     x: segLeft + extraL,
     y: 0,
-    z: extraBack + (cabinet.backGap ?? 0),
+    z: backZ + extraBack + (cabinet.backGap ?? 0),
     width: Math.max(sizeMin, segRight - segLeft - extraL - extraR),
-    depth: Math.max(sizeMin, space.depth - extraBack - extraFront - (cabinet.backGap ?? 0)),
+    depth: Math.max(sizeMin, frontZ - backZ - extraBack - extraFront - (cabinet.backGap ?? 0)),
   };
   // Wysokość pod sufitem i skosami (z nóżkami; przy skośnej górze — w najwyższym miejscu).
   const height = Math.floor(maxCabinetHeight(fitted, project, segLeft, segRight - segLeft));
   return { ...fitted, height: Math.max(sizeMin, height) };
+}
+
+// Cięcie płyty przy skośnej ścianie (płaszczyzna pionowa normal · p <= off). Płyty leżące (wieńce, półki) tniemy
+// pod kątem — to zwykłe skośne cięcie formatki. Płyty stojące (boki, fronty, plecy, poprzeczki) tniemy prostopadle,
+// tak żeby w całości zmieściły się po wewnętrznej stronie płaszczyzny: bok — krótszy (cięcie w poprzek głębokości),
+// front / plecy — węższe. Inaczej z płyty grubości 18 mm zostawałby ukośny klin (cienka „drzazga” na styku).
+function wallCutFor(panel, axis, normal, off) {
+  const [nx, , nz] = normal;
+  if (axis === 'x' && Math.abs(nz) > 1e-6) {
+    const zs = [panel.x, panel.x + panel.width].map((x) => (off - nx * x) / nz);
+    return nz > 0 ? [[0, 0, 1], Math.min(...zs)] : [[0, 0, -1], -Math.max(...zs)];
+  }
+  if (axis === 'z' && Math.abs(nx) > 1e-6) {
+    const xs = [panel.z, panel.z + panel.depth].map((z) => (off - nz * z) / nx);
+    return nx > 0 ? [[1, 0, 0], Math.min(...xs)] : [[-1, 0, 0], -Math.max(...xs)];
+  }
+  return [normal, off];
 }
 
 // Rozkład mebla na płyty. Każda płyta: prostopadłościan w układzie przestrzeni.
@@ -913,6 +1278,23 @@ export function cabinetPanels(cabinet, project) {
   // Skośny wieniec: między bokami, na całej głębokości wieńca — bryła przycinana niżej
   // do pasa między płaszczyzną zewnętrzną i wewnętrzną.
   if (slant) base.topSlope = [tx, 0, zTop[0], tw, H, zTop[1] - zTop[0]];
+  // Skośny bok przy skośnej ścianie: na całej szerokości i głębokości korpusu, w pionie jak prosty bok —
+  // bryła przycinana niżej do pasa między płaszczyzną zewnętrzną i wewnętrzną (grubość boku).
+  // zJ — styk prostego boku ze skośnym: tam, gdzie wewnętrzna powierzchnia skośnego boku spotyka wewnętrzną
+  // powierzchnię prostego boku. Prosty bok kończy się tam prostopadłym cięciem, a skośny dokładnie tam zaczyna
+  // (bez szpary i bez nachodzenia). front — skośna ściana ścina przedni narożnik (nz > 0), inaczej tylny.
+  const wallCuts = wallFitPlanes(cabinet, project).map((wc) => {
+    const t = wc.side === 'left' ? tL : tR;
+    const inner = wc.outer - t;
+    const [nx, , nz] = wc.normal;
+    const faceX = cabinet.x + (wc.side === 'left' ? t : W - t);
+    const zJ = Math.abs(nz) > 1e-6 ? (inner - nx * faceX) / nz : null;
+    return { ...wc, inner, zJ, front: nz > 0 };
+  });
+  for (const wc of wallCuts) {
+    const b = base[wc.side];
+    if (b) base[SIDE_SLOPE_KEY[wc.side]] = [0, b[1], b[2], W, b[4], b[5]];
+  }
 
   // Korpus stoi na nóżkach.
   for (const k of Object.keys(base)) base[k][1] += L;
@@ -974,8 +1356,13 @@ export function cabinetPanels(cabinet, project) {
 
   // --- fronty (nakładane, przed korpusem) ---
   const frontDefs = [];
+  const hingeBands = []; // wysokości szuflad wewnętrznych (z zapasem) — zawiasy drzwi je omijają
+  const internalDefs = []; // czoła szuflad wewnętrznych (za drzwiami)
   const fr = cabinet.fronts ?? defaultFronts();
-  if (fr.type !== 'none') {
+  const fp = frontParts(fr);
+  let partRangesOut = [];
+  let frontAreaOut = null; // [od, do] — obszar frontów (od dołu korpusu)
+  if (hasAnyFronts(fr)) {
     const g = fr.gap ?? DEFAULT_FRONT_GAP; // boczna (lewa + prawa)
     const gv = fr.gapV ?? DEFAULT_FRONT_GAP_V; // pionowa (góra + dół)
     const t = mats.front.thickness;
@@ -987,8 +1374,9 @@ export function cabinetPanels(cabinet, project) {
     // Od góry — cała szczelina pionowa (połowa, gdy na korpusie stoi inny korpus); pod blendą górną — jej szczelina.
     const yTopGap = hasCabinetAbove(cabinet, project) ? gv / 2 : gv;
     const y1 = ctx.topBlendBottom != null ? L + ctx.topBlendBottom - ctx.topBlendGap : L + H - yTopGap;
-    // kind — do frezu uchwytowego na krawędzi otwierania: drzwi z zawiasami po lewej / prawej, szuflada
-    const add = (name, x, y, w, h, kind) => {
+    // kind — do frezu uchwytowego na krawędzi otwierania: drzwi z zawiasami po lewej / prawej, szuflada;
+    // meta — { door (indeks drzwi), part (indeks części wnętrza) } — do panelu i zawiasów
+    const add = (name, x, y, w, h, kind, meta) => {
       const key = frontKey(frontDefs.length);
       base[key] = [x, y, D, w, h, t];
       const milling = {
@@ -1005,22 +1393,55 @@ export function cabinetPanels(cabinet, project) {
       // uchwyt — tylko gdy front nie ma frezu uchwytowego
       const hs = fr.handle ?? defaultHandle();
       const handleSpec = hs.type !== 'none' && !milling.groove ? hs : null;
-      frontDefs.push({ key, name, thicknessAxis: 'z', milling: hasMilling ? milling : null, opening, handleSpec });
+      frontDefs.push({ key, name, thicknessAxis: 'z', milling: hasMilling ? milling : null, opening, handleSpec, ...meta });
     };
-    if (fr.type === 'door') {
-      const kind = fr.hingeSide === 'right' ? 'doorRightHinge' : 'doorLeftHinge';
-      add(`Front drzwi (zawiasy ${fr.hingeSide === 'right' ? 'prawe' : 'lewe'})`, x0, y0, x1 - x0, y1 - y0, kind);
-    } else if (fr.type === 'doubleDoor') {
-      const w = (x1 - x0 - g) / 2;
-      // drzwi podwójne otwierają się na środku: lewe mają zawiasy po lewej, prawe — po prawej
-      add('Front drzwi lewy', x0, y0, w, y1 - y0, 'doorLeftHinge');
-      add('Front drzwi prawy', x0 + w + g, y0, w, y1 - y0, 'doorRightHinge');
-    } else if (fr.type === 'drawers') {
-      const n = Math.max(1, Math.min(FRONT_LIMITS.drawersMax, fr.drawers ?? 1));
-      const h = (y1 - y0 - (n - 1) * gv) / n; // między szufladami — szczelina pionowa
-      // numeracja od góry: szuflada 1 — najwyżej
-      for (let i = 0; i < n; i++) add(`Front szuflady ${i + 1}`, x0, y1 - (i + 1) * h - i * gv, x1 - x0, h, 'drawer');
+    // Części wnętrza od dołu — zakresy wysokości; drzwi od dolnej krawędzi najniższej do górnej najwyższej przykrytej.
+    const ranges = partRanges(fp.parts, y0, y1, gv);
+    partRangesOut = ranges.map(([a, b]) => [a - L, b - L]);
+    frontAreaOut = [y0 - L, y1 - L];
+    const slots = frontSlots(fp);
+    const doorOrder = [...new Set(slots.fronts.filter((s) => s.door != null).map((s) => s.door))];
+    const doorRange = (j) => {
+      const [lo, hi] = doorSpan(fp.doors[j], fp.parts);
+      return [ranges[lo][0], ranges[hi][1]];
+    };
+    const doorName = (j, part) => {
+      const d = fp.doors[j];
+      const m = doorOrder.length > 1 ? ` ${doorOrder.indexOf(j) + 1}` : '';
+      if (d.type === 'door') return `Front drzwi${m} (zawiasy ${d.hingeSide === 'right' ? 'prawe' : 'lewe'})`;
+      return `Front drzwi${m} ${part === 'left' ? 'lewy' : 'prawy'}`;
+    };
+    let drawerNo = 0;
+    for (const slot of slots.fronts) {
+      if (slot.door != null) {
+        const d = fp.doors[slot.door];
+        const [sy0, sy1] = doorRange(slot.door);
+        if (slot.part === 'door') add(doorName(slot.door), x0, sy0, x1 - x0, sy1 - sy0, d.hingeSide === 'right' ? 'doorRightHinge' : 'doorLeftHinge', { door: slot.door });
+        else {
+          const w = (x1 - x0 - g) / 2;
+          // drzwi podwójne otwierają się na środku: lewe mają zawiasy po lewej, prawe — po prawej
+          add(doorName(slot.door, slot.part), slot.part === 'left' ? x0 : x0 + w + g, sy0, w, sy1 - sy0, slot.part === 'left' ? 'doorLeftHinge' : 'doorRightHinge', { door: slot.door });
+        }
+      } else {
+        const [py0, py1] = ranges[slot.index];
+        drawerNo += 1; // numeracja od góry: szuflada 1 — najwyżej
+        add(`Front szuflady ${drawerNo}`, x0, py0, x1 - x0, py1 - py0, 'drawer', { part: slot.index });
+      }
     }
+    // czoła szuflad przykrytych drzwiami (między bokami, za drzwiami); najniższe stoją na wieńcu dolnym
+    const tb = mats.body.thickness;
+    const floor = L + tB + INTERNAL_DRAWER.bottomGap;
+    slots.inner.forEach((slot, n) => {
+      const [py0, py1] = ranges[slot.index];
+      const yy = Math.max(py0, floor);
+      const h = py1 - yy;
+      if (h <= 0) return;
+      const key = `idrawer-${n}`;
+      base[key] = [tL + INTERNAL_DRAWER.sideGap, yy, D - INTERNAL_DRAWER.setback - tb, W - tL - tR - 2 * INTERNAL_DRAWER.sideGap, h, tb];
+      internalDefs.push({ key, name: `Czoło szuflady wewnętrznej ${n + 1}`, thicknessAxis: 'z', milling: null, opening: { drawer: true }, handleSpec: null, part: slot.index, door: slot.door });
+      if (slot.door != null) hingeBands.push({ door: slot.door, range: [cabinet.y + yy - HINGE_DRAWER_CLEAR, cabinet.y + yy + h + HINGE_DRAWER_CLEAR] });
+    });
+    frontDefs.push(...internalDefs);
   }
 
   // Którą płaszczyzną skosu przycinamy płytę: wieniec płaski, plecy wpuszczane, poprzeczki
@@ -1032,6 +1453,15 @@ export function cabinetPanels(cabinet, project) {
     return slant.outer;
   };
   const AXIS_VEC = { x: [1, 0, 0], y: [0, 1, 0], z: [0, 0, 1] };
+  // Którą płaszczyzną skośnej ściany przycinamy płytę: prosty bok po tej stronie, wieńce i trawersy wpuszczane
+  // między boki, półki, poprzeczki i plecy z płyty — wewnętrzną (są za skośnym bokiem); reszta — zewnętrzną.
+  const wallClipOffset = (key, wc) => {
+    if (key === wc.side || key.startsWith('shelf-') || key.startsWith('stiff-')) return wc.inner;
+    if (key === 'bottom') return bottomOverlay ? wc.outer : wc.inner;
+    if (key === 'top' || key === 'topSlope' || key === 'railFront' || key === 'railBack') return topOverlay ? wc.outer : wc.inner;
+    if (key === 'back') return backType === 'board' ? wc.inner : wc.outer;
+    return wc.outer;
+  };
   // Skosy przestrzeni (z luzem) — docinają blendy idące do sufitu: [normal, offset].
   const ceilingClips = ceilingKeys.size ? ceilingClipPlanes(cabinet, project) : [];
 
@@ -1083,18 +1513,24 @@ export function cabinetPanels(cabinet, project) {
       milling: def.milling ?? null,
       // otwieranie frontu w widoku: { hinge: 'left' | 'right' } albo { drawer: true }
       opening: def.opening ?? null,
+      door: def.door ?? null, // drzwi (indeks) — fronty drzwi i czoła szuflad za nimi
+      part: def.part ?? null, // część wnętrza (indeks) — szuflady
     };
     panel.valid = panel.width > 0 && panel.height > 0 && panel.depth > 0;
-    // uchwyt frontu (otwory na licu) — liczony z gotowego położenia płyty
-    if (def.handleSpec && panel.valid) panel.handle = placeHandle(panel, def.handleSpec);
-    if (panel.opening?.hinge && panel.valid) panel.hinges = hingeHoles(panel);
 
-    // Płaszczyzny, które docinają płytę: skośna góra korpusu i (dla blend do sufitu) skosy przestrzeni.
+    // Płaszczyzny, które docinają płytę: skośna góra korpusu, skośne ściany i (dla blend do sufitu) skosy przestrzeni.
     const clips = [];
     if (slant && def.key !== 'topSlope') clips.push([slant.normal, clipOffset(def.key)]);
+    const band = wallCuts.find((wc) => SIDE_SLOPE_KEY[wc.side] === def.key); // ten skośny bok
+    for (const wc of wallCuts) {
+      if (wc === band) continue;
+      // prosty bok po stronie skośnej ściany — do styku ze skośnym
+      if (def.key === wc.side && wc.zJ != null) clips.push(wc.front ? [[0, 0, 1], wc.zJ] : [[0, 0, -1], -wc.zJ]);
+      else clips.push(wallCutFor(panel, axis, wc.normal, wallClipOffset(def.key, wc)));
+    }
     if (ceilingKeys.has(def.key)) clips.push(...ceilingClips);
 
-    if (panel.valid && (clips.length || (slant && def.key === 'topSlope'))) {
+    if (panel.valid && (clips.length || band || (slant && def.key === 'topSlope'))) {
       let solid = boxSolid(panel);
       let frame = null;
       let clipped = false;
@@ -1104,17 +1540,33 @@ export function cabinetPanels(cabinet, project) {
         solid = clipSolid(clipSolid(solid, n, slant.outer), n.map((v) => -v), -inner);
         frame = { u: [1, 0, 0], v: [0, n[2], -n[1]], w: n };
         clipped = true;
-      } else {
-        for (const [n, off] of clips) {
-          if (!solid.length || !isClippedBy(solid, n, off)) continue;
-          solid = clipSolid(solid, n, off);
-          clipped = true;
-        }
+      }
+      if (band) {
+        // Pas wzdłuż skośnej ściany: zewnętrzna powierzchnia z luzem do ściany, wewnętrzna o grubość boku dalej.
+        const n = band.normal;
+        solid = clipSolid(clipSolid(solid, n, band.outer), n.map((v) => -v), -band.inner);
+        // tylko na długości skośnej ściany (dalej ściana jest prosta — tam stoi zwykły bok), z zapasem na grubość
+        const t = band.outer - band.inner;
+        // od styku z prostym bokiem (zJ) do końca skośnej ściany (z zapasem na grubość po drugiej stronie)
+        const [zFrom, zTo] = band.front
+          ? [band.zJ ?? band.zRange[0] - t, band.zRange[1] + t]
+          : [band.zRange[0] - t, band.zJ ?? band.zRange[1] + t];
+        solid = clipSolid(clipSolid(solid, [0, 0, -1], -zFrom), [0, 0, 1], zTo);
+        frame = { u: [0, 1, 0], v: [n[2], 0, -n[0]], w: n };
+        clipped = true;
+      }
+      for (const [n, off] of clips) {
+        if (!solid.length || !isClippedBy(solid, n, off)) continue;
+        solid = clipSolid(solid, n, off);
+        clipped = true;
       }
       // płyta w całości pod skosem — zostaje prostopadłościanem
       if (clipped) {
-        // Wieniec płaski lub skośny może zniknąć (cały korpus pod skosem / poniżej) — wtedy go pomijamy.
-        if (!solid.length && (def.key === 'top' || def.key === 'topSlope')) continue;
+        // Wieniec płaski lub skośny może zniknąć (cały korpus pod skosem / poniżej), a prosty bok — schować się
+        // w całości za skośnym (korpus przy skośnej ścianie) — wtedy je pomijamy.
+        const droppable = ['top', 'topSlope', 'left', 'right', 'sideSlopeLeft', 'sideSlopeRight'];
+        // (front schowany w całości za skośną ścianą — też; tej części korpusu i tak nie widać)
+        if (!solid.length && (droppable.includes(def.key) || (wallCuts.length && def.key.startsWith('front-')))) continue;
         if (solid.length) {
           Object.assign(panel, solidBounds(solid));
           const [a, b] = FACE_AXES_OF[axis];
@@ -1123,8 +1575,18 @@ export function cabinetPanels(cabinet, project) {
         } else panel.valid = false;
       }
     }
+    // uchwyt i zawiasy frontu — liczone z gotowego położenia płyty (już po docięciu, np. przy skośnej ścianie)
+    if (def.handleSpec && panel.valid) panel.handle = placeHandle(panel, def.handleSpec);
+    if (panel.opening?.hinge && panel.valid) {
+      const hp = hingePlacement(panel, hingeBands.filter((b) => b.door === def.door).map((b) => b.range));
+      panel.hinges = hp.holes;
+      panel.hingesMoved = hp.moved; // zawiasy przesunięte, żeby ominąć szuflady wewnętrzne
+      panel.hingeConflict = hp.conflict; // nie da się ich ominąć
+    }
     panels.push(panel);
   }
+  panels.partRanges = partRangesOut; // zakresy części wnętrza (od dołu korpusu) — do panelu i uchwytów w 3D
+  panels.frontArea = frontAreaOut;
   return panels;
 }
 
@@ -1204,8 +1666,19 @@ export function cabinetLegs(cabinet, project) {
   const zFront = frontLimit - LEG_INSET;
   const zs = zFront > zBack ? [zBack, zFront] : [frontLimit / 2];
 
+  // Przy skośnej ścianie nóżka w odciętym narożniku przesuwa się wzdłuż X pod skośny bok (tak, żeby stała
+  // w odległości LEG_INSET od jego zewnętrznej powierzchni).
+  const cuts = wallFitPlanes(cabinet, project);
+  const inside = (x, z) => {
+    let px = x;
+    for (const { normal: [nx, , nz], outer } of cuts) {
+      const over = nx * px + nz * z - (outer - LEG_INSET * Math.abs(nx));
+      if (over > 0) px -= over / nx;
+    }
+    return px;
+  };
   return xs.flatMap((x) =>
-    zs.map((z) => ({ x: cabinet.x + x, y: cabinet.y, z: cabinet.z + z, diameter: LEG_DIAMETER, height: L })),
+    zs.map((z) => ({ x: inside(cabinet.x + x, cabinet.z + z), y: cabinet.y, z: cabinet.z + z, diameter: LEG_DIAMETER, height: L })),
   );
 }
 
@@ -1365,6 +1838,14 @@ export function cabinetIssues(cabinet, project) {
     for (let j = i + 1; j < valid.length; j++)
       if (panelsOverlap(valid[i], valid[j])) overlapping.push(`${valid[i].name} i ${valid[j].name}`);
   if (overlapping.length) issues.push(`Elementy nachodzą na siebie: ${overlapping.join('; ')}.`);
+  const tooSmallDrawers = panels.filter((p) => p.opening?.drawer && p.height < 40).map((p) => p.name);
+  if (tooSmallDrawers.length) issues.push(`Szuflady nie mieszczą się w strefie szuflad (${tooSmallDrawers.join(', ')}) — zmniejsz wpisane wysokości innych części wnętrza.`);
+  const hingeClash = valid.filter((p) => p.hingeConflict).map((p) => p.name);
+  if (hingeClash.length) {
+    issues.push(`Zawiasy kolidują z szufladą wewnętrzną i nie da się ich przesunąć (${hingeClash.join(', ')}) — zmniejsz szufladę albo użyj dystansów pod prowadnice szuflady.`);
+  }
+  const shortDoors = valid.filter((p) => p.opening?.hinge && p.height < 150 && frontParts(cabinet.fronts).parts.length > 1).map((p) => p.name);
+  if (shortDoors.length) issues.push(`Za mało miejsca na drzwi (${shortDoors.join(', ')}) — zmniejsz wysokość innych sekcji frontu albo liczbę szuflad.`);
   const noRoomHandles = valid.filter((p) => p.handle && !p.handle.fits).map((p) => p.name);
   if (noRoomHandles.length) {
     issues.push(`Uchwyt nie mieści się na froncie (za duży rozstaw albo odległość od krawędzi): ${noRoomHandles.join(', ')}.`);
@@ -1495,6 +1976,10 @@ export function normalizeCabinet(raw = {}) {
       enabled: raw.slopeTop?.enabled !== false,
       gap: raw.slopeTop?.gap == null ? null : num(raw.slopeTop.gap, null, 0, 500),
     },
+    wallFit: {
+      enabled: raw.wallFit?.enabled !== false,
+      gap: raw.wallFit?.gap == null ? null : num(raw.wallFit.gap, null, 0, 500),
+    },
     materialId: typeof raw.materialId === 'string' ? raw.materialId : null,
     colors: { body: normalizeColor(raw.colors?.body), blend: normalizeColor(raw.colors?.blend), front: normalizeColor(raw.colors?.front) },
     blendMaterialId: typeof raw.blendMaterialId === 'string' ? raw.blendMaterialId : null,
@@ -1506,7 +1991,7 @@ export function normalizeCabinet(raw = {}) {
           ? raw.blendMaterialId
           : null,
     fronts: {
-      type: FRONT_TYPES.some((t) => t.key === raw.fronts?.type) ? raw.fronts.type : 'none',
+      type: raw.fronts?.type === 'door' || raw.fronts?.type === 'doubleDoor' ? raw.fronts.type : 'none', // („drawers” → szuflady, patrz bottomDrawers)
       drawers: Math.round(num(raw.fronts?.drawers, 3, 1, FRONT_LIMITS.drawersMax)),
       hingeSide: raw.fronts?.hingeSide === 'right' ? 'right' : 'left',
       gap: num(raw.fronts?.gap, DEFAULT_FRONT_GAP, 0, FRONT_LIMITS.gapMax),
@@ -1518,6 +2003,20 @@ export function normalizeCabinet(raw = {}) {
       decorSpacing: num(raw.fronts?.decorSpacing, 100, DECOR_LIMITS.min, DECOR_LIMITS.max),
       decorGap: num(raw.fronts?.decorGap, 20, DECOR_GAP_LIMITS.min, DECOR_GAP_LIMITS.max),
       hidden: raw.fronts?.hidden === true, // fronty tego korpusu ukryte w widoku 3D
+      ...frontParts({ ...raw.fronts, gapV: num(raw.fronts?.gapV, DEFAULT_FRONT_GAP_V, 0, FRONT_LIMITS.gapMax) }), // parts, doors
+      bottomDrawers: (() => {
+        const rb = raw.fronts?.bottomDrawers ?? {};
+        if (raw.fronts?.type === 'drawers') {
+          const count = Math.round(num(raw.fronts?.drawers, 3, 1, BOTTOM_DRAWER_LIMITS.countMax));
+          return { count, zone: null, kind: 'external', heights: Array(count).fill(null) };
+        }
+        const count = Math.round(num(rb.count, 0, 0, BOTTOM_DRAWER_LIMITS.countMax));
+        const gv = num(raw.fronts?.gapV, DEFAULT_FRONT_GAP_V, 0, FRONT_LIMITS.gapMax);
+        // (krótko zapisywano wysokość jednego frontu zamiast strefy)
+        const zone = rb.zone != null ? num(rb.zone, null, BOTTOM_DRAWER_LIMITS.zoneMin, LIMITS.spaceMax) : rb.height != null && count ? count * num(rb.height, 180, 1, LIMITS.spaceMax) + (count - 1) * gv : null;
+        const heights = Array.from({ length: count }, (_, i) => (rb.heights?.[i] == null ? null : num(rb.heights[i], null, 20, LIMITS.spaceMax)));
+        return { count, zone, kind: rb.kind === 'internal' ? 'internal' : 'external', heights };
+      })(),
       handle: (() => {
         const h = raw.fronts?.handle ?? {};
         const d = defaultHandle();

@@ -20,6 +20,19 @@ import {
   setPath,
   slopeTopPlane,
   slopeTopGap,
+  setFrontType,
+  frontParts,
+  doorSpan,
+  PART_TYPES,
+  setFrontLayout,
+  frontLayout,
+  hasAnyFronts,
+  UPPER_FRONTS,
+  DRAWER_FRONT_DEFAULT,
+  BOTTOM_DRAWER_KINDS,
+  BOTTOM_DRAWER_LIMITS,
+  wallFitPlanes,
+  WALL_FIT_GAP,
   ceilingGapFor,
   describeCuts,
   stiffenerY,
@@ -53,6 +66,7 @@ import { duplicateCabinet, slideCabinet, slideCabinets } from '../model/placemen
 import { addCabinetToLayout, cabinetAlcoves, updateCabinetRefit, updateCabinetCeilingGap, setLegs } from '../model/layout.js';
 import { createAlcoveDialog } from './alcoveDialog.js';
 import { cabinetMapSvg } from './cabinetMap.js';
+import { addPart, setPartField, setPartKind, partKindOf, removePart, movePart, addDoor, setDoorField, setDoorHeight, removeDoor, toggleDoorCover, doorCoverOptions } from '../model/frontEdit.js';
 import { attachDragReorder, moveInList, DRAG_HANDLE } from './dragReorder.js';
 import { cabinetMaterials } from '../model/materials.js';
 import { setEye, materialSelect, colorPicker, readColorInput, syncColorPicker } from './widgets.js';
@@ -113,6 +127,90 @@ function setSummary(cardEl, section, text) {
 // odświeżane są wartości pól i ostrzeżenia.
 // onShowTrims(cabinetId) — przejście do zakładki „Blendy” (z karty korpusu);
 // onShowWorktop(trimId) — przejście do karty blatu w zakładce „Blaty i półki”.
+// Nazwy części wnętrza do panelu (od góry: „Szuflada 1” — najwyżej, „Wolna przestrzeń 1”…), indeksy jak w modelu (od dołu).
+function partLabels(parts) {
+  const labels = [];
+  let d = 0;
+  let s = 0;
+  for (let i = parts.length - 1; i >= 0; i--) labels[i] = parts[i].type !== 'space' ? `Szuflada ${++d}` : `Wolna przestrzeń ${++s}`;
+  return labels;
+}
+
+// Lista części wnętrza (od góry): ⠿, rodzaj, wysokość (puste — auto), ✕; przy przykrytych — „za drzwiami N”.
+function frontPartsHtml(st) {
+  const labels = partLabels(st.parts);
+  const rows = st.parts
+    .map((p, i) => ({ p, i }))
+    .reverse()
+    .map(({ p, i }) => {
+      const j = st.doors.findIndex((d) => d.covers.includes(p.id));
+      return `
+      <div class="fp-item fp-${p.type}" data-fpart="${i}">
+        <span class="drag-handle fs-drag" draggable="true" data-fpart-drag title="Przeciągnij, aby przenieść wyżej albo niżej">⠿</span>
+        <select data-fpart-f="type" aria-label="Rodzaj części"><option value="drawer">Szuflada (z frontem)</option><option value="innerDrawer">Szuflada wewnętrzna</option><option value="space">Wolna przestrzeń</option></select>
+        <label class="fs-height" title="Wysokość (szuflady — jej frontu / czoła). Puste — automatycznie: części bez wysokości dzielą resztę po równo."><input type="number" step="1" min="1" data-fpart-f="height" /><small>mm</small></label>
+        <button type="button" class="icon danger" data-fpart-remove title="Usuń">✕</button>
+        <span class="fp-note">${labels[i]}${j >= 0 ? ` · za drzwiami${st.doors.length > 1 ? ` ${j + 1}` : ''}` : p.type === 'drawer' ? ' · z frontem' : p.type === 'innerDrawer' ? ' · wewnętrzna, bez drzwi' : ' · otwarta'}</span>
+      </div>`;
+    })
+    .join('');
+  return rows || '<p class="empty">Brak — dodaj szuflady albo wolną przestrzeń.</p>';
+}
+
+// Lista drzwi: rodzaj, wysokość (jak front szuflady — puste: auto), ✕, zawiasy, „Przykrywa:” — części wnętrza od góry.
+function frontDoorsHtml(st) {
+  const labels = partLabels(st.parts);
+  const rows = st.doors
+    .map(
+      (d, j) => `
+      <div class="fd-item" data-fdoor="${j}">
+        <div class="fs-head">
+          <select data-fdoor-f="type" aria-label="Rodzaj drzwi"><option value="door">Drzwi pojedyncze</option><option value="doubleDoor">Drzwi podwójne</option></select>
+          <label class="fs-height" title="Wysokość drzwi — suma przykrytych części; zmienia się przykryta wolna przestrzeń (albo najwyższa część). Puste — automatycznie."><input type="number" step="1" min="1" data-fdoor-f="height" /><small>mm</small></label>
+          <button type="button" class="icon danger" data-fdoor-remove title="Usuń drzwi (szuflady za nimi dostaną własne fronty)">✕</button>
+        </div>
+        ${d.type === 'door' ? '<label class="fs-row"><span>Zawiasy</span><select data-fdoor-f="hingeSide"><option value="left">po lewej</option><option value="right">po prawej</option></select></label>' : ''}
+        <div class="fd-covers"><span>Przykrywa:</span>
+          ${st.parts
+            .map((_, i) => i)
+            .reverse()
+            .map((i) => `<label class="check small"><input type="checkbox" data-fdoor-cover="${i}" /> ${labels[i]}</label>`)
+            .join('')}
+        </div>
+      </div>`,
+    )
+    .join('');
+  return rows || '<p class="empty">Bez drzwi.</p>';
+}
+
+// Rysunek układu frontów korpusu (widok z przodu, w skali): obrys korpusu, drzwi (z linią zawiasów),
+// fronty szuflad (z uchwytem), czoła szuflad wewnętrznych — przerywane (za drzwiami).
+function frontLayoutSvg(cabinet, panels) {
+  const W = cabinet.width;
+  const H = cabinet.height;
+  const y0 = cabinet.y + legHeight(cabinet);
+  const pad = Math.max(W, H) * 0.04;
+  const Y = (y) => H - (y - y0);
+  const parts = [`<rect x="0" y="0" width="${W}" height="${H}" class="fl-body" />`];
+  for (const p of panels) {
+    const internal = p.key.startsWith('idrawer-');
+    const cls = internal ? 'fl-internal' : p.opening?.hinge ? 'fl-door' : 'fl-drawer';
+    const x = p.x - cabinet.x;
+    parts.push(`<rect x="${x}" y="${Y(p.y + p.height)}" width="${p.width}" height="${p.height}" class="${cls}"><title>${p.name}: ${Math.round(p.width)} × ${Math.round(p.height)} mm</title></rect>`);
+    if (p.opening?.drawer && !internal) {
+      const cy = Y(p.y + p.height / 2);
+      parts.push(`<line x1="${x + p.width * 0.4}" y1="${cy}" x2="${x + p.width * 0.6}" y2="${cy}" class="fl-handle" />`);
+    }
+    if (p.opening?.hinge) {
+      // trójkąt otwierania: od strony zawiasów do środka krawędzi otwierania
+      const hx = p.opening.hinge === 'left' ? x : x + p.width;
+      const ox = p.opening.hinge === 'left' ? x + p.width : x;
+      parts.push(`<polyline points="${hx},${Y(p.y + p.height)} ${ox},${Y(p.y + p.height / 2)} ${hx},${Y(p.y)}" class="fl-swing" />`);
+    }
+  }
+  return `<svg viewBox="${-pad} ${-pad} ${W + 2 * pad} ${H + 2 * pad}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Układ frontów">${parts.join('')}</svg>`;
+}
+
 export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onShowWorktop } = {}) {
   let renderedKey = null;
   const legsDialog = createLegsDialog();
@@ -317,6 +415,22 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
         </div>
         <p class="hint slope-top-info"></p>`,
         'slope-top',
+      ) +
+      sub(
+        'wallfit',
+        'Skośna ściana',
+        `
+        <div class="grid-2">
+          <label class="check" title="Korpus przysunięty do skośnej ściany dostaje skośny bok równoległy do ściany: wieńce, półki i plecy docięte pod kątem">
+            <input type="checkbox" data-f="wallFit.enabled" /> Bok pod skośną ścianę
+          </label>
+          <label class="field small" title="Odstęp między skośnym bokiem a ścianą (prostopadle do ściany). Puste — ${WALL_FIT_GAP} mm.">
+            <span>Luz do ściany <small>mm</small></span>
+            <input type="number" step="1" min="0" max="500" data-f="wallFit.gap" placeholder="${WALL_FIT_GAP}" />
+          </label>
+        </div>
+        <p class="hint wall-fit-info"></p>`,
+        'wall-fit',
       );
 
     const legs = `
@@ -364,24 +478,26 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
       <details class="subsection" data-section="sub:front" ${isOpen(c.id, 'sub:front') ? 'open' : ''}>
       <summary class="subsection-title">Front</summary>
       <div class="subsection-body">
+      <div class="front-layout">
+        <div class="front-layout-preview" title="Układ frontów (widok z przodu)"></div>
+        <div class="front-parts-col">
+          <div class="fp-title" title="Części wnętrza od góry do dołu: szuflady i wolne przestrzenie. Szuflada nieprzykryta drzwiami ma własny front, przykryta — chowa się za drzwiami.">Wnętrze <small>(od góry)</small></div>
+          <div class="front-parts"></div>
+          <div class="front-parts-add">
+            <button type="button" data-fpart-add="drawer" title="Nowa szuflada z frontem na dole">+ Szuflada</button>
+            <button type="button" data-fpart-add="innerDrawer" title="Nowa szuflada wewnętrzna na dole — czoło w korpusie, bez frontu (drzwi dodaj osobno i zaznacz, co przykrywają)">+ Szuflada wewnętrzna</button>
+            <button type="button" data-fpart-add="space" title="Nowa wolna przestrzeń na górze">+ Wolna przestrzeń</button>
+          </div>
+          <div class="fp-title" title="Drzwi przykrywają wybrane części wnętrza (ciągły zakres) — szuflady za nimi są wewnętrzne.">Drzwi</div>
+          <div class="front-doors"></div>
+          <div class="front-parts-add">
+            <button type="button" data-fdoor-add="door">+ Drzwi pojedyncze</button>
+            <button type="button" data-fdoor-add="doubleDoor">+ Drzwi podwójne</button>
+          </div>
+        </div>
+      </div>
+      <p class="hint front-bottom-info"></p>
       <div class="grid-2">
-        <label class="field small">
-          <span>Rodzaj</span>
-          <select data-f="fronts.type">
-            ${FRONT_TYPES.map((t) => `<option value="${t.key}">${t.label}</option>`).join('')}
-          </select>
-        </label>
-        <label class="field small front-drawers">
-          <span>Liczba szuflad</span>
-          <input type="number" step="1" min="1" max="${FRONT_LIMITS.drawersMax}" data-f="fronts.drawers" />
-        </label>
-        <label class="field small front-hinge">
-          <span>Zawiasy</span>
-          <select data-f="fronts.hingeSide">
-            <option value="left">po lewej</option>
-            <option value="right">po prawej</option>
-          </select>
-        </label>
         <label class="field small front-opt" title="Szczelina boczna (lewa + prawa razem): po połowie przy każdym boku korpusu (np. 5 mm = 2,5 + 2,5 — sąsiednie korpusy mają między frontami pełne 5 mm), cała między drzwiami podwójnymi">
           <span>Szczelina boczna <small>(lewa + prawa) mm</small></span>
           <input type="number" step="0.5" min="0" max="${FRONT_LIMITS.gapMax}" data-f="fronts.gap" />
@@ -585,7 +701,7 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
   // Mapka zabudowy (ui/cabinetMap.js) — rysowana na nowo przy zmianie projektu i zaznaczenia.
   function updateMap(project = store.get()) {
     const map = root.querySelector('.cab-map');
-    if (map) map.innerHTML = cabinetMapSvg(project, selectedCabinetIds(ui.get()));
+    if (map) map.innerHTML = cabinetMapSvg(project, selectedCabinetIds(ui.get()), new Set([...(ui.get().selectedFronts ?? []), ...(ui.get().selectedBlends ?? [])]));
   }
 
   function updateStatus(project) {
@@ -618,6 +734,18 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
       // Góra pod skos — tylko gdy przestrzeń ma skos z tyłu lub z przodu.
       const zSlope = project.space.slopes.some((s) => s.side === 'back' || s.side === 'front');
       el.querySelector('.slope-top').hidden = !zSlope;
+      // Bok pod skośną ścianę — tylko gdy przestrzeń ma własny kształt ścian.
+      el.querySelector('.wall-fit').hidden = !project.space.outline;
+      if (project.space.outline) {
+        const cuts = wallFitPlanes(c, project);
+        const SIDE = { left: 'lewy', right: 'prawy' };
+        el.querySelector('.wall-fit-info').textContent =
+          c.wallFit?.enabled === false
+            ? 'Wyłączone — korpus zostaje prostopadłościanem (przy skośnej ścianie pojawi się ostrzeżenie).'
+            : cuts.length
+              ? `Korpus sięga skośnej ściany — ${cuts.map((w) => `bok ${SIDE[w.side]} skośny, pod kątem ${Math.round(w.angle * 10) / 10}°`).join('; ')}; wieńce, półki i plecy docięte.`
+              : 'Korpus nie sięga skośnej ściany — zwykłe, proste boki. Przysuń go do ściany, a bok dopasuje się sam.';
+      }
       // Luz do sufitu: własny korpusu albo (pusty) — z przestrzeni; pokazujemy wartość, która obowiązuje.
       const ceilInput = el.querySelector('[data-f="ceilingGap"]');
       const ceilAuto = c.ceilingGap == null;
@@ -677,19 +805,88 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
       setSummary(el, 'stiff', nStiff ? `${nStiff} ${nStiff === 1 ? 'poprzeczka' : nStiff < 5 ? 'poprzeczki' : 'poprzeczek'}` : 'brak');
       // Fronty: widoczne tylko pola pasujące do rodzaju; podsumowanie z wymiarami frontów.
       const fr = c.fronts ?? { type: 'none' };
-      el.querySelector('.front-drawers').hidden = fr.type !== 'drawers';
-      el.querySelector('.front-hinge').hidden = fr.type !== 'door';
-      el.querySelectorAll('.front-opt').forEach((x) => (x.hidden = fr.type === 'none'));
+      const st = frontParts(fr);
+      const anyFronts = hasAnyFronts(fr);
+      const layAll = cabinetPanels(c, project);
+      const layPanels = layAll.filter((x) => x.valid && (x.key.startsWith('front-') || x.key.startsWith('idrawer-')));
+      const r = (v) => Math.round(v);
+      // listy wnętrza i drzwi: przebudowa tylko przy zmianie kształtu (rodzaje, liczba części, przykrycia) — bez gubienia fokusu
+      {
+        const partsEl = el.querySelector('.front-parts');
+        const doorsEl = el.querySelector('.front-doors');
+        const sig = JSON.stringify([st.parts.map((p) => [p.id, p.type]), st.doors.map((d) => [d.type, d.covers])]);
+        if (partsEl.dataset.sig !== sig) {
+          partsEl.innerHTML = frontPartsHtml(st);
+          doorsEl.innerHTML = frontDoorsHtml(st);
+          partsEl.dataset.sig = sig;
+        }
+        const ranges = layAll.partRanges ?? [];
+        const set = (root2, sel, v) => {
+          const inp = root2.querySelector(sel);
+          if (inp && !inp.classList.contains('invalid')) setIfNotFocused(inp, v);
+          return inp;
+        };
+        st.parts.forEach((p, i) => {
+          const item = partsEl.querySelector(`[data-fpart="${i}"]`);
+          if (!item) return;
+          set(item, '[data-fpart-f="type"]', partKindOf(st, p));
+          const hIn = set(item, '[data-fpart-f="height"]', p.height ?? '');
+          hIn.placeholder = ranges[i] ? `${r(ranges[i][1] - ranges[i][0])} (auto)` : 'auto';
+          hIn.classList.toggle('overridden', p.height != null);
+        });
+        st.doors.forEach((d, j) => {
+          const item = doorsEl.querySelector(`[data-fdoor="${j}"]`);
+          if (!item) return;
+          set(item, '[data-fdoor-f="type"]', d.type);
+          set(item, '[data-fdoor-f="hingeSide"]', d.hingeSide);
+          const span = doorSpan(d, st.parts);
+          const doorH = span && ranges[span[0]] ? r(ranges[span[1]][1] - ranges[span[0]][0]) : null;
+          // wysokość wpisana, gdy część, która ją ustala (najwyższa przykryta wolna przestrzeń / najwyższa część), ma wysokość
+          let k = span ? span[1] : -1;
+          while (span && k >= span[0] && st.parts[k].type !== 'space') k--;
+          if (span && k < span[0]) k = span[1];
+          const fixed = k >= 0 && st.parts[k]?.height != null;
+          const hIn = set(item, '[data-fdoor-f="height"]', fixed ? doorH : '');
+          hIn.placeholder = doorH != null ? `${doorH} (auto)` : 'auto';
+          hIn.classList.toggle('overridden', fixed);
+          const opts = doorCoverOptions(st, j);
+          opts.forEach((o, i) => {
+            const cb = item.querySelector(`[data-fdoor-cover="${i}"]`);
+            if (!cb) return;
+            cb.checked = o.checked;
+            cb.disabled = !o.enabled;
+            cb.closest('label').classList.toggle('disabled', !o.enabled);
+          });
+        });
+        // podświetlenie części / drzwi z zaznaczonym w 3D elementem (np. szufladą)
+        const sel = ui.get();
+        const keys = [...(sel.selectedFronts ?? []), ...(sel.selectedBlends ?? [])].filter((id) => id.startsWith(`${c.id}:`)).map((id) => id.split(':')[1]);
+        const picked = keys.map((k2) => layPanels.find((x) => x.key === k2)).filter(Boolean);
+        partsEl.querySelectorAll('.fp-item').forEach((it) => it.classList.toggle('picked', picked.some((x) => x.part === Number(it.dataset.fpart))));
+        doorsEl.querySelectorAll('.fd-item').forEach((it) => it.classList.toggle('picked', picked.some((x) => x.part == null && x.door === Number(it.dataset.fdoor))));
+      }
+      el.querySelector('.front-layout-preview').innerHTML = frontLayoutSvg(c, layPanels);
+      // opis: zawiasy przy szufladach wewnętrznych
+      {
+        const parts = [];
+        for (const d of layPanels.filter((x) => x.opening?.hinge)) {
+          if (d.hingeConflict) parts.push(`⚠ ${d.name}: zawiasy nie mieszczą się poza szufladami wewnętrznymi — zmniejsz szuflady albo użyj dystansów pod prowadnice.`);
+          else if (d.hingesMoved) parts.push(`${d.name}: zawiasy omijają szuflady wewnętrzne — wysokości od dołu drzwi: ${d.hinges.map((h) => r(h.y - d.y)).join(', ')} mm.`);
+        }
+        el.querySelector('.front-bottom-info').textContent = parts.join(' ');
+      }
+      el.querySelectorAll('.front-opt').forEach((x) => (x.hidden = !anyFronts));      el.querySelectorAll('.front-opt').forEach((x) => (x.hidden = fr.type === 'none'));
       // Uchwyt: przy frezie uchwytowym niepotrzebny; rozstaw — tylko dla uchwytu listwowego.
       const handleType = fr.handle?.type ?? 'none';
       const groove = fr.groove && fr.groove !== 'none';
-      el.querySelector('.front-handle-box').hidden = fr.type === 'none' || groove;
+      el.querySelector('.front-handle-box').hidden = !anyFronts || groove;
       el.querySelector('.handle-spacing').hidden = handleType !== 'bar';
       el.querySelectorAll('.handle-opt').forEach((x) => (x.hidden = handleType === 'none'));
       // Położenie uchwytu — dwa wymiary (ustawione albo domyślne) z nazwami zależnymi od frontu i położenia.
       {
         const spec = fr.handle ?? defaultHandle();
-        const door = fr.type === 'door' || fr.type === 'doubleDoor';
+        // same drzwi (bez szuflad) — uchwyt pionowy przy krawędzi otwierania
+        const door = st.doors.length > 0 && !st.parts.some((x) => x.type === 'drawer' && !st.doors.some((d) => d.covers.includes(x.id))); // (bez szuflad z frontem)
         const off = handleOffsets(spec, door);
         const xLabel = door ? 'Od krawędzi otwierania' : 'Przesunięcie od środka (w prawo +)';
         const yLabel = { top: 'Od górnej krawędzi', bottom: 'Od dolnej krawędzi', center: 'Przesunięcie od środka (w górę +)' }[spec.position];
@@ -712,7 +909,7 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
       const decor = decorInfo(fr.decor ?? 'none');
       el.querySelectorAll('.front-decor-param').forEach((label) => {
         const param = decor.params.find((x) => x.field === label.dataset.decorField);
-        label.hidden = fr.type === 'none' || !param;
+        label.hidden = !anyFronts || !param;
         if (param) label.querySelector('.param-label').textContent = param.label;
       });
       const sample = frontPanels[0];
@@ -721,21 +918,26 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
           ? decorPreviewSvg(decor.key, sample.width, sample.height, { margin: fr.decorMargin, spacing: fr.decorSpacing, gap: fr.decorGap }, 72)
           : '';
       const sizes = [...new Set(frontPanels.map((p) => `${round1(p.width)} × ${round1(p.height)}`))];
-      const frontLabel = FRONT_TYPES.find((t) => t.key === fr.type)?.label.toLowerCase();
-      setSummary(
-        el,
-        'fronts',
-        fr.type === 'none' ? 'brak' : `${frontLabel} · ${frontPanels.length} × ${sizes.join(' / ')} mm${fr.hidden ? ' · ukryte' : ''}`,
-      );
+      // od góry, np. „1 szufl. / drzwi / 1 szufl.”
+      // np. „2 szufl. + drzwi (1 wewn.)”
+      const nDrawers = st.parts.filter((x) => x.type !== 'space').length;
+      const nInner = st.parts.filter((x) => x.type === 'innerDrawer' || (x.type === 'drawer' && st.doors.some((d) => d.covers.includes(x.id)))).length;
+      const frontLabel = [
+        nDrawers - nInner ? `${nDrawers - nInner} szufl.` : '',
+        st.doors.length ? `${st.doors.length > 1 ? st.doors.length + ' × ' : ''}drzwi${nInner ? ` (${nInner} wewn.)` : ''}` : '',
+      ]
+        .filter(Boolean)
+        .join(' + ');
+      setSummary(el, 'fronts', !anyFronts ? 'brak' : `${frontLabel} · ${frontPanels.length} × ${sizes.join(' / ')} mm${fr.hidden ? ' · ukryte' : ''}`);
       // Oko na pasku „Fronty”: ukrywa / pokazuje fronty tego korpusu w widoku 3D (tylko gdy są fronty).
       const frontsEye = el.querySelector('[data-toggle-fronts-hidden]');
-      frontsEye.hidden = fr.type === 'none';
+      frontsEye.hidden = !anyFronts;
       setEye(frontsEye, fr.hidden, 'fronty tego korpusu');
       el.querySelector('.front-info').textContent =
-        fr.type === 'none'
-          ? 'Fronty nakładane (przed korpusem). Wybierz drzwi albo szuflady.'
+        !anyFronts
+          ? 'Fronty nakładane (przed korpusem). Dodaj szuflady i / albo drzwi.'
           : `Fronty: ${frontPanels.length} szt. ${sizes.join(' / ')} mm (szer. × wys.)` +
-            (fr.type === 'drawers' ? ' · na razie same fronty, bez skrzynek szuflad.' : '') +
+            (st.parts.some((x) => x.type !== 'space') ? ' · szuflady: skrzynki tylko w widoku 3D (bez formatek).' : '') +
             ((frontPanels[0] && describeMilling(frontPanels[0])) ? ` · ${describeMilling(frontPanels[0])}.` : '') +
             ' Zawiasy, prowadnice i uchwyty są w liście formatek (CSV) w części „Akcesoria”' +
             (fr.groove !== 'none' && fr.groove ? ' (fronty z frezem uchwytowym — bez uchwytów).' : '.');
@@ -844,11 +1046,72 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
     }
   }
 
+  // Kolejność sekcji frontu: przeciąganie za uchwyt ⠿ w sekcji (w obrębie listy jednego korpusu); kreska nad / pod
+  // sekcją pokazuje miejsce upuszczenia. Lista pokazuje sekcje od góry, w modelu są od dołu.
+  {
+    let secDrag = null; // { cabinetId, index, list }
+    const clearSecMarks = () => root.querySelectorAll('.fp-item.drop-before, .fp-item.drop-after').forEach((x) => x.classList.remove('drop-before', 'drop-after'));
+    const secTarget = (e) => {
+      const item = e.target.closest?.('.fp-item');
+      if (!secDrag || !item || item.parentElement !== secDrag.list || Number(item.dataset.fpart) === secDrag.index) return null;
+      const r = item.getBoundingClientRect();
+      return { item, after: e.clientY > r.top + r.height / 2 };
+    };
+    root.addEventListener('dragstart', (e) => {
+      const handle = e.target.closest?.('[data-fpart-drag]');
+      if (!handle) return;
+      e.stopPropagation();
+      const item = handle.closest('.fp-item');
+      secDrag = { cabinetId: handle.closest('[data-kind="cabinet"]').dataset.id, index: Number(item.dataset.fpart), list: item.parentElement };
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', 'section');
+      e.dataTransfer.setDragImage(item, 16, 12);
+      item.classList.add('dragging');
+    });
+    root.addEventListener('dragover', (e) => {
+      const t = secTarget(e);
+      if (!t) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      clearSecMarks();
+      t.item.classList.add(t.after ? 'drop-after' : 'drop-before');
+    });
+    root.addEventListener('drop', (e) => {
+      const t = secTarget(e);
+      clearSecMarks();
+      if (!t) return;
+      e.preventDefault();
+      const { cabinetId, index: from } = secDrag;
+      const target = Number(t.item.dataset.fpart);
+      // lista od góry: „pod” częścią = niżej (mniejszy indeks), „nad” = wyżej
+      const at = target > from ? target - 1 : target; // indeks celu po wyjęciu
+      updateCabinet(cabinetId, (c, p) => movePart(c, from, t.after ? at : at + 1, p));
+    });
+    root.addEventListener('dragend', () => {
+      secDrag = null;
+      clearSecMarks();
+      root.querySelectorAll('.fp-item.dragging').forEach((x) => x.classList.remove('dragging'));
+    });
+  }
+
   // Zmiana kolejności kart: przeciąganie za uchwyt ⠿ (ui/dragReorder.js).
   attachDragReorder(root, 'cabinet', (moved, target, after) => updateFurniture((list) => moveInList(list, moved, target, after)));
 
   // Klik w korpus na mapce: zaznacza go (jak klik w 3D) i pokazuje jego kartę; Ctrl + klik — kilka korpusów.
   root.addEventListener('click', (e) => {
+    {
+      const btn = e.target.closest('[data-fpart-add], [data-fpart-remove], [data-fdoor-add], [data-fdoor-remove]');
+      const cabId = btn?.closest('[data-kind="cabinet"]')?.dataset.id;
+      if (btn && cabId) {
+        updateCabinet(cabId, (c, p) => {
+          if (btn.dataset.fpartAdd) return addPart(c, btn.dataset.fpartAdd, p);
+          if (btn.dataset.fdoorAdd) return addDoor(c, btn.dataset.fdoorAdd, p);
+          if (btn.dataset.fpartRemove !== undefined) return removePart(c, Number(btn.closest('[data-fpart]').dataset.fpart), p);
+          return removeDoor(c, Number(btn.closest('[data-fdoor]').dataset.fdoor), p);
+        });
+        return;
+      }
+    }
     const id = e.target.closest('[data-map-cab]')?.dataset.mapCab;
     if (!id) return;
     const state = ui.get();
@@ -870,6 +1133,30 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
       const ids = selectedCabinetIds(ui.get());
       const targets = ids.has(id) && ids.size > 1 ? ids : new Set([id]);
       store.set((p) => ({ ...p, furniture: p.furniture.map((c) => (targets.has(c.id) ? setPath(c, color.path, color.value) : c)) }));
+      return;
+    }
+
+    // Układ frontów: szuflady (liczba, do wysokości, rodzaj) i front nad nimi (brak / drzwi / drzwi podwójne).
+    // Wnętrze i drzwi: rodzaj, wysokość (puste — auto), zawiasy, „Przykrywa”.
+    const fpartItem = input.closest('[data-fpart]');
+    const fdoorItem = input.closest('[data-fdoor]');
+    if ((fpartItem && input.dataset.fpartF) || (fdoorItem && (input.dataset.fdoorF || input.dataset.fdoorCover !== undefined))) {
+      if (input.dataset.fdoorCover !== undefined) {
+        const j = Number(fdoorItem.dataset.fdoor);
+        updateCabinet(id, (c, p) => toggleDoorCover(c, j, Number(input.dataset.fdoorCover), p));
+        return;
+      }
+      const numeric = input.type === 'number';
+      const value = numeric ? (input.value.trim() === '' ? null : readNumberInput(input)) : input.value;
+      if (value === undefined) return;
+      if (fpartItem && input.dataset.fpartF) {
+        const i = Number(fpartItem.dataset.fpart);
+        updateCabinet(id, (c, p) => (input.dataset.fpartF === 'type' ? setPartKind(c, i, value, p) : setPartField(c, i, input.dataset.fpartF, value, p)));
+      } else {
+        const j = Number(fdoorItem.dataset.fdoor);
+        const f = input.dataset.fdoorF;
+        updateCabinet(id, (c, p) => (f === 'height' ? setDoorHeight(c, j, value, p) : setDoorField(c, j, f, value, p)));
+      }
       return;
     }
 
@@ -1060,11 +1347,15 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
       );
       return;
     }
-    if (field.startsWith('slopeTop.') || field.startsWith('legs.')) {
+    if (field.startsWith('slopeTop.') || field.startsWith('legs.') || field.startsWith('wallFit.')) {
       // Włączenie / wyłączenie skośnej góry, zmiana luzu do skosu albo nóżek — korpus o wysokości automatycznej
       // dopasowuje się na nowo (z przodu sięga skosu albo zniża się do najniższego miejsca);
       // korpus z wysokością ręczną zniża się tylko wtedy, gdy przestałby się mieścić pod sufitem.
       store.set((p) => updateCabinetRefit(p, id, (c) => setPath(c, field, value)));
+      return;
+    }
+    if (field === 'fronts.type') {
+      updateCabinet(id, (c, p) => setFrontType(c, value, p));
       return;
     }
     updateCabinet(id, (c) => setPath(c, field, value));
@@ -1073,6 +1364,16 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
   // Po opuszczeniu pola z błędną wartością przywracamy ostatnią poprawną.
   root.addEventListener('change', (e) => {
     const input = e.target;
+    if ((input.closest('[data-fpart]') || input.closest('[data-fdoor]')) && input.type === 'number') {
+      // (puste — automatycznie, obsłużone w input; błędna wartość — przebudowa wartości z modelu przy kolejnym odświeżeniu)
+      if (input.classList.contains('invalid')) {
+        input.classList.remove('invalid');
+        input.value = '';
+        const cid = input.closest('[data-kind="cabinet"]')?.dataset.id;
+        if (cid) updateCabinet(cid, (c) => ({ ...c }));
+      }
+      return;
+    }
     // Wyczyszczony luz do skosu wraca do luzu ustawionego przy skosie.
     const gapCabinet = input.closest('[data-kind="cabinet"]')?.dataset.id;
     // Wyczyszczone pole półki wraca do wartości automatycznej (równy rozkład / pełna głębokość);
@@ -1098,6 +1399,11 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
     if (input.dataset.f === 'ceilingGap' && input.value.trim() === '' && gapCabinet) {
       input.classList.remove('invalid');
       store.set((p) => updateCabinetCeilingGap(p, gapCabinet, (c) => ({ ...c, ceilingGap: null })));
+      return;
+    }
+    if (input.dataset.f === 'wallFit.gap' && input.value.trim() === '' && gapCabinet) {
+      input.classList.remove('invalid');
+      store.set((p) => updateCabinetRefit(p, gapCabinet, (c) => setPath(c, 'wallFit.gap', null)));
       return;
     }
     if (input.dataset.f === 'slopeTop.gap' && input.value.trim() === '' && gapCabinet) {
@@ -1367,6 +1673,25 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
     syncSelection,
     // Pokazuje sekcję karty korpusu (np. „legs” po zaznaczeniu nóżek w 3D): zakładka, rozwinięta karta
     // i sekcja, przewinięcie do niej.
+    // Front (np. szuflada) zaznaczony w 3D: sekcja „Fronty” i podsekcja „Front” otwarte, przewinięte do sekcji
+    // frontu, w której jest ten element (podświetlonej).
+    revealFront(cabinetId, key) {
+      this.revealSection(cabinetId, 'fronts');
+      const card = root.querySelector(`[data-kind="cabinet"][data-id="${cabinetId}"]`);
+      const sub = card?.querySelector('[data-section="sub:front"]');
+      if (sub) {
+        sectionState.set(`${cabinetId}:sub:front`, true);
+        sub.open = true;
+      }
+      const cab = store.get().furniture.find((x) => x.id === cabinetId);
+      const panel = cab && cabinetPanels(cab, store.get()).find((x) => x.key === key);
+      const item = panel?.part != null ? card?.querySelector(`.fp-item[data-fpart="${panel.part}"]`) : panel?.door != null ? card?.querySelector(`.fd-item[data-fdoor="${panel.door}"]`) : null;
+      if (item) {
+        card.querySelectorAll('.fp-item.picked, .fd-item.picked').forEach((x) => x.classList.remove('picked'));
+        item.classList.add('picked');
+        requestAnimationFrame(() => item.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
+      }
+    },
     revealSection(cabinetId, key) {
       tabs.activate('furniture-panel');
       if (collapsed.has(cabinetId)) setCollapsed([cabinetId], false);

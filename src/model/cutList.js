@@ -141,10 +141,12 @@ export function buildAccessories(project, cabinetIds) {
   for (const c of project.furniture) {
     if (cabinetIds && !cabinetIds.has(c.id)) continue;
     for (const l of cabinetLegs(c, project)) legs.set(l.height, (legs.get(l.height) ?? 0) + 1);
-    const fronts = cabinetPanels(c, project).filter((p) => p.valid && p.key.startsWith('front-'));
-    const type = c.fronts?.type;
-    if (type === 'door' || type === 'doubleDoor') hinges += fronts.reduce((s, p) => s + hingesFor(p.height), 0);
-    if (type === 'drawers') slides += fronts.length;
+    const panels = cabinetPanels(c, project).filter((p) => p.valid);
+    const fronts = panels.filter((p) => p.key.startsWith('front-'));
+    // zawiasy — ile wypadło na drzwiach (także przesuniętych przez szuflady wewnętrzne); prowadnice — na każdą
+    // szufladę (front szuflady zewnętrznej albo czoło wewnętrznej)
+    hinges += fronts.reduce((sum, p) => sum + (p.hinges?.length ?? 0), 0);
+    slides += panels.filter((p) => p.opening?.drawer).length;
     // uchwyty: według rodzaju i rozstawu (front z frezem uchwytowym nie ma uchwytu)
     for (const p of fronts) {
       if (!p.handle) continue;

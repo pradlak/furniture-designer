@@ -83,5 +83,17 @@ export const PICTURES = {
     <line x1="26" y1="96" x2="26" y2="104" class="pic-leg" /><line x1="134" y1="96" x2="134" y2="104" class="pic-leg" />
     ${floor}`),
 };
+// salon przy kominku: kominek (występ ściany z paleniskiem) pośrodku, po bokach szafki z blatem
+PICTURES.fireplace = svg(`${wall}
+    <rect x="62" y="6" width="36" height="98" class="pic-body" />
+    <rect x="70" y="70" width="20" height="34" rx="6" class="pic-plinth" />
+    <rect x="14" y="62" width="48" height="5" class="pic-top" />
+    <rect x="98" y="62" width="48" height="5" class="pic-top" />
+    <rect x="15" y="68" width="23" height="30" class="pic-front" /><rect x="39" y="68" width="22" height="30" class="pic-front" />
+    <rect x="99" y="68" width="22" height="30" class="pic-front" /><rect x="122" y="68" width="23" height="30" class="pic-front" />
+    <rect x="15" y="98" width="46" height="6" class="pic-plinth" /><rect x="99" y="98" width="46" height="6" class="pic-plinth" />
+    <line x1="35" y1="78" x2="35" y2="88" class="pic-handle" /><line x1="42" y1="78" x2="42" y2="88" class="pic-handle" />
+    <line x1="118" y1="78" x2="118" y2="88" class="pic-handle" /><line x1="125" y1="78" x2="125" y2="88" class="pic-handle" />
+    ${floor}`);
 // blat z wycięciami — ten sam obrazek co kuchnia
 PICTURES.worktop = PICTURES.kitchen;

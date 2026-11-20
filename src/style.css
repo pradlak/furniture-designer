@@ -300,19 +300,30 @@ select {
 .cab-map svg { display: block; width: 100%; max-height: 150px; }
 #furniture-panel .item.cabinet { scroll-margin-top: 175px; } /* przewinięta karta nie chowa się pod mapką */
 
-/* Pasek nagłówka karty korpusu — najwyższy poziom, wyróżniony kolorem (sekcje w środku są niebieskawe) */
-.item.cabinet > .item-head {
+/* Pasek nagłówka karty — najwyższy poziom, wyróżniony kolorem karty (sekcje w środku są niebieskawe).
+   Kolor paska wynika z koloru lewej krawędzi karty (--card-color); korpus ma swój brązowy odcień. */
+.item { --card-color: #f59e0b; }
+.item.cabinet { --card-color: #a0784c; }
+.item.trim, .item.side-blends { --card-color: #7c6a55; }
+.item.board { --card-color: #a0784c; }
+.item.slope, .item.material, .item.cut { --card-color: #64748b; }
+.item.obstacle { --card-color: #f59e0b; }
+.item.obstacle.wall-part { --card-color: #94a3b8; }
+.item > .item-head {
   margin: -8px -8px 8px;
   padding: 7px 8px;
   align-items: center;
-  background: #ead7bd;
-  border-bottom: 1px solid #cfae86;
+  background: color-mix(in srgb, var(--card-color) 24%, #fff);
+  border-bottom: 1px solid color-mix(in srgb, var(--card-color) 50%, #fff);
   border-radius: 2px 5px 0 0;
 }
-.item.cabinet.collapsed > .item-head { margin-bottom: 4px; }
-.item.cabinet.selected > .item-head { background: color-mix(in srgb, var(--accent) 22%, #fff); border-bottom-color: color-mix(in srgb, var(--accent) 45%, #fff); }
-.item.cabinet > .item-head input[type='text'] { font-weight: 600; }
-.drag-handle { flex: none; cursor: grab; color: #8a6a48; font-size: 16px; line-height: 1; padding: 2px 1px; user-select: none; }
+.item.cabinet > .item-head { background: #ead7bd; border-bottom-color: #cfae86; }
+.item.collapsed > .item-head { margin-bottom: 4px; }
+.item.cabinet.selected > .item-head,
+.item.related > .item-head,
+.item.picked > .item-head { background: color-mix(in srgb, var(--accent) 22%, #fff); border-bottom-color: color-mix(in srgb, var(--accent) 45%, #fff); }
+.item > .item-head input[type='text'] { font-weight: 600; }
+.drag-handle { flex: none; cursor: grab; color: color-mix(in srgb, var(--card-color, #a0784c) 85%, #000); font-size: 16px; line-height: 1; padding: 2px 1px; user-select: none; }
 .drag-handle:active { cursor: grabbing; }
 .item.dragging { opacity: 0.45; }
 .item.drop-before { box-shadow: 0 -3px 0 0 var(--accent); }
@@ -1018,3 +1029,218 @@ body.has-user-menu .help-group .settings-btn { display: none; }
 .account-group .save-status { border: none; background: none; padding: 2px 4px; cursor: pointer; }
 .account-group .save-status:hover { text-decoration: underline; }
 .library-login { display: inline-flex; margin-top: 4px; }
+
+/* --- skośne ściany: rzut z góry w panelu „Przestrzeń” --- */
+.item.cut { border-left-color: #64748b; }
+.plan-preview { margin: 0 0 8px; }
+.plan-preview svg { display: block; width: 100%; max-height: 160px; }
+.plan-box { fill: none; stroke: #cbd5e1; stroke-dasharray: 1.5% 1%; stroke-width: 1; vector-effect: non-scaling-stroke; }
+.plan-floor { fill: #efe6d6; stroke: #64748b; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.plan-wall { fill: #cbd5e1; stroke: #94a3b8; stroke-width: 1; vector-effect: non-scaling-stroke; }
+.plan-cab { fill: color-mix(in srgb, #a0784c 35%, #fff); stroke: #a0784c; stroke-width: 1; vector-effect: non-scaling-stroke; }
+.plan-cut { stroke: var(--accent); stroke-width: 2.5; vector-effect: non-scaling-stroke; }
+.plan-front { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 4 3; vector-effect: non-scaling-stroke; }
+.plan-pt { fill: var(--accent); }
+.outline-points { display: flex; flex-direction: column; gap: 4px; margin: 0 0 8px; }
+.outline-pt { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+.outline-pt label { display: flex; align-items: center; gap: 4px; }
+.outline-pt input[type='number'] { width: 76px; padding: 2px 5px; }
+.outline-pt .pt-no { width: 18px; text-align: right; font-weight: 600; color: var(--accent); }
+.outline-pt .pt-len { flex: 1; }
+
+/* --- podpowiedź przyciągania przy przesuwaniu korpusu (scene/interaction.js) --- */
+.snap-tip {
+  position: absolute;
+  z-index: 5;
+  pointer-events: none;
+  padding: 3px 8px;
+  font-size: 12px;
+  white-space: nowrap;
+  color: #fff;
+  background: color-mix(in srgb, var(--accent) 88%, #000);
+  border-radius: 10px;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.25);
+}
+
+/* --- zakładki panelu zawsze widoczne (przyklejone u góry przy przewijaniu) --- */
+.tabs {
+  position: sticky;
+  top: -16px; /* panel ma 16 px odstępu u góry */
+  z-index: 4;
+  margin: -16px -16px 16px;
+  padding: 12px 16px 0;
+  background: var(--panel, #fff);
+}
+/* mapka zabudowy (zakładka „Meble”) przykleja się pod zakładkami; --tabs-h ustawia ui/tabs.js */
+.cab-map { top: calc(var(--tabs-h, 40px) - 16px); }
+#furniture-panel .item.cabinet { scroll-margin-top: calc(175px + var(--tabs-h, 40px)); }
+
+/* --- wyróżniony pasek zakładek: przyciski jak „pigułki” na jasnym pasku, aktywna — w kolorze akcentu --- */
+.tabs {
+  gap: 4px;
+  padding: 10px 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 20%, var(--border));
+  background: color-mix(in srgb, var(--accent) 6%, var(--panel, #fff));
+  box-shadow: 0 2px 6px rgb(15 23 42 / 0.06);
+}
+.tabs button {
+  padding: 6px 11px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-weight: 500;
+  color: #475569;
+  background: transparent;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.tabs button:hover {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, #fff);
+  border-color: color-mix(in srgb, var(--accent) 25%, transparent);
+}
+.tabs button.active {
+  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+  font-weight: 600;
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+.tabs button:focus-visible { outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent); outline-offset: 1px; }
+
+/* --- okienko ze skrótami: ukrywanie (ui/viewportHelp.js) --- */
+.viewport-help { padding-right: 28px; }
+.viewport-help-close {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  pointer-events: auto; /* samo okienko przepuszcza kliknięcia do widoku 3D */
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.viewport-help-close:hover { color: var(--text); background: rgba(0, 0, 0, 0.06); }
+.viewport-help-open {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  z-index: 1;
+  padding: 3px 9px;
+  font-size: 11px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.viewport-help-open:hover { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
+
+/* skróty w prawym dolnym rogu widoku 3D (wcześniej w lewym) */
+.viewport-help,
+.viewport-help-open { left: auto; right: 12px; }
+
+/* wiersz półki zaznaczonej w widoku 3D (sekcja „Półki” w karcie korpusu) */
+.shelf-row.picked {
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent) 12%, #fff);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+/* --- układ frontów w karcie korpusu: rysunek + szuflady (od dołu) i front nad nimi --- */
+.front-layout { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 6px; }
+.front-layout-preview { flex: none; width: 92px; }
+.front-layout-preview svg { display: block; width: 100%; max-height: 150px; }
+.front-layout-fields { flex: 1; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.front-layout-group {
+  padding: 6px 8px 0;
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border));
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent) 4%, #fff);
+}
+.front-layout-title { font-size: 12px; font-weight: 600; margin-bottom: 4px; }
+.front-layout-title small { font-weight: 400; color: var(--muted); }
+.front-layout-group .field { margin-bottom: 6px; }
+.fl-body { fill: #f4f3ef; stroke: #94a3b8; stroke-width: 1; vector-effect: non-scaling-stroke; }
+.fl-door { fill: color-mix(in srgb, var(--accent) 14%, #fff); stroke: var(--accent); stroke-width: 1.2; vector-effect: non-scaling-stroke; }
+.fl-drawer { fill: color-mix(in srgb, #a0784c 22%, #fff); stroke: #8a6a48; stroke-width: 1.2; vector-effect: non-scaling-stroke; }
+.fl-internal { fill: none; stroke: #8a6a48; stroke-width: 1.2; stroke-dasharray: 4 3; vector-effect: non-scaling-stroke; }
+.fl-handle { stroke: #475569; stroke-width: 2; vector-effect: non-scaling-stroke; }
+.fl-swing { fill: none; stroke: var(--accent); stroke-width: 0.8; stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; }
+.fl-drawer-rows { display: flex; flex-direction: column; gap: 3px; margin-bottom: 6px; }
+.fl-drawer-row { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.fl-drawer-row span { flex: 1; }
+.fl-drawer-row input { width: 72px; padding: 2px 5px; }
+.fl-drawer-row input.overridden { border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); font-weight: 600; }
+
+/* --- sekcje frontu (lista od góry do dołu, jak na rysunku) --- */
+.front-sections { flex: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.fs-item {
+  padding: 5px 6px;
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border));
+  border-left: 3px solid var(--accent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent) 4%, #fff);
+}
+.fs-item.fs-drawers { border-left-color: #8a6a48; background: color-mix(in srgb, #a0784c 6%, #fff); }
+.fs-item.fs-open { border-left-color: #94a3b8; background: #f8fafc; }
+.fs-head { display: flex; align-items: center; gap: 4px; }
+.fs-head select { flex: 1; min-width: 0; padding: 2px 4px; font-size: 12px; }
+.fs-height { display: flex; align-items: center; gap: 2px; font-size: 11px; color: var(--muted); }
+.fs-height input { width: 64px; padding: 2px 4px; }
+.fs-head button { flex: none; padding: 0 5px; line-height: 20px; font-size: 12px; }
+.fs-row { display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 12px; color: var(--muted); }
+.fs-row span { flex: 1; }
+.fs-row input { width: 64px; padding: 2px 4px; }
+.fs-row select { flex: none; width: auto; padding: 2px 4px; font-size: 12px; }
+.fs-item input.overridden { border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); font-weight: 600; }
+.front-sections-add { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 2px 0 6px; font-size: 12px; color: var(--muted); }
+.front-sections-add button { padding: 2px 7px; font-size: 12px; }
+.front-layout-preview { width: 80px; }
+
+/* sekcje frontu: uchwyt ⠿ (przeciąganie zmienia kolejność) */
+.fs-drag { font-size: 15px; padding: 0 2px; }
+.fs-item.dragging { opacity: 0.45; }
+.fs-item.drop-before { box-shadow: 0 -3px 0 0 var(--accent); }
+.fs-item.drop-after { box-shadow: 0 3px 0 0 var(--accent); }
+
+/* mapka zabudowy: fronty na korpusach, zaznaczony front wyróżniony */
+.map-cab rect.map-front { fill: rgba(255, 255, 255, 0.55); stroke: #8a7a66; stroke-width: 1; vector-effect: non-scaling-stroke; }
+.map-cab rect.map-front.map-inner { fill: none; stroke-dasharray: 4 3; }
+.map-cab rect.map-front.picked { stroke: #166534; stroke-width: 2; }
+.map-front-handle { stroke: #475569; stroke-width: 1.5; vector-effect: non-scaling-stroke; pointer-events: none; }
+
+/* sekcja frontu z zaznaczonym w 3D elementem (np. szufladą) */
+.fs-item.picked { box-shadow: 0 0 0 2px var(--accent); background: color-mix(in srgb, var(--accent) 10%, #fff); }
+
+/* --- fronty: wnętrze (szuflady, wolne przestrzenie) i drzwi przykrywające wybrane części --- */
+.front-parts-col { flex: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.fp-title { font-size: 12px; font-weight: 600; margin-top: 2px; }
+.fp-title small { font-weight: 400; color: var(--muted); }
+.front-parts, .front-doors { display: flex; flex-direction: column; gap: 4px; }
+.fp-item, .fd-item {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px;
+  padding: 4px 6px;
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border));
+  border-left: 3px solid #8a6a48;
+  border-radius: 6px;
+  background: color-mix(in srgb, #a0784c 6%, #fff);
+}
+.fp-item.fp-space { border-left-color: #94a3b8; background: #f8fafc; }
+.fd-item { display: block; border-left-color: var(--accent); background: color-mix(in srgb, var(--accent) 5%, #fff); }
+.fp-item select { flex: 1; min-width: 0; padding: 2px 4px; font-size: 12px; }
+.fp-item button, .fd-item .fs-head button { flex: none; padding: 0 5px; line-height: 20px; font-size: 12px; }
+.fp-note { flex-basis: 100%; font-size: 11px; color: var(--muted); padding-left: 20px; }
+.fd-covers { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; margin-top: 4px; font-size: 12px; color: var(--muted); }
+.fd-covers .check.disabled { opacity: 0.45; }
+.fp-item.picked, .fd-item.picked { box-shadow: 0 0 0 2px var(--accent); background: color-mix(in srgb, var(--accent) 10%, #fff); }
+.fp-item.dragging { opacity: 0.45; }
+.fp-item.drop-before { box-shadow: 0 -3px 0 0 var(--accent); }
+.fp-item.drop-after { box-shadow: 0 3px 0 0 var(--accent); }
+.fp-item input.overridden, .fd-item input.overridden { border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); font-weight: 600; }
+.front-parts-add { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; }
+.front-parts-add button { padding: 2px 7px; font-size: 12px; }

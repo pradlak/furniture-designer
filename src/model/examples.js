@@ -5,6 +5,8 @@ import { addShelf, setShelfY, setSideBlendField, defaultHandle } from './furnitu
 import { createTrim, trimBox } from './trims.js';
 import { createBoard } from './boards.js';
 import { createHole } from './boardFeatures.js';
+import { normalizeProject } from './project.js';
+import salonPrzyKominku from './examples/salonPrzyKominku.json';
 
 // Galeria przykładowych projektów (do wczytania z ekranu powitalnego / okienka „Nowy projekt”).
 // Każdy przykład budujemy tymi samymi funkcjami, których używa program — więc wygląda tak,
@@ -134,6 +136,10 @@ function worktop() {
   return p;
 }
 
+// 7. Salon przy kominku — gotowy projekt zapisany w pliku JSON (jak z „Eksportuj”): dwie wnęki po bokach
+//    kominka, w każdej dwie szafki z blatem, blendą górną i dolną, panelami przy ścianach i frontami z frezem.
+const fireplace = () => normalizeProject(structuredClone(salonPrzyKominku));
+
 export const EXAMPLES = [
   { key: 'kitchen', label: 'Szafki kuchenne', description: 'Szafki dolne na nóżkach z blatem, cokołem, drzwiami i szufladami', create: kitchen },
   {
@@ -150,5 +156,11 @@ export const EXAMPLES = [
     label: 'Blat z wycięciami',
     description: 'Szafki kuchenne z blatem: wycięcia pod zlew i płytę grzewczą, przepust, zaokrąglony przód; półka wisząca',
     create: worktop,
+  },
+  {
+    key: 'fireplace',
+    label: 'Salon przy kominku',
+    description: 'Szafki w dwóch wnękach po bokach kominka: blaty, blendy górne i dolne, panele przy ścianach, fronty z frezem',
+    create: fireplace,
   },
 ];

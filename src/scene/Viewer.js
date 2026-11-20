@@ -135,7 +135,7 @@ export class Viewer {
     if (a.t >= 1) this.focusAnim = null;
   }
 
-  setProject(project, { refit = false, selectedIds = new Set(), selectedFronts = new Set(), isFrontOpen, selectedHole = null, selectedObstacle = null } = {}) {
+  setProject(project, { refit = false, selectedIds = new Set(), selectedFronts = new Set(), isFrontOpen, selectedHole = null, selectedObstacle = null, wallHandles = false } = {}) {
     const first = !this.space;
     if (this.spaceGroup) {
       this.scene.remove(this.spaceGroup);
@@ -143,7 +143,7 @@ export class Viewer {
     }
     this.space = project.space;
     this.spaceGroup = new THREE.Group();
-    this.spaceGroup.add(buildSpace(project.space, project.view, { selectedObstacle }));
+    this.spaceGroup.add(buildSpace(project.space, project.view, { selectedObstacle, wallHandles }));
     this.furnitureGroup = buildFurniture(project, selectedIds, selectedFronts, isFrontOpen, selectedHole);
     // Fronty nowej sceny: znane wracają do swojego bieżącego stanu (i dalej się animują), nowe — od razu w docelowym.
     this.frontPivots = [];

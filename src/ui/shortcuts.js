@@ -1,12 +1,13 @@
 import { duplicateCabinet } from '../model/placement.js';
-import { removeFronts } from '../model/furniture.js';
+import { removeShelves } from '../model/furniture.js';
+import { removeFronts } from '../model/frontEdit.js';
 import { moveHole } from '../model/boardFeatures.js';
 
 // Skróty klawiszowe (nie działają podczas pisania w polach formularza):
 //   Ctrl+Z / Ctrl+Y (Ctrl+Shift+Z) — cofnij / ponów
 //   dla zaznaczonego korpusu:
 //   strzałki ←/→ — X, ↑/↓ — Z (do tyłu / do przodu), PgUp/PgDn — Y; krok 10 mm, z Shift 100 mm
-//   Ctrl+D — duplikuj, Delete — usuń (zaznaczone fronty — tylko fronty), Esc — odznacz
+//   Ctrl+D — duplikuj, Delete — usuń (zaznaczone fronty / półki — tylko one), Esc — odznacz
 export function initShortcuts(store, ui) {
   const moveSelected = (axis, delta) => {
     const id = ui.get().selectedId;
@@ -92,6 +93,18 @@ export function initShortcuts(store, ui) {
           furniture: p.furniture.map((c) => (byCabinet.has(c.id) ? removeFronts(c, byCabinet.get(c.id)) : c)),
         }));
         ui.set({ ...ui.get(), selectedFronts: [] });
+      } else if ((ui.get().selectedBlends ?? []).some((b) => b.split(':')[1]?.startsWith('shelf-'))) {
+        // zaznaczone półki — usuwamy tylko je
+        const byCabinet = new Map();
+        for (const b of ui.get().selectedBlends) {
+          const [cabId, key] = b.split(':');
+          if (key?.startsWith('shelf-')) byCabinet.set(cabId, [...(byCabinet.get(cabId) ?? []), key]);
+        }
+        store.set((p) => ({
+          ...p,
+          furniture: p.furniture.map((c) => (byCabinet.has(c.id) ? removeShelves(c, byCabinet.get(c.id)) : c)),
+        }));
+        ui.set({ ...ui.get(), selectedBlends: ui.get().selectedBlends.filter((b) => !b.split(':')[1]?.startsWith('shelf-')) });
       } else if ((ui.get().selectedBlends ?? []).length) {
         // zaznaczona blenda — Delete nie usuwa całego korpusu (blendę usuwa się w zakładce „Blendy”)
       } else {

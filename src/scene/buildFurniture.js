@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { MM, toScene } from './units.js';
-import { cabinetPanels, cabinetIssues, cabinetLegs, legHeight, HANDLE_GROOVE_SIZE } from '../model/furniture.js';
+import { cabinetPanels, cabinetIssues, cabinetLegs, legHeight, HANDLE_GROOVE_SIZE, cabinetBounds, frontParts, frontSlots, doorSpan } from '../model/furniture.js';
+import { frontBoundaries, drawerResizeHandle, drawerMoveHandle } from '../model/frontEdit.js';
 import { trimSegments, trimIssues, trimAllowance, trimBox } from '../model/trims.js';
 import { trimMaterial, edgeColorOf, coreColorOf } from '../model/materials.js';
 import { projectSolids, panelEdgeSet, trimEdgeSet, TRIM_THICKNESS_AXIS } from '../model/edges.js';
@@ -114,6 +115,38 @@ function frontPivotGroup(p, cabinet, parent, space, open) {
   pivot.add(inner);
   parent.add(pivot);
   return inner;
+}
+
+// Skrzynka szuflady (tylko wygląd — boki, tył i dno za frontem albo czołem; prowadnice po 13 mm z każdej strony):
+// w grupie frontu, więc wysuwa się razem z nim. Klik w skrzynkę — jak w front (ten sam panelKey).
+const DRAWER_BOX = { slide: 13, side: 16, bottom: 8, top: 25, low: 12 };
+let drawerBoxMaterial = null;
+function addDrawerBox(target, p, cabinet, panels, space) {
+  drawerBoxMaterial ??= new THREE.MeshLambertMaterial({ color: 0xd9d4c9 });
+  const left = panels.find((x) => x.key === 'left');
+  const right = panels.find((x) => x.key === 'right');
+  const x0 = (left ? left.x + left.width : cabinet.x + 18) + DRAWER_BOX.slide;
+  const x1 = (right ? right.x : cabinet.x + cabinet.width - 18) - DRAWER_BOX.slide;
+  const back = panels.find((x) => x.key === 'back');
+  const zFront = p.key.startsWith('idrawer-') ? p.z : cabinet.z + cabinet.depth; // za frontem / za czołem
+  const zBack = Math.max((back ? back.z + back.depth : cabinet.z) + 10, zFront - 550);
+  const y0 = p.y + DRAWER_BOX.low;
+  const y1 = p.y + p.height - DRAWER_BOX.top;
+  if (x1 - x0 < 40 || zFront - zBack < 40 || y1 - y0 < 30) return;
+  const t = DRAWER_BOX.side;
+  const parts = [
+    [x0, y0, zBack, t, y1 - y0, zFront - zBack], // bok lewy
+    [x1 - t, y0, zBack, t, y1 - y0, zFront - zBack], // bok prawy
+    [x0 + t, y0, zBack, x1 - x0 - 2 * t, y1 - y0, t], // tył
+    [x0 + t, y0, zBack + t, x1 - x0 - 2 * t, DRAWER_BOX.bottom, zFront - zBack - t], // dno
+  ];
+  for (const [x, y, z, w, h, d] of parts) {
+    const geometry = new THREE.BoxGeometry(w * MM, h * MM, d * MM);
+    const mesh = new THREE.Mesh(geometry, drawerBoxMaterial);
+    mesh.position.set(...toScene(x + w / 2, y + h / 2, z + d / 2, space));
+    mesh.userData.panelKey = p.key;
+    target.add(mesh);
+  }
 }
 
 // Stan otwarcia frontu: 0 — zamknięty, 1 — otwarty (z łagodnym rozpędzaniem i hamowaniem).
@@ -254,6 +287,111 @@ const cabinetBox = (c) => ({ x: c.x, y: c.y, z: c.z, width: c.width, height: leg
 // zaznaczony — niebieskie krawędzie; korpus z problemami — czerwone krawędzie.
 // selectedFronts — zbiór zaznaczonych frontów („idKorpusu:front-N”, kliknięte w 3D) — wyróżnione na pomarańczowo.
 // isFrontOpen(id) — czy front jest otwarty; domyślnie według przełącznika „otwarte”.
+// Uchwyt półki zaznaczonego korpusu: fioletowy krążek przy przedniej krawędzi półki (jak uchwyty ścian
+// w zakładce „Przestrzeń”), rysowany na wierzchu — widać go i można chwycić także przez zamknięte drzwi.
+// Ma panelKey półki, więc przeciąganie działa jak chwycenie samej półki (scene/interaction.js).
+const SHELF_HANDLE_MATERIAL = new THREE.MeshBasicMaterial({ color: 0x7c3aed, depthTest: false, transparent: true, opacity: 0.85 });
+const SHELF_HANDLE_GEOMETRY = new THREE.CylinderGeometry(32 * MM, 32 * MM, 10 * MM, 24).rotateX(Math.PI / 2); // oś do przodu
+function addShelfHandle(group, p, space) {
+  const mesh = new THREE.Mesh(SHELF_HANDLE_GEOMETRY, SHELF_HANDLE_MATERIAL);
+  mesh.position.set(...toScene(p.x + p.width / 2, p.y + p.height / 2, p.z + p.depth + 20, space));
+  mesh.renderOrder = 10;
+  mesh.userData.panelKey = p.key;
+  mesh.userData.shelfHandle = true;
+  mesh.userData.noDispose = true;
+  group.add(mesh);
+}
+
+// Uchwyty wymiarów zaznaczonego korpusu (fioletowe krążki, jak przy ścianach przestrzeni): boki — szerokość,
+// wierzch — wysokość, przód (przy dole) — głębokość. userData.cabinetResize = { cabinetId, face }.
+const RESIZE_GEOMETRY = new THREE.CylinderGeometry(38 * MM, 38 * MM, 10 * MM, 24);
+function addResizeHandles(group, cabinet, project) {
+  const b = cabinetBounds(cabinet, project);
+  const y0 = cabinet.y + legHeight(cabinet);
+  const midY = y0 + cabinet.height / 2;
+  const midZ = cabinet.z + cabinet.depth / 2;
+  const midX = cabinet.x + cabinet.width / 2;
+  const faces = [
+    ['left', [Math.min(b.x, cabinet.x) - 30, midY, midZ], [1, 0, 0]],
+    ['right', [Math.max(b.x + b.width, cabinet.x + cabinet.width) + 30, midY, midZ], [1, 0, 0]],
+    ['top', [midX, y0 + cabinet.height + 30, midZ], [0, 1, 0]],
+    ['front', [midX, y0 + Math.max(60, cabinet.height * 0.08), Math.max(b.z + b.depth, cabinet.z + cabinet.depth) + 30], [0, 0, 1]],
+  ];
+  for (const [face, [x, y, z], axis] of faces) {
+    const mesh = new THREE.Mesh(RESIZE_GEOMETRY, SHELF_HANDLE_MATERIAL);
+    mesh.position.set(...toScene(x, y, z, project.space));
+    mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(...axis));
+    mesh.renderOrder = 10;
+    mesh.userData.cabinetResize = { cabinetId: cabinet.id, face };
+    mesh.userData.noDispose = true;
+    group.add(mesh);
+  }
+}
+
+// Uchwyty granic frontów zaznaczonego korpusu (fioletowe krążki na styku szuflad i między sekcjami frontu,
+// po prawej stronie frontu): przeciąganie w pionie zmienia wysokości obu sąsiednich części.
+// userData.frontBoundary = { cabinetId, kind, index, section }.
+// Wygląd: turkusowa pozioma belka ze strzałkami w górę i w dół — inna niż fioletowe kółka korpusu i półek.
+const BOUNDARY_MATERIAL = new THREE.MeshBasicMaterial({ color: 0x0d9488, depthTest: false, transparent: true, opacity: 0.95 });
+const BOUNDARY_BAR = new THREE.CapsuleGeometry(13 * MM, 110 * MM, 6, 16).rotateZ(Math.PI / 2); // pozioma
+const BOUNDARY_ARROW = new THREE.ConeGeometry(15 * MM, 22 * MM, 16);
+const MOVE_DISC = new THREE.CylinderGeometry(20 * MM, 20 * MM, 8 * MM, 24).rotateX(Math.PI / 2); // środek uchwytu przesuwania
+// selectedKeys — zaznaczone fronty tego korpusu: jedna zaznaczona szuflada — tylko jej uchwyt (zmienia się tylko ona).
+// isOpen(idFrontu) — czy front jest otwarty: granice między częściami za zamkniętymi drzwiami nie mają uchwytów
+// (szuflad za nimi nie widać) — zostają granice na krawędziach drzwi (zmiana wysokości drzwi).
+function addFrontBoundaryHandles(group, cabinet, project, selectedKeys = [], isOpen = () => false) {
+  const b = cabinetBounds(cabinet, project);
+  const z = Math.max(b.z + b.depth, cabinet.z + cabinet.depth) + 25;
+  const x = cabinet.x + cabinet.width * 0.75;
+  const one = selectedKeys.length === 1 ? drawerResizeHandle(cabinet, project, selectedKeys[0]) : null;
+  // zaznaczona szuflada — także uchwyt przesuwania całej szuflady (środek frontu, kółko ze strzałkami)
+  const mover = selectedKeys.length === 1 ? drawerMoveHandle(cabinet, project, selectedKeys[0]) : null;
+  if (mover) {
+    const data = { cabinetId: cabinet.id, kind: 'drawerMove', index: mover.index };
+    const handle = new THREE.Group();
+    handle.position.set(...toScene(mover.x, mover.y, z, project.space));
+    for (const [geometry, dy, rot] of [[MOVE_DISC, 0, 0], [BOUNDARY_ARROW, 34, 0], [BOUNDARY_ARROW, -34, Math.PI]]) {
+      const mesh = new THREE.Mesh(geometry, BOUNDARY_MATERIAL);
+      mesh.position.y = dy * MM;
+      mesh.rotation.z = rot;
+      mesh.renderOrder = 11;
+      mesh.userData.frontBoundary = data;
+      mesh.userData.noDispose = true;
+      handle.add(mesh);
+    }
+    group.add(handle);
+  }
+  const st = frontParts(cabinet.fronts);
+  const slots = frontSlots(st);
+  const hidden = new Set(); // indeksy granic (nad częścią i) ukrytych za zamkniętymi drzwiami
+  st.doors.forEach((d, j) => {
+    const open = slots.fronts.some((sl, n) => sl.door === j && isOpen(`${cabinet.id}:front-${n}`));
+    const span = doorSpan(d, st.parts);
+    if (open || !span) return;
+    for (let i = span[0]; i < span[1]; i++) hidden.add(i);
+  });
+  for (const fb of one ? [one] : frontBoundaries(cabinet, project).filter((b) => !hidden.has(b.index))) {
+    const data = { cabinetId: cabinet.id, kind: fb.kind, index: fb.index, mode: fb.mode, edge: fb.edge };
+    const handle = new THREE.Group();
+    handle.position.set(...toScene(x, fb.y, z, project.space));
+    const parts = [
+      [BOUNDARY_BAR, 0, 0],
+      [BOUNDARY_ARROW, 30, 0], // strzałka w górę
+      [BOUNDARY_ARROW, -30, Math.PI], // strzałka w dół
+    ];
+    for (const [geometry, dy, rot] of parts) {
+      const mesh = new THREE.Mesh(geometry, BOUNDARY_MATERIAL);
+      mesh.position.y = dy * MM;
+      mesh.rotation.z = rot;
+      mesh.renderOrder = 11;
+      mesh.userData.frontBoundary = data; // każda część chwyta tak samo
+      mesh.userData.noDispose = true;
+      handle.add(mesh);
+    }
+    group.add(handle);
+  }
+}
+
 export function buildFurniture(project, selectedIds = new Set(), selectedFronts = new Set(), isFrontOpen = () => project.view?.openFronts === true, selectedHole = null) {
   // zaznaczony otwór płyty ({ kind: "trim" | "board", id, index }) — wyróżniony sam otwór
   const holeOf = (kind, id) => (selectedHole?.kind === kind && selectedHole.id === id ? selectedHole.index : null);
@@ -311,7 +449,8 @@ export function buildFurniture(project, selectedIds = new Set(), selectedFronts 
     cabinetGroup.name = cabinet.name;
     cabinetGroup.userData.cabinetId = cabinet.id; // do wybierania myszką
     solids ??= projectSolids(project);
-    for (const p of cabinetPanels(cabinet, project).filter(panelVisible)) {
+    const cabPanels = cabinetPanels(cabinet, project);
+    for (const p of cabPanels.filter(panelVisible)) {
       if (p.solid) {
         // Płyta docięta pod skos — rysujemy jej bryłę (lica i krawędzie w jednym kolorze płyty).
         const pickedSolid = isPicked(`${cabinet.id}:${p.key}`, p);
@@ -339,11 +478,21 @@ export function buildFurniture(project, selectedIds = new Set(), selectedFronts 
       target.add(mesh);
       addMilling(target, p, materialFor, project.space);
       addHandle(target, p, project.space);
+      if (p.opening?.drawer) addDrawerBox(target, p, cabinet, cabPanels, project.space);
       addAllowance(target, p, p.allowanceMin, p.allowanceMax, project.space);
       if (p.material.edgeBanding) {
         const keys = panelEdgeSet(p, cabinet, project, solids);
         addEdgeBanding(target, p, keys, p.material.edgeBanding, edgeColorOf(material), materialFor, project.space, p.key);
       }
+    }
+
+    // zaznaczony korpus — uchwyty półek
+    if (selectedIds.has(cabinet.id)) {
+      for (const p of cabinetPanels(cabinet, project).filter((x) => x.key.startsWith('shelf-') && panelVisible(x))) addShelfHandle(cabinetGroup, p, project.space);
+      // (poza grupą korpusu — nie zaznaczają go jak płyta); zaznaczony sam front / płyta korpusu — bez nich
+      if (!partOwners.has(cabinet.id)) addResizeHandles(group, cabinet, project);
+      const myFronts = [...selectedFronts].filter((id) => id.startsWith(`${cabinet.id}:front-`) || id.startsWith(`${cabinet.id}:idrawer-`)).map((id) => id.split(':')[1]);
+      addFrontBoundaryHandles(group, cabinet, project, myFronts, isFrontOpen);
     }
 
     const legs = cabinetLegs(cabinet, project);

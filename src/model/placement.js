@@ -1,4 +1,5 @@
 import { cabinetBounds, cabinetIssues, newId, sideBlendWidth } from './furniture.js';
+import { freeWidth, backLimit, straightenSlantedSides } from './outline.js';
 
 // Ustawianie mebli: przyciąganie, dosuwanie, duplikowanie.
 // Wszystko liczone na prostopadłościanach obejmujących meble (cabinetBounds) i przeszkody.
@@ -15,6 +16,120 @@ function otherBoxes(project, cabinetId) {
     ...project.furniture.filter((c) => !skip.has(c.id)).map((c) => cabinetBounds(c, project)),
     ...project.space.obstacles,
   ];
+}
+
+// Przyciąganie przesuwanego korpusu („magnes”) — w podanych osiach do:
+//  - ścian (także skośnych i z kształtu podłogi — tam, gdzie korpus dochodzi do nich na swojej głębokości),
+//  - sąsiednich mebli i przeszkód: dosunięcie bok w bok (pierwszeństwo) albo wyrównanie krawędzi (np. frontów);
+//    pod uwagę bierzemy tylko te, które są blisko w pozostałych osiach (NEAR_MM), a nie wszystkie w pokoju.
+// threshold — zasięg przyciągania w mm (zwykle liczony z powiększenia widoku: kilkanaście pikseli na ekranie).
+// hold — poprzednie przyciągnięcia { [oś]: { value, edge } }: złapany korpus „trzyma się” celu aż do
+// HOLD_FACTOR × threshold — trzeba wyraźnie odciągnąć, żeby się odkleił.
+// → { pos, snaps: { [oś]: { value, edge, label } } } — label: do czego przyciągnięto (do podpowiedzi).
+const NEAR_MM = 400;
+const HOLD_FACTOR = 1.8;
+export function snapCabinet(project, cabinetId, pos, axes, { threshold = 30, hold = {} } = {}) {
+  const cabinet = project.furniture.find((c) => c.id === cabinetId);
+  const b = cabinetBounds(cabinet, project);
+  const { space } = project;
+  // zasięg korpusu: prostopadłościan korpusu razem z wystającymi elementami (skośny bok bywa węższy niż korpus)
+  const off = {};
+  for (const a of AXES) {
+    const lo = Math.min(b[a], cabinet[a]) - cabinet[a];
+    off[a] = [lo, Math.max(b[a] + b[DIM[a]], cabinet[a] + cabinet[DIM[a]]) - cabinet[a]];
+  }
+  const range = (a, p = pos) => [p[a] + off[a][0], p[a] + off[a][1]];
+  const others = [
+    ...project.furniture.filter((c) => c.id !== cabinetId).map((c) => ({ box: cabinetBounds(c, project), label: `korpusu „${c.name}”` })),
+    ...space.obstacles.map((o) => ({ box: o, label: `„${o.name || 'przeszkody'}”` })),
+  ];
+  const result = { ...pos };
+  const snaps = {};
+
+  for (const axis of axes) {
+    const dim = DIM[axis];
+    const [lo, hi] = range(axis, result);
+    const edges = { lo, hi };
+    // cele: { value, edges (które krawędzie korpusu), label, weight (mniejsza — ważniejszy) }
+    const targets = [];
+    const wall = (value, edge, label) => targets.push({ value, edge, label, weight: 0.8 });
+    if (axis === 'x') {
+      wall(0, 'lo', 'lewej ściany');
+      wall(space.width, 'hi', 'prawej ściany');
+      if (space.outline) {
+        // ściany z kształtu podłogi na głębokości korpusu (skośne boczne — jak proste, bo korpus dostaje skośny bok)
+        const shape = cabinet.wallFit?.enabled === false ? space : { ...space, outline: straightenSlantedSides(space) };
+        const [z0, z1] = range('z', result);
+        const [L, R] = freeWidth(shape, Math.max(0, z0), Math.min(space.depth, z1), 0, space.width);
+        if (R > L) {
+          wall(L, 'lo', 'ściany');
+          wall(R, 'hi', 'ściany');
+        }
+      }
+    } else if (axis === 'z') {
+      wall(cabinet.backGap ?? 0, 'lo', 'tylnej ściany');
+      wall(space.depth, 'hi', 'przodu przestrzeni');
+      if (space.outline) {
+        const [x0, x1] = range('x', result);
+        const back = backLimit(space, Math.max(0, x0), Math.min(space.width, x1));
+        if (back > 0) wall(back + (cabinet.backGap ?? 0), 'lo', 'tylnej ściany');
+      }
+    } else {
+      wall(0, 'lo', 'podłogi');
+    }
+    const perp = AXES.filter((a) => a !== axis);
+    for (const { box, label } of others) {
+      // tylko sąsiedzi: w pozostałych osiach nachodzą na korpus albo są bliżej niż NEAR_MM
+      const near = perp.every((a) => {
+        const [p0, p1] = range(a, result);
+        return box[a] < p1 + NEAR_MM && box[a] + box[DIM[a]] > p0 - NEAR_MM;
+      });
+      if (!near) continue;
+      const a0 = box[axis];
+      const a1 = box[axis] + box[dim];
+      targets.push({ value: a1, edge: 'lo', label, weight: 1 }); // dosunięcie: lewy bok do prawego boku sąsiada…
+      targets.push({ value: a0, edge: 'hi', label, weight: 1 });
+      targets.push({ value: a0, edge: 'lo', label: `wyrównany z ${label}`, weight: 1.6 }); // wyrównanie krawędzi
+      targets.push({ value: a1, edge: 'hi', label: `wyrównany z ${label}`, weight: 1.6 });
+    }
+
+    // poprzedni cel trzyma, dopóki korpus nie odjedzie dalej niż HOLD_FACTOR × threshold
+    let best = null;
+    const held = hold[axis];
+    if (held) {
+      const d = held.value - edges[held.edge];
+      const still = targets.find((t) => Math.abs(t.value - held.value) < 0.5 && t.edge === held.edge);
+      if (still && Math.abs(d) < threshold * HOLD_FACTOR) best = { ...still, d };
+    }
+    if (!best) {
+      for (const t of targets) {
+        const d = t.value - edges[t.edge];
+        if (Math.abs(d) >= threshold) continue;
+        if (!best || Math.abs(d) * t.weight < Math.abs(best.d) * best.weight) best = { ...t, d };
+      }
+    }
+    if (best) {
+      result[axis] = Math.round(result[axis] + best.d);
+      snaps[axis] = { value: best.value, edge: best.edge, label: best.label };
+    } else result[axis] = Math.round(result[axis]);
+    // Ściany są twarde: korpus nie wjeżdża w nie (gdy się mieści) — dochodzi do ściany i staje.
+    const walls = targets.filter((t) => t.weight < 1);
+    const minLo = Math.max(...walls.filter((t) => t.edge === 'lo').map((t) => t.value));
+    // (przód przestrzeni jest otwarty — tam korpus może wystawać)
+    const maxHi = axis === 'z' ? Infinity : Math.min(...walls.filter((t) => t.edge === 'hi').map((t) => t.value));
+    const [nlo, nhi] = range(axis, result);
+    if (maxHi - minLo >= nhi - nlo) {
+      const label = (edge) => walls.filter((t) => t.edge === edge).sort((m, k) => (edge === 'lo' ? k.value - m.value : m.value - k.value))[0]?.label;
+      if (nlo < minLo) {
+        result[axis] = Math.round(result[axis] + (minLo - nlo));
+        snaps[axis] = { value: minLo, edge: 'lo', label: label('lo') };
+      } else if (nhi > maxHi) {
+        result[axis] = Math.round(result[axis] - (nhi - maxHi));
+        snaps[axis] = { value: maxHi, edge: 'hi', label: label('hi') };
+      }
+    }
+  }
+  return { pos: result, snaps };
 }
 
 // Przyciąga proponowaną pozycję korpusu (pos: {x, y, z}) w podanych osiach do ścian

@@ -6,6 +6,8 @@
 //   y — od podłogi w górę     (0..height)
 //   z — od tylnej ściany do przodu (0..depth)
 
+import { distanceOutside, normalizeOutline, outlineFromCuts, cutCorner } from './outline.js';
+
 export const WALLS = [
   { key: 'floor', label: 'Podłoga' },
   { key: 'back', label: 'Ściana tylna' },
@@ -40,6 +42,7 @@ export function createDefaultSpace() {
     walls: { floor: true, back: true, left: true, right: true, ceiling: true },
     colors: { ...DEFAULT_COLORS },
     slopes: [],
+    outline: null, // kształt podłogi (punkty w rzucie, model/outline.js); null — prostokąt
     obstacles: [],
   };
 }
@@ -199,9 +202,70 @@ export function slopePlanes(space) {
   return planes;
 }
 
+// --- kształt podłogi (obrys w rzucie, model/outline.js) ---
+// Ściany nie muszą stać pod kątem prostym: obrys podłogi to wielokąt z punktów, które można dodawać i przesuwać
+// (także w widoku 3D). Gotowe kształty: skośna ściana boczna / tylna, ścięty narożnik.
+export const OUTLINE_PRESETS = [
+  {
+    key: 'leftFront',
+    label: 'Skośna lewa ściana',
+    title: 'Lewa ściana skośna — wnęka węższa z przodu',
+    cut: (s) => ['frontLeft', roundTo(Math.min(300, s.width / 4), 10), s.depth],
+  },
+  {
+    key: 'rightFront',
+    label: 'Skośna prawa ściana',
+    title: 'Prawa ściana skośna — wnęka węższa z przodu',
+    cut: (s) => ['frontRight', roundTo(Math.min(300, s.width / 4), 10), s.depth],
+  },
+  {
+    key: 'leftBack',
+    label: 'Lewa ściana — węziej z tyłu',
+    title: 'Lewa ściana skośna — wnęka węższa z tyłu',
+    cut: (s) => ['backLeft', roundTo(Math.min(300, s.width / 4), 10), s.depth],
+  },
+  {
+    key: 'rightBack',
+    label: 'Prawa ściana — węziej z tyłu',
+    title: 'Prawa ściana skośna — wnęka węższa z tyłu',
+    cut: (s) => ['backRight', roundTo(Math.min(300, s.width / 4), 10), s.depth],
+  },
+  {
+    key: 'backLeft',
+    label: 'Skośna tylna ściana',
+    title: 'Tylna ściana skośna — płycej z lewej',
+    cut: (s) => ['backLeft', s.width, roundTo(Math.min(200, s.depth / 3), 10)],
+  },
+  {
+    key: 'backRight',
+    label: 'Tylna — płycej z prawej',
+    title: 'Tylna ściana skośna — płycej z prawej',
+    cut: (s) => ['backRight', s.width, roundTo(Math.min(200, s.depth / 3), 10)],
+  },
+  {
+    key: 'chamferLeft',
+    label: 'Ścięty narożnik lewy',
+    title: 'Ścięty narożnik — lewy tylny',
+    cut: (s) => ['backLeft', roundTo(Math.min(400, s.width / 4, s.depth / 2), 10), roundTo(Math.min(400, s.width / 4, s.depth / 2), 10)],
+  },
+  {
+    key: 'chamferRight',
+    label: 'Ścięty narożnik prawy',
+    title: 'Ścięty narożnik — prawy tylny',
+    cut: (s) => ['backRight', roundTo(Math.min(400, s.width / 4, s.depth / 2), 10), roundTo(Math.min(400, s.width / 4, s.depth / 2), 10)],
+  },
+];
+
+// Obrys po zastosowaniu gotowego kształtu albo null, gdy się nie da (narożnik był już zmieniony).
+export function applyOutlinePreset(space, key) {
+  const preset = OUTLINE_PRESETS.find((p) => p.key === key);
+  return preset ? cutCorner(space, ...preset.cut(space)) : null;
+}
+
 export function isPointInside([x, y, z], space, eps = 0.01) {
   if (x < -eps || y < -eps || z < -eps) return false;
   if (x > space.width + eps || y > space.height + eps || z > space.depth + eps) return false;
+  if (space.outline && distanceOutside(x, z, space.outline) > eps) return false;
   return slopePlanes(space).every(({ normal: [a, b, c], offset }) => a * x + b * y + c * z <= offset + eps * Math.hypot(a, b, c));
 }
 
@@ -212,8 +276,15 @@ const SLOPE_NAMES = { left: 'lewy', right: 'prawy', back: 'tylny', front: 'przed
 export function describeOutside(points, space, { openFront = false } = {}) {
   const over = { left: 0, right: 0, floor: 0, ceiling: 0, back: 0, front: 0 };
   const slopes = {};
+  let outlineOver = 0;
   const planes = slopePlanes(space);
   for (const [x, y, z] of points) {
+    // ściany z obrysu (skośne, wklęsłe): odległość w poziomie za ścianą — tylko w obrębie prostokąta przestrzeni
+    // (poza nim mówią o tym komunikaty o ścianach prostokąta); przy otwartym przodzie ściany kończą się na przodzie
+    const zz = openFront ? Math.min(z, space.depth) : z;
+    if (space.outline && x >= 0 && x <= space.width && zz >= 0 && zz <= space.depth) {
+      outlineOver = Math.max(outlineOver, distanceOutside(x, zz, space.outline));
+    }
     over.left = Math.max(over.left, -x);
     over.right = Math.max(over.right, x - space.width);
     over.floor = Math.max(over.floor, -y);
@@ -237,6 +308,7 @@ export function describeOutside(points, space, { openFront = false } = {}) {
   };
   const parts = Object.entries(over).filter(([, v]) => v > 0.5).map(([k, v]) => labels[k](v));
   for (const [side, v] of Object.entries(slopes)) if (v > 0.5) parts.push(`nad ${SLOPE_NAMES[side] ?? ''} skos o ${mm(v)}`);
+  if (outlineOver > 0.5) parts.push(`za ścianę (kształt pomieszczenia) o ${mm(outlineOver)}`);
   if (!parts.length) return null; // (przekroczenia do 0,5 mm pomijamy)
   return `Wychodzi poza przestrzeń: ${parts.join(', ')}.`;
 }
@@ -260,7 +332,7 @@ export function normalizeSpace(raw = {}) {
   for (const key of Object.keys(DEFAULT_COLORS)) {
     colors[key] = isHexColor(raw.colors?.[key]) ? raw.colors[key] : DEFAULT_COLORS[key];
   }
-  return {
+  const space = {
     name: typeof raw.name === 'string' ? raw.name : def.name,
     width: num(raw.width, def.width, LIMITS.spaceMin, LIMITS.spaceMax),
     height: num(raw.height, def.height, LIMITS.spaceMin, LIMITS.spaceMax),
@@ -271,6 +343,13 @@ export function normalizeSpace(raw = {}) {
     slopes: Array.isArray(raw.slopes) ? raw.slopes.map(normalizeSlope) : [],
     obstacles: Array.isArray(raw.obstacles) ? raw.obstacles.map(normalizeObstacle) : [],
   };
+  // kształt podłogi; starsze zapisy — skośne ściany jako ścięcia narożników
+  space.outline = Array.isArray(raw.outline)
+    ? normalizeOutline(raw.outline, space)
+    : Array.isArray(raw.cuts) && raw.cuts.length
+      ? outlineFromCuts(raw.cuts, space)
+      : null;
+  return space;
 }
 
 function normalizeSlope(raw = {}) {

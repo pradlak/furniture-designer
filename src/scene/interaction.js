@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { MM } from './units.js';
 import {
-  snapPosition,
+  snapCabinet,
   obstacleNeighbour,
   extendObstacle,
   slideObstacle,
@@ -12,11 +12,15 @@ import {
   extendCabinet,
   duplicateCabinet,
 } from '../model/placement.js';
-import { cabinetPanels, legHeight, shelfKey, setShelfY, handleOffsetsFor, fitCabinetToSpace } from '../model/furniture.js';
+import { cabinetPanels, legHeight, shelfKey, setShelfY, handleOffsetsFor, fitCabinetToSpace, removeShelves, cabinetBounds, maxCabinetHeight, CABINET_LIMITS, frontParts } from '../model/furniture.js';
+import { moveFrontBoundary, movePart, coverWithDoor, uncoverPart, canUncover, setPartKind } from '../model/frontEdit.js';
 import { createContextMenu } from '../ui/contextMenu.js';
 import { selectedCabinetIds, toggleCabinet } from '../state/selection.js';
 import { COLOR_PRESETS } from '../model/materials.js';
-import { WALL_DECORS } from '../model/space.js';
+import { WALL_DECORS, OUTLINE_PRESETS, applyOutlinePreset } from '../model/space.js';
+import { spaceOutline, outlineEdges, insertPoint, isFrontPoint, cleanOutline, selfIntersects, canRemovePoint } from '../model/outline.js';
+import { updateSpaceRefit } from '../model/layout.js';
+import { moveWall, wallMoveLabel, wallSnapTargets } from '../model/walls.js';
 import { resolveHoles } from '../model/boardFeatures.js';
 import { FRONT_DECORS, decorPreviewSvg } from '../model/decor.js';
 import { panelInfoMenu } from '../ui/panelInfo.js';
@@ -34,13 +38,387 @@ const CLICK_TOLERANCE_PX = 4;
 //    Ctrl + klik — zaznaczanie kilku frontów, prawy klik w front — menu akcji dla zaznaczonych
 //    (otwórz / zamknij, ukryj),
 //    a korpus z frontem przesuwa się z Shift (w pionie) albo chwytając za inną płytę,
+//  - kształt ścian (zakładka „Przestrzeń”): niebieskie kulki to punkty obrysu podłogi — przeciąganie zmienia kształt
+//    ścian (skośne, wklęsłe); zielone kulki na środkach ścian — przeciągnięcie wstawia nowy punkt; prawy klik
+//    w punkt — „Usuń punkt”, w ścianę lub podłogę — „Dodaj punkt tutaj” i gotowe kształty,
 //  - przeciąganie poza korpusem obraca widok jak dotąd.
-export function attachCabinetInteraction(viewer, store, ui) {
+// hooks.showSpace() — pokazuje zakładkę „Przestrzeń” (z uchwytami kształtu ścian).
+export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
   const el = viewer.renderer.domElement;
   const raycaster = new THREE.Raycaster();
   const pointer = new THREE.Vector2();
   let drag = null;
   let down = null;
+
+  // --- przyciąganie przesuwanego korpusu („magnes”, model/placement.js → snapCabinet) ---
+  // Zasięg przyciągania to SNAP_PX pikseli na ekranie przeliczone na mm w miejscu chwytu — przy oddalonym widoku
+  // magnes sięga dalej, przy przybliżonym bliżej (zawsze tak samo „czuć” go pod myszką).
+  const SNAP_PX = 16;
+  const WALL_SNAP_FACTOR = 1.6; // przesuwana ściana — magnes mocniejszy niż przy korpusach
+  const WALL_SNAP_HOLD = 1.8;
+  function snapThresholdMm(point) {
+    const cam = viewer.camera;
+    const r = el.getBoundingClientRect();
+    const a = point.clone().project(cam);
+    const b = new THREE.Vector3(a.x + (2 * SNAP_PX) / r.width, a.y, a.z).unproject(cam);
+    const mm = b.distanceTo(point) / MM;
+    return Math.min(250, Math.max(20, mm));
+  }
+  // Podpowiedź przy kursorze: do czego korpus jest przyciągnięty.
+  const snapTip = document.createElement('div');
+  snapTip.className = 'snap-tip';
+  snapTip.hidden = true;
+  viewer.container.appendChild(snapTip);
+  function showSnapTip(snaps, e) {
+    const labels = [...new Set(Object.values(snaps).map((sn) => sn.label))];
+    if (!labels.length) {
+      snapTip.hidden = true;
+      return;
+    }
+    const r = viewer.container.getBoundingClientRect();
+    snapTip.textContent = '🧲 ' + labels.join(' · ');
+    snapTip.style.left = `${e.clientX - r.left + 14}px`;
+    snapTip.style.top = `${e.clientY - r.top + 18}px`;
+    snapTip.hidden = false;
+  }
+
+  // --- kształt ścian (obrys podłogi, model/outline.js) ---
+  const updateSpace = (fn) => store.set((p) => updateSpaceRefit(p, fn));
+  const setOutline = (outline) => updateSpace((s) => ({ ...s, outline }));
+
+  // Uchwyt kształtu ściany pod kursorem (rysowane na wierzchu, więc sprawdzane przed wszystkim innym).
+  function pickWallHandle() {
+    if (!viewer.spaceGroup) return null;
+    const handles = [];
+    viewer.spaceGroup.traverse((o) => o.userData.wallHandle && handles.push(o));
+    const hit = handles.length ? raycaster.intersectObjects(handles, false)[0] : null;
+    return hit ? { ...hit.object.userData.wallHandle, point: hit.point.clone() } : null;
+  }
+
+  // Ściana / podłoga pod kursorem (pierwsze trafienie — nie zasłonięte meblem):
+  // { tag (left, back, floor, edge:<i>…), x, z } — punkt trafienia w mm.
+  function pickSurface() {
+    if (!viewer.spaceGroup) return null;
+    const hit = raycaster.intersectObjects(viewer.spaceGroup.children, true).find((h) => h.object.isMesh && !h.object.userData.wallHandle);
+    const tag = hit?.object.userData.wall;
+    if (!tag) return null;
+    return { tag, x: hit.point.x / MM, z: hit.point.z / MM + store.get().space.depth };
+  }
+
+  // Początek przeciągania uchwytu: punkt obrysu albo środek ściany (wstawia tam nowy punkt i przeciąga go).
+  function startWallHandle(h) {
+    const { space } = store.get();
+    const before = space.outline;
+    let index = h.index;
+    if (h.type === 'mid') {
+      const ins = insertPoint(space, h.edge);
+      setOutline(ins.outline);
+      index = ins.index;
+    }
+    const p = spaceOutline(store.get().space)[index];
+    return { index, before, front: !!p && isFrontPoint(p, store.get().space), moved: h.type === 'mid' };
+  }
+
+  // Przeciąganie punktu po podłodze: przyciąganie co 10 mm, do ścian prostokąta i do X / Z sąsiednich punktów
+  // (kąty proste); bez przyciągania z Alt. Punkt na przodzie przesuwa się tylko wzdłuż przodu.
+  const HANDLE_SNAP_MM = 40;
+  function dragOutlinePoint(pt, altKey) {
+    const { space } = store.get();
+    const pts = spaceOutline(space).map((p) => [...p]);
+    const { index: i, front } = drag.wallHandle;
+    if (!pts[i]) return;
+    const n = pts.length;
+    const nb = [pts[(i - 1 + n) % n], pts[(i + 1) % n]];
+    let x = pt.x / MM;
+    let z = pt.z / MM + space.depth;
+    if (!altKey) {
+      const snap = (val, targets) =>
+        targets.reduce((best, t) => (Math.abs(val - t) < HANDLE_SNAP_MM && Math.abs(val - t) < Math.abs(val - best) ? t : best), Math.round(val / 10) * 10);
+      x = snap(x, [0, space.width, ...nb.map((p) => p[0])]);
+      z = snap(z, [0, ...nb.map((p) => p[1]).filter((v) => v < space.depth)]);
+    }
+    x = Math.round(Math.min(space.width, Math.max(0, x)));
+    z = front ? space.depth : Math.round(Math.min(space.depth - 1, Math.max(0, z)));
+    if (pts[i][0] === x && pts[i][1] === z) return;
+    pts[i] = [x, z];
+    drag.wallHandle.moved = true;
+    setOutline(pts);
+  }
+
+  // Koniec przeciągania: kształt przecinający sam siebie wraca do stanu sprzed przeciągania; punkty zbędne
+  // (na prostej między sąsiadami, pokrywające się) znikają; prostokąt — bez obrysu.
+  function endWallHandle() {
+    const { space } = store.get();
+    if (!space.outline) return;
+    const next = selfIntersects(space.outline) ? drag.wallHandle.before : cleanOutline(space.outline, space);
+    if (JSON.stringify(next) !== JSON.stringify(space.outline)) setOutline(next);
+  }
+
+  // --- przesuwanie całych ścian (fioletowe krążki; model/walls.js) ---
+  // Ściany pionowe przesuwamy po poziomej płaszczyźnie na wysokości krążka, sufit — po pionowej zwróconej do kamery.
+  // Przesunięcie liczymy zawsze od stanu z początku przeciągania (bez narastania błędów zaokrągleń).
+  // Lewa ściana jest początkiem układu (x = 0) — gdy się przesuwa, cała scena przesuwa się w modelu, więc kamerę
+  // przesuwamy razem z nią, żeby pokój i meble stały w miejscu, a ruszała się tylko ściana.
+  function startWallMove(h) {
+    let plane;
+    if (h.wall === 'ceiling') {
+      const dir = new THREE.Vector3();
+      viewer.camera.getWorldDirection(dir);
+      dir.y = 0;
+      if (dir.lengthSq() < 1e-6) dir.set(0, 0, 1);
+      plane = new THREE.Plane().setFromNormalAndCoplanarPoint(dir.normalize(), h.point);
+    } else plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -h.point.y);
+    return { wallMove: { wall: h.wall, normal: h.normal, start: h.point, base: store.get(), shift: 0 }, plane };
+  }
+  function dragWallMove(pt, e) {
+    const m = drag.wallMove;
+    let d;
+    if (m.wall === 'ceiling') d = (pt.y - m.start.y) / MM;
+    else {
+      const dx = (pt.x - m.start.x) / MM - m.shift; // bez przesunięcia kamery (lewa ściana)
+      const dz = (pt.z - m.start.z) / MM;
+      d = dx * m.normal[0] + dz * m.normal[1];
+    }
+    // Magnes: ściana przyciąga się do korpusów (dotyka ich) — mocniej niż korpus do ściany (WALL_SNAP_FACTOR × zasięg)
+    // i trzyma, dopóki nie odciągniesz jej dalej niż HOLD × zasięg. Alt — bez przyciągania.
+    let snapLabel = null;
+    if (!e.altKey) {
+      const reach = snapThresholdMm(m.start) * WALL_SNAP_FACTOR;
+      m.targets ??= wallSnapTargets(m.base, m.wall);
+      let hit = m.held && Math.abs(d - m.held.d) < reach * WALL_SNAP_HOLD ? m.held : null;
+      if (!hit) {
+        for (const t of m.targets) if (Math.abs(d - t.d) < reach && (!hit || Math.abs(d - t.d) < Math.abs(d - hit.d))) hit = t;
+      }
+      m.held = hit;
+      if (hit) {
+        d = Math.round(hit.d);
+        snapLabel = hit.label;
+      } else d = Math.round(d / 10) * 10;
+    } else m.held = null;
+    const next = moveWall(m.base, m.wall, d);
+    store.set(() => next);
+    if (m.wall === 'left') {
+      const applied = next.space.width - m.base.space.width;
+      const delta = (applied - m.shift) * MM;
+      viewer.camera.position.x += delta;
+      viewer.controls.target.x += delta;
+      m.shift = applied;
+    }
+    el.style.cursor = m.wall === 'ceiling' ? 'ns-resize' : 'ew-resize';
+    const r = viewer.container.getBoundingClientRect();
+    snapTip.textContent = wallMoveLabel(next.space, m.wall) + (snapLabel ? ` · 🧲 dosunięta do ${snapLabel}` : '');
+    snapTip.style.left = `${e.clientX - r.left + 14}px`;
+    snapTip.style.top = `${e.clientY - r.top + 18}px`;
+    snapTip.hidden = false;
+  }
+
+  // --- granice frontów: wysokości szuflad i sekcji frontu (model: moveFrontBoundary) ---
+  function pickFrontBoundary() {
+    if (!viewer.furnitureGroup) return null;
+    const handles = [];
+    viewer.furnitureGroup.traverse((o) => o.userData.frontBoundary && handles.push(o));
+    const hit = handles.length ? raycaster.intersectObjects(handles, false)[0] : null;
+    return hit ? { ...hit.object.userData.frontBoundary, point: hit.point.clone() } : null;
+  }
+  function startFrontBoundary(h) {
+    const project = store.get();
+    const dir = new THREE.Vector3();
+    viewer.camera.getWorldDirection(dir);
+    dir.y = 0;
+    if (dir.lengthSq() < 1e-6) dir.set(0, 0, 1);
+    const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(dir.normalize(), h.point);
+    return { boundary: { ...h, project, base: project.furniture.find((c) => c.id === h.cabinetId), start: h.point }, plane };
+  }
+  // Przeciąganie granicy w pionie — co 10 mm (z Alt co 1 mm); wysokości liczone od stanu z początku przeciągania.
+  function dragFrontBoundary(pt, e) {
+    const m = drag.boundary;
+    let d = (pt.y - m.start.y) / MM;
+    d = e.altKey ? Math.round(d) : Math.round(d / 10) * 10;
+    const res = moveFrontBoundary(m.base, m.project, m, d);
+    if (!res) return;
+    store.set((p) => ({ ...p, furniture: p.furniture.map((c) => (c.id === m.cabinetId ? res.cabinet : c)) }));
+    el.style.cursor = 'ns-resize';
+    const r = viewer.container.getBoundingClientRect();
+    snapTip.textContent =
+      m.kind === 'drawerMove' ? `Szuflada od dołu: ${res.a} mm` : m.kind === 'drawerSize' ? `Szuflada ${res.a} mm` : `Niżej ${res.a} mm · wyżej ${res.b} mm`;
+    snapTip.style.left = `${e.clientX - r.left + 14}px`;
+    snapTip.style.top = `${e.clientY - r.top + 18}px`;
+    snapTip.hidden = false;
+  }
+
+  // --- zmiana wymiarów korpusu kółkami (bok — szerokość, wierzch — wysokość, przód — głębokość) ---
+  function pickResizeHandle() {
+    if (!viewer.furnitureGroup) return null;
+    const handles = [];
+    viewer.furnitureGroup.traverse((o) => o.userData.cabinetResize && handles.push(o));
+    const hit = handles.length ? raycaster.intersectObjects(handles, false)[0] : null;
+    return hit ? { ...hit.object.userData.cabinetResize, point: hit.point.clone() } : null;
+  }
+  const FACE_LABEL = { left: 'Szerokość', right: 'Szerokość', top: 'Wysokość', front: 'Głębokość' };
+  function startCabinetResize(h) {
+    const cabinet = store.get().furniture.find((c) => c.id === h.cabinetId);
+    let plane;
+    if (h.face === 'top') {
+      const dir = new THREE.Vector3();
+      viewer.camera.getWorldDirection(dir);
+      dir.y = 0;
+      if (dir.lengthSq() < 1e-6) dir.set(0, 0, 1);
+      plane = new THREE.Plane().setFromNormalAndCoplanarPoint(dir.normalize(), h.point);
+    } else plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -h.point.y);
+    return { resize: { ...h, base: { ...cabinet }, start: h.point, held: null }, plane };
+  }
+  // Krawędź korpusu przyciąga się (mocniej, z trzymaniem — jak ściany) do ścian, krawędzi sąsiednich mebli
+  // i przeszkód, a wierzch — do sufitu / skosu i wierzchów sąsiadów. Alt — bez przyciągania (co 1 mm).
+  function dragCabinetResize(pt, e) {
+    const m = drag.resize;
+    const project = store.get();
+    const c0 = m.base;
+    const others = [
+      ...project.furniture.filter((c) => c.id !== c0.id).map((c) => ({ box: cabinetBounds(c, project), label: `korpusu „${c.name}”` })),
+      ...project.space.obstacles.map((o) => ({ box: o, label: `„${o.name || 'przeszkody'}”` })),
+    ];
+    const DIMS = { x: 'width', y: 'height', z: 'depth' };
+    const near = (box, axes) =>
+      axes.every((a) => {
+        const lo = c0[a];
+        const hi = lo + (a === 'y' ? legHeight(c0) + c0.height : c0[DIMS[a]]);
+        return box[a] < hi + 400 && box[a] + box[DIMS[a]] > lo - 400;
+      });
+    const L0 = legHeight(c0);
+    let edge; // położenie przeciąganej krawędzi (mm)
+    let targets = [];
+    if (m.face === 'top') {
+      edge = c0.y + L0 + c0.height + (pt.y - m.start.y) / MM;
+      const ceiling = c0.y + L0 + maxCabinetHeight(c0, project);
+      targets = [
+        { v: ceiling, label: 'sufitu' },
+        ...others.filter((o) => near(o.box, ['x', 'z'])).map((o) => ({ v: o.box.y + o.box.height, label: `wyrównany z ${o.label}` })),
+      ];
+    } else if (m.face === 'front') {
+      edge = c0.z + c0.depth + (pt.z - m.start.z) / MM;
+      targets = [
+        { v: project.space.depth, label: 'przodu przestrzeni' },
+        ...others.filter((o) => near(o.box, ['x', 'y'])).map((o) => ({ v: o.box.z + o.box.depth, label: `wyrównany z ${o.label}` })),
+      ];
+    } else {
+      const dx = (pt.x - m.start.x) / MM;
+      edge = m.face === 'right' ? c0.x + c0.width + dx : c0.x + dx;
+      const nb = others.filter((o) => near(o.box, ['y', 'z']));
+      targets =
+        m.face === 'right'
+          ? [{ v: project.space.width, label: 'prawej ściany' }, ...nb.map((o) => ({ v: o.box.x, label: o.label }))]
+          : [{ v: 0, label: 'lewej ściany' }, ...nb.map((o) => ({ v: o.box.x + o.box.width, label: o.label }))];
+    }
+    let label = null;
+    if (!e.altKey) {
+      const reach = snapThresholdMm(m.start) * WALL_SNAP_FACTOR;
+      let hit = m.held && Math.abs(edge - m.held.v) < reach * WALL_SNAP_HOLD ? m.held : null;
+      if (!hit) for (const t of targets) if (Math.abs(edge - t.v) < reach && (!hit || Math.abs(edge - t.v) < Math.abs(edge - hit.v))) hit = t;
+      m.held = hit;
+      if (hit) {
+        edge = hit.v;
+        label = hit.label;
+      }
+    } else m.held = null;
+    edge = Math.round(edge);
+    const min = CABINET_LIMITS.sizeMin;
+    let patch;
+    if (m.face === 'top') {
+      const maxH = Math.floor(maxCabinetHeight(c0, project));
+      patch = { height: Math.max(min, Math.min(maxH, edge - c0.y - L0)) };
+    } else if (m.face === 'front') patch = { depth: Math.max(min, edge - c0.z) };
+    else if (m.face === 'right') patch = { width: Math.max(min, edge - c0.x) };
+    else {
+      const right = c0.x + c0.width;
+      const x = Math.min(right - min, edge);
+      patch = { x, width: right - x };
+    }
+    store.set((p) => ({ ...p, furniture: p.furniture.map((c) => (c.id === c0.id ? { ...c, ...patch } : c)) }));
+    const cab = store.get().furniture.find((c) => c.id === c0.id);
+    const value = m.face === 'top' ? cab.height : m.face === 'front' ? cab.depth : cab.width;
+    el.style.cursor = m.face === 'top' ? 'ns-resize' : 'ew-resize';
+    const r = viewer.container.getBoundingClientRect();
+    snapTip.textContent = `${FACE_LABEL[m.face]} ${value} mm` + (label ? ` · 🧲 ${label}` : '');
+    snapTip.style.left = `${e.clientX - r.left + 14}px`;
+    snapTip.style.top = `${e.clientY - r.top + 18}px`;
+    snapTip.hidden = false;
+  }
+
+  // Menu punktu obrysu: usuń punkt, prostokąt.
+  function showPointMenu(index, clientX, clientY) {
+    const { space } = store.get();
+    const p = spaceOutline(space)[index];
+    if (!p) return;
+    const items = [];
+    if (canRemovePoint(space, index)) {
+      items.push({
+        icon: '✕',
+        label: 'Usuń punkt',
+        run: () => {
+          const pts = spaceOutline(store.get().space).filter((_, j) => j !== index);
+          if (!selfIntersects(pts)) setOutline(cleanOutline(pts, store.get().space));
+        },
+      });
+    } else items.push({ icon: '·', label: 'Tego punktu nie można usunąć (przód przestrzeni)', run: () => {} });
+    if (space.outline) items.push({ icon: '▭', label: 'Przywróć prostokąt (usuń kształt)', run: () => setOutline(null) });
+    menu.show(clientX, clientY, `Punkt ${index + 1} · od lewej ${p[0]}, od tyłu ${p[1]} mm`, items);
+  }
+
+  // Najbliższa krawędź obrysu o danym znaczniku (left / right / back / edge:<i>) do punktu (x, z)
+  // i rzut punktu na nią.
+  function edgeAt(space, tag, x, z) {
+    const near = (e) => {
+      const [a, b] = [e.a, e.b];
+      const dx = b[0] - a[0];
+      const dz = b[1] - a[1];
+      const t = Math.max(0, Math.min(1, ((x - a[0]) * dx + (z - a[1]) * dz) / (dx * dx + dz * dz || 1)));
+      return { e, d: Math.hypot(x - a[0] - t * dx, z - a[1] - t * dz), p: [Math.round(a[0] + t * dx), Math.round(a[1] + t * dz)] };
+    };
+    return outlineEdges(space)
+      .filter((e) => !e.open && e.tag === tag)
+      .map(near)
+      .sort((m, k) => m.d - k.d)[0];
+  }
+
+  // Menu ściany / podłogi: dodaj punkt tutaj, gotowe kształty (gdy narożnik jest jeszcze prosty), prostokąt.
+  const SURFACE_NAMES = { floor: 'Podłoga', ceiling: 'Sufit', left: 'Ściana lewa', right: 'Ściana prawa', back: 'Ściana tylna', slope: 'Skos' };
+  const PRESETS_FOR = {
+    left: ['leftFront', 'leftBack', 'chamferLeft'],
+    right: ['rightFront', 'rightBack', 'chamferRight'],
+    back: ['backLeft', 'backRight', 'chamferLeft', 'chamferRight'],
+  };
+  function showSurfaceMenu({ tag, x, z }, clientX, clientY) {
+    const { space } = store.get();
+    const items = [];
+    const near = (tag === 'left' || tag === 'right' || tag === 'back' || tag.startsWith('edge:')) && edgeAt(space, tag, x, z);
+    if (near) {
+      items.push({
+        icon: '+',
+        label: 'Dodaj punkt tutaj (do kształtowania ściany)',
+        run: () => {
+          setOutline(insertPoint(store.get().space, near.e.i, near.p).outline);
+          hooks.showSpace?.();
+        },
+      });
+    }
+    if (tag === 'floor' || PRESETS_FOR[tag]) {
+      for (const key of PRESETS_FOR[tag] ?? OUTLINE_PRESETS.map((p) => p.key)) {
+        if (!applyOutlinePreset(space, key)) continue;
+        const preset = OUTLINE_PRESETS.find((p) => p.key === key);
+        items.push({
+          icon: '◸',
+          label: preset.title,
+          run: () => {
+            setOutline(applyOutlinePreset(store.get().space, key));
+            hooks.showSpace?.();
+          },
+        });
+      }
+    }
+    if (space.outline) items.push({ icon: '▭', label: 'Przywróć prostokąt (usuń kształt)', run: () => setOutline(null) });
+    items.push({ icon: '✥', label: 'Kształtuj ściany myszką (punkty na podłodze)…', run: () => hooks.showSpace?.() });
+    menu.show(clientX, clientY, tag.startsWith('edge:') ? 'Ściana' : (SURFACE_NAMES[tag] ?? 'Ściana'), items);
+  }
 
   function setRay(e) {
     const r = el.getBoundingClientRect();
@@ -51,7 +429,10 @@ export function attachCabinetInteraction(viewer, store, ui) {
   // Trafiony korpus i płyta (panelKey, np. „shelf-…” — półkę przeciąga się w pionie).
   function pickCabinet() {
     if (!viewer.furnitureGroup) return null;
-    const hits = raycaster.intersectObjects(viewer.furnitureGroup.children, true).filter((h) => h.object.isMesh);
+    let hits = raycaster.intersectObjects(viewer.furnitureGroup.children, true).filter((h) => h.object.isMesh);
+    // uchwyt półki (fioletowy krążek) jest rysowany na wierzchu — ma pierwszeństwo, nawet za zamkniętymi drzwiami
+    const shelfHandle = hits.find((h) => h.object.userData.shelfHandle);
+    if (shelfHandle) hits = [shelfHandle];
     for (const hit of hits) {
       let o = hit.object;
       let panelKey = null;
@@ -155,6 +536,8 @@ export function attachCabinetInteraction(viewer, store, ui) {
     const items = [];
     const panelItem = panelInfoItem(cabinetId, panelKey);
     if (panelItem) items.push(panelItem);
+    const shelfItem = !many && removeShelfItem(cabinetId, panelKey);
+    if (shelfItem) items.push(shelfItem);
     const mm = (v) => `${Math.round(Math.abs(v))} mm`;
     if (!many) {
       for (const [side, dir, icon] of [['left', 'w lewo', '⇤'], ['right', 'w prawo', '⇥']]) {
@@ -174,7 +557,7 @@ export function attachCabinetInteraction(viewer, store, ui) {
       if (Math.abs(t?.delta ?? 0) >= 0.5)
         items.push({ icon, label: `${many ? 'Dosuń wszystkie' : 'Dosuń'} ${dir} do ${t.label} (${mm(t.delta)})`, run: () => store.set((p) => slideCabinets(p, ids, direction)) });
     }
-    if (items.length === (panelItem ? 1 : 0)) items.push({ icon: '·', label: 'Dotyka sąsiadów i ścian — nie ma dokąd dosunąć', run: () => {} });
+    if (items.length === (panelItem ? 1 : 0) + (shelfItem ? 1 : 0)) items.push({ icon: '·', label: 'Dotyka sąsiadów i ścian — nie ma dokąd dosunąć', run: () => {} });
     if (!many) {
       items.push({ icon: '⤢', label: 'Dopasuj do wnęki', run: () => store.set((p) => ({ ...p, furniture: p.furniture.map((c) => (c.id === cabinetId ? fitCabinetToSpace(c, p) : c)) })) });
       items.push({
@@ -235,7 +618,22 @@ export function attachCabinetInteraction(viewer, store, ui) {
   function showPanelInfo(cabinetId, panelKey, clientX, clientY) {
     selectPanel(cabinetId, panelKey);
     const m = panelInfoMenu(store, cabinetId, panelKey);
-    if (m) menu.show(clientX, clientY, m.title, m.items);
+    const shelfItem = removeShelfItem(cabinetId, panelKey);
+    if (m) menu.show(clientX, clientY, m.title, shelfItem ? [shelfItem, ...m.items] : m.items);
+  }
+
+  // Pozycja menu „🗑 Usuń półkę” (tylko dla półki korpusu).
+  function removeShelfItem(cabinetId, panelKey) {
+    if (!panelKey?.startsWith('shelf-')) return null;
+    return {
+      icon: '🗑',
+      label: 'Usuń półkę',
+      run: () => {
+        store.set((p) => ({ ...p, furniture: p.furniture.map((c) => (c.id === cabinetId ? removeShelves(c, [panelKey]) : c)) }));
+        const id = `${cabinetId}:${panelKey}`;
+        ui.set({ ...ui.get(), selectedBlends: (ui.get().selectedBlends ?? []).filter((b) => b !== id) });
+      },
+    };
   }
 
   // Zaznaczenie występu ściany (zamiast korpusów, frontów, blend i otworów).
@@ -272,7 +670,7 @@ export function attachCabinetInteraction(viewer, store, ui) {
   }
 
   const isShelf = (hit) => hit?.panelKey?.startsWith('shelf-');
-  const isFront = (hit) => hit?.panelKey?.startsWith('front-');
+  const isFront = (hit) => hit?.panelKey?.startsWith('front-') || hit?.panelKey?.startsWith('idrawer-'); // (czoło szuflady wewnętrznej — jak front)
   // Zaznaczany element (poza frontami): blenda boczna (płyta korpusu z grupy „blend”: „idKorpusu:klucz”),
   // nóżki korpusu („idKorpusu:legs” — wszystkie naraz) albo blenda wspólna / blat („trim:id”).
   const blendIdOf = (hit) => {
@@ -475,6 +873,30 @@ export function attachCabinetInteraction(viewer, store, ui) {
     const all = many ? ' wszystkie' : '';
     const items = [];
     if (openCount < ids.length) items.push({ icon: '⇤', label: `${drawers ? 'Wysuń' : 'Otwórz'}${all}`, run: () => setFrontsOpen(ids, true) });
+    // jedna szuflada (front albo czoło wewnętrzne) — przestawienie w wnętrzu, przykrycie drzwiami / własny front
+    if (!many && fronts[0].panel.part != null) {
+      const cabinetId = fronts[0].id.split(':')[0];
+      const cab = project.furniture.find((c) => c.id === cabinetId);
+      const st = frontParts(cab?.fronts);
+      const n = st.parts.length;
+      const i = fronts[0].panel.part;
+      const change = (fn) => () => {
+        store.set((p) => ({ ...p, furniture: p.furniture.map((c) => (c.id === cabinetId ? fn(c, p) : c)) }));
+        ui.set({ ...ui.get(), selectedFronts: [] }); // klucze frontów po zmianie się zmieniają
+      };
+      if (i < n - 1) items.push({ icon: '↑', label: 'Przenieś szufladę wyżej', run: change((c, p) => movePart(c, i, i + 1, p)) });
+      if (i > 0) items.push({ icon: '↓', label: 'Przenieś szufladę niżej', run: change((c, p) => movePart(c, i, i - 1, p)) });
+      if (i < n - 2) items.push({ icon: '⤒', label: 'Przenieś szufladę na samą górę', run: change((c, p) => movePart(c, i, n - 1, p)) });
+      if (i > 1) items.push({ icon: '⤓', label: 'Przenieś szufladę na sam dół', run: change((c, p) => movePart(c, i, 0, p)) });
+      const inner = fronts[0].id.split(':')[1].startsWith('idrawer-');
+      if (!inner) {
+        items.push({ icon: '▢', label: 'Zamień na szufladę wewnętrzną (bez frontu)', run: change((c, p) => setPartKind(c, i, 'innerDrawer', p)) });
+        items.push({ icon: '▣', label: 'Schowaj za drzwiami', run: change((c, p) => coverWithDoor(c, i, p)) });
+      } else {
+        items.push({ icon: '▤', label: 'Zamień na szufladę z frontem', run: change((c, p) => setPartKind(c, i, 'drawer', p)) });
+        if (canUncover(st, i)) items.push({ icon: '⇲', label: 'Wyjmij spod drzwi', run: change((c, p) => uncoverPart(c, i, p)) });
+      }
+    }
     if (openCount > 0) items.push({ icon: '⇥', label: `${drawers ? 'Wsuń' : 'Zamknij'}${all}`, run: () => setFrontsOpen(ids, false) });
     items.push({
       icon: '👁',
@@ -562,6 +984,12 @@ export function attachCabinetInteraction(viewer, store, ui) {
     rightDown = null;
     if (moved) return;
     setRay(e);
+    // Prawy klik na punkcie obrysu podłogi — usuń punkt.
+    const handle = pickWallHandle();
+    if (handle?.type === 'point') {
+      showPointMenu(handle.index, e.clientX, e.clientY);
+      return;
+    }
     // Prawy klik na występie ściany (kominku) — zaznaczenie i menu: rozszerz / przesuń do korpusu lub ściany.
     const wall = pickWall();
     if (wall) {
@@ -570,6 +998,12 @@ export function attachCabinetInteraction(viewer, store, ui) {
       return;
     }
     const hit = pickCabinet();
+    if (!hit) {
+      // Prawy klik w ścianę albo podłogę — skośne ściany (gotowe kształty, wyprostowanie).
+      const surface = pickSurface();
+      if (surface) showSurfaceMenu(surface, e.clientX, e.clientY);
+      return;
+    }
     // Prawy klik na blendzie (bocznej, wspólnej, blacie): menu dla zaznaczonych blend, a gdy kliknięta
     // nie jest zaznaczona — zaznaczamy tylko ją.
     const blendId = blendIdOf(hit);
@@ -619,6 +1053,36 @@ export function attachCabinetInteraction(viewer, store, ui) {
       if (e.button !== 0) return;
       down = { x: e.clientX, y: e.clientY };
       setRay(e);
+      // Uchwyt kształtu ściany (narożnik podłogi albo koniec skośnej ściany) — przeciąganie po podłodze.
+      const wallHandle = pickWallHandle();
+      // kółko na granicy frontów (styk szuflad, granica sekcji) — zmiana wysokości sąsiednich części
+      const boundary = pickFrontBoundary();
+      if (boundary) {
+        drag = startFrontBoundary(boundary);
+        viewer.controls.enabled = false;
+        el.setPointerCapture(e.pointerId);
+        return;
+      }
+      // kółko wymiaru zaznaczonego korpusu (bok, wierzch, przód) — zmiana szerokości / wysokości / głębokości
+      const resize = pickResizeHandle();
+      if (resize) {
+        drag = startCabinetResize(resize);
+        viewer.controls.enabled = false;
+        el.setPointerCapture(e.pointerId);
+        return;
+      }
+      if (wallHandle?.type === 'wall') {
+        drag = startWallMove(wallHandle);
+        viewer.controls.enabled = false;
+        el.setPointerCapture(e.pointerId);
+        return;
+      }
+      if (wallHandle) {
+        drag = { wallHandle: startWallHandle(wallHandle), plane: new THREE.Plane(new THREE.Vector3(0, 1, 0), 0) };
+        viewer.controls.enabled = false;
+        el.setPointerCapture(e.pointerId);
+        return;
+      }
       // Występ ściany: klik zaznacza, przeciąganie krawędzi zmienia szerokość, środka — przesuwa.
       const wall = pickWall();
       if (wall) {
@@ -769,6 +1233,20 @@ export function attachCabinetInteraction(viewer, store, ui) {
   el.addEventListener('pointermove', (e) => {
     setRay(e);
     if (!drag) {
+      if (pickFrontBoundary()) {
+        el.style.cursor = 'ns-resize';
+        return;
+      }
+      const hoverResize = pickResizeHandle();
+      if (hoverResize) {
+        el.style.cursor = hoverResize.face === 'top' ? 'ns-resize' : 'ew-resize';
+        return;
+      }
+      const hoverHandle = pickWallHandle();
+      if (hoverHandle) {
+        el.style.cursor = hoverHandle.type === 'wall' ? (hoverHandle.wall === 'ceiling' ? 'ns-resize' : 'ew-resize') : 'move';
+        return;
+      }
       const wallHover = pickWall();
       if (wallHover) {
         el.style.cursor = wallHover.mode === 'move' ? 'grab' : 'ew-resize';
@@ -780,6 +1258,27 @@ export function attachCabinetInteraction(viewer, store, ui) {
       return;
     }
     if (drag.select) return; // Ctrl + klik na froncie — tylko zaznaczanie
+    if (drag.boundary) {
+      const pt = raycaster.ray.intersectPlane(drag.plane, new THREE.Vector3());
+      if (pt) dragFrontBoundary(pt, e);
+      return;
+    }
+    if (drag.resize) {
+      const pt = raycaster.ray.intersectPlane(drag.plane, new THREE.Vector3());
+      if (pt) dragCabinetResize(pt, e);
+      return;
+    }
+    if (drag.wallMove) {
+      const pt = raycaster.ray.intersectPlane(drag.plane, new THREE.Vector3());
+      if (pt) dragWallMove(pt, e);
+      return;
+    }
+    if (drag.wallHandle) {
+      el.style.cursor = 'move';
+      const pt = raycaster.ray.intersectPlane(drag.plane, new THREE.Vector3());
+      if (pt) dragOutlinePoint(pt, e.altKey);
+      return;
+    }
     if (drag.wall) {
       el.style.cursor = drag.wall.mode === 'move' ? 'grabbing' : 'ew-resize';
       const pt = raycaster.ray.intersectPlane(drag.plane, new THREE.Vector3());
@@ -832,7 +1331,16 @@ export function attachCabinetInteraction(viewer, store, ui) {
     const axes = drag.vertical ? ['y'] : ['x', 'z'];
     let pos = { ...drag.from };
     for (const a of axes) pos[a] = Math.round(drag.from[a] + d[a]);
-    if (!e.altKey) pos = snapPosition(project, drag.id, pos, axes);
+    if (!e.altKey) {
+      const snapped = snapCabinet(project, drag.id, pos, axes, { threshold: snapThresholdMm(drag.start), hold: drag.snapHold ?? {} });
+      pos = snapped.pos;
+      // nowe przyciągnięcie — krótki „klik” wizualny (podpowiedź) i zapamiętanie celu (magnes trzyma)
+      drag.snapHold = snapped.snaps;
+      showSnapTip(snapped.snaps, e);
+    } else {
+      drag.snapHold = {};
+      snapTip.hidden = true;
+    }
 
     store.set((prj) => ({
       ...prj,
@@ -849,7 +1357,36 @@ export function attachCabinetInteraction(viewer, store, ui) {
   });
 
   el.addEventListener('pointerup', (e) => {
+    snapTip.hidden = true;
     const moved = down && Math.hypot(e.clientX - down.x, e.clientY - down.y) > CLICK_TOLERANCE_PX;
+    if (drag?.resize || drag?.boundary) {
+      drag = null;
+      viewer.controls.enabled = true;
+      el.releasePointerCapture(e.pointerId);
+      down = null;
+      return;
+    }
+    if (drag?.wallMove) {
+      // ściana z kształtu podłogi — porządek w punktach (np. kształt wrócił do prostokąta)
+      const { space } = store.get();
+      if (drag.wallMove.wall.startsWith('edge:') && space.outline) {
+        const next = cleanOutline(space.outline, space);
+        if (JSON.stringify(next) !== JSON.stringify(space.outline)) setOutline(next);
+      }
+      drag = null;
+      viewer.controls.enabled = true;
+      el.releasePointerCapture(e.pointerId);
+      down = null;
+      return;
+    }
+    if (drag?.wallHandle) {
+      endWallHandle();
+      drag = null;
+      viewer.controls.enabled = true;
+      el.releasePointerCapture(e.pointerId);
+      down = null;
+      return;
+    }
     if (drag) {
       // klik (bez ruchu) w płytę zaznaczonego korpusu — zaznaczenie samej płyty albo z powrotem korpusu
       if (drag.drill && !moved) {

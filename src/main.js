@@ -10,6 +10,7 @@ import { createMaterialsPanel } from './ui/materialsPanel.js';
 import { createTrimsPanel } from './ui/trimsPanel.js';
 import { createToolbar } from './ui/toolbar.js';
 import { initTabs } from './ui/tabs.js';
+import { initViewportHelp } from './ui/viewportHelp.js';
 import { initShortcuts } from './ui/shortcuts.js';
 import { initPanelResizer } from './ui/resizer.js';
 import { createWelcome } from './ui/welcome.js';
@@ -41,6 +42,7 @@ const firstRun = !savedProject;
 const ui = createStore({ selectedId: null });
 
 const viewer = new Viewer(document.getElementById('viewport'));
+initViewportHelp(document.getElementById('viewport')); // okienko ze skrótami — można je ukryć
 const tabs = initTabs(document.getElementById('tabs'));
 const spacePanel = createSpacePanel(document.getElementById('space-panel'), store);
 const trimsPanel = createTrimsPanel(document.getElementById('trims-panel'), store, ui, { mode: 'blends' });
@@ -211,7 +213,10 @@ account.refresh().then(async () => {
     account.unlink(); // wylogowano (np. sesja wygasła) — projekt zostaje w przeglądarce
   }
 });
-attachCabinetInteraction(viewer, store, ui);
+attachCabinetInteraction(viewer, store, ui, {
+  // kształt ścian z menu w 3D: zakładka „Przestrzeń” (z uchwytami kształtu ścian)
+  showSpace: () => tabs.activate('space-panel'),
+});
 initShortcuts(store, ui);
 initPanelResizer(document.getElementById('panel-resizer'), document.querySelector('.panel'));
 
@@ -228,7 +233,10 @@ const redraw = (refit = false) =>
     isFrontOpen,
     selectedHole: ui.get().selectedHole ?? null,
     selectedObstacle: ui.get().selectedObstacle ?? null,
+    // uchwyty kształtu ścian w 3D — gdy otwarta jest zakładka „Przestrzeń”
+    wallHandles: tabs.active() === 'space-panel',
   });
+tabs.onChange(() => redraw());
 onSettingsChange(() => redraw());
 redraw();
 
@@ -285,10 +293,29 @@ function revealPicked(id) {
     return;
   }
   const [cabinetId, key] = id.split(':');
+  // płyta korpusu: półka → sekcja „Półki” (z podświetlonym wierszem), poprzeczka → „Wzmocnienia”,
+  // nóżki → „Nóżki”, bok / wieniec / plecy → „Korpus”; blendy i panele boczne → zakładka „Blendy”
+  const BLEND_KEYS = ['blendLeft', 'blendRight', 'wallPanelLeft', 'wallPanelRight'];
   if (key === 'legs') furniturePanel.revealSection(cabinetId, 'legs');
-  else {
+  else if (key.startsWith('shelf-')) {
+    furniturePanel.revealSection(cabinetId, 'shelves');
+    markPickedShelves();
+  } else if (key.startsWith('stiff-')) furniturePanel.revealSection(cabinetId, 'stiff');
+  else if (key.startsWith('idrawer-')) furniturePanel.revealFront(cabinetId, key); // czoło szuflady wewnętrznej — jej sekcja frontu
+  else if (BLEND_KEYS.includes(key)) {
     tabs.activate('trims-panel');
     trimsPanel.reveal(cabinetId);
+  } else furniturePanel.revealSection(cabinetId, 'body');
+}
+
+// Podświetlenie wierszy zaznaczonych półek w karcie korpusu (sekcja „Półki”).
+function markPickedShelves() {
+  document.querySelectorAll('.shelf-row.picked').forEach((r) => r.classList.remove('picked'));
+  for (const b of ui.get().selectedBlends ?? []) {
+    const [cabinetId, key] = b.split(':');
+    if (!key?.startsWith('shelf-')) continue;
+    const i = store.get().furniture.find((c) => c.id === cabinetId)?.shelves.findIndex((s) => `shelf-${s.id}` === key);
+    if (i >= 0) document.querySelector(`[data-kind="cabinet"][data-id="${cabinetId}"] .shelf-row[data-shelf="${i}"]`)?.classList.add('picked');
   }
 }
 
@@ -322,7 +349,7 @@ ui.subscribe((state, meta) => {
   lastPicked = newest;
   // zaznaczony front („idKorpusu:front-N”) — sekcja „Fronty” w karcie jego korpusu
   const front = (state.selectedFronts ?? []).at(-1) ?? null;
-  if (front && front !== lastFront) furniturePanel.revealSection(front.split(':')[0], 'fronts');
+  if (front && front !== lastFront) furniturePanel.revealFront(...front.split(':')); // sekcja tego frontu w karcie
   lastFront = front;
   // zaznaczony otwór blatu / półki — karta płyty i wiersz otworu w panelu po lewej
   const hole = state.selectedHole;
@@ -330,6 +357,7 @@ ui.subscribe((state, meta) => {
   if (holeKey && holeKey !== lastHole) revealPicked(`${hole.kind}:${hole.id}`);
   lastHole = holeKey;
   markPickedHole();
+  markPickedShelves();
 });
 let lastHole = null;
 // Wyróżnienie wiersza zaznaczonego otworu w karcie blatu / płyty (także po przebudowie listy otworów).
@@ -353,6 +381,7 @@ store.subscribe((project) => {
     if (!owner?.holes?.[hole.index]) return ui.set({ ...ui.get(), selectedHole: null });
   }
   markPickedHole();
+  markPickedShelves();
 });
 
 // Menu w rogu podglądu 3D (o programie, poradniki): zamyka się po kliknięciu obok albo Esc.
