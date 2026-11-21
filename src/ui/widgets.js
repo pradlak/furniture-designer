@@ -26,13 +26,13 @@ export const colorOptions = () =>
   ).join('');
 
 // wide — pole na całą szerokość karty (np. blat: wybór dekoru)
-export function colorPicker(label, path, { wide = false } = {}) {
+export function colorPicker(label, path, { wide = false, resetLabel = 'jak w materiale' } = {}) {
   return `
     <label class="field small color-field${wide ? ' wide' : ''}">
       <span>${label}</span>
       <span class="color-row">
         <select data-color-select="${path}">
-          <option value="">jak w materiale</option>
+          <option value="">${resetLabel}</option>
           ${colorOptions()}
           <option value="custom">własny…</option>
         </select>

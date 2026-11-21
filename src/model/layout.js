@@ -1,6 +1,6 @@
 import { CABINET_LIMITS, cabinetBounds, createCabinet, maxCabinetHeight, newId } from './furniture.js';
 import { rowOf, TRIM_TYPES } from './trims.js';
-import { wallSegments, segmentAt } from './space.js';
+import { wallSegments, segmentAt, anchorHoods } from './space.js';
 import { freeWidth, straightenSlantedSides, backLimit, frontLimit } from './outline.js';
 
 // Automatyczny układ korpusów w rzędzie — żeby projektowanie było jak najprostsze:
@@ -320,7 +320,7 @@ export function updateCabinetCeilingGap(project, cabinetId, fn) {
 export function updateSpaceRefit(project, fn) {
   // id → rodzaj wysokości automatycznej ('max' — do sufitu / skosu, 'cap' — domyślna)
   const fitted = new Map(project.furniture.map((c) => [c.id, isFittedHeight(c, project)]).filter(([, f]) => f));
-  const next = { ...project, space: fn(project.space) };
+  const next = { ...project, space: anchorHoods(fn(project.space)) }; // (wypusty od sufitu zostają przy suficie)
   return {
     ...next,
     furniture: next.furniture.map((c) => (fitted.has(c.id) ? adjustHeight(c, next, fitted.get(c.id)) : c)),

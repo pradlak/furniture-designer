@@ -552,6 +552,10 @@ details.subsection > summary.subsection-title:hover { color: var(--accent); }
 .item.collapsed.has-issues .card-sum { color: var(--danger); }
 .collapse-all { display: flex; gap: 6px; margin: 0 0 8px; }
 .collapse-all button { padding: 2px 8px; font-size: 12px; }
+/* małe przyciski-ikonki (napis w podpowiedzi po najechaniu) */
+.collapse-all .icon-btn { width: 28px; height: 24px; padding: 0; display: grid; place-items: center; line-height: 1; }
+.collapse-all .icon-btn svg { pointer-events: none; }
+.collapse-all .sort-ico { font-size: 10px; font-weight: 700; letter-spacing: -0.5px; pointer-events: none; }
 
 /* --- zakładki „Blendy” i „Blaty i półki” --- */
 .tabs { flex-wrap: wrap; }
@@ -1244,3 +1248,245 @@ body.has-user-menu .help-group .settings-btn { display: none; }
 .fp-item input.overridden, .fd-item input.overridden { border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); font-weight: 600; }
 .front-parts-add { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; }
 .front-parts-add button { padding: 2px 7px; font-size: 12px; }
+
+/* wiersz części wnętrza w jednej linii; zbiorcze dodawanie; dystanse */
+.fp-item { flex-wrap: nowrap; }
+.fp-tag { flex: none; min-width: 42px; font-size: 11px; font-weight: 600; color: #475569; white-space: nowrap; }
+.fp-item .fs-height input { width: 58px; }
+.front-bulk { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); margin: 0 0 6px; }
+.front-bulk input { width: 50px; padding: 2px 4px; }
+.front-bulk select { flex: none; width: auto; padding: 2px 4px; font-size: 12px; }
+.front-bulk button { padding: 2px 8px; font-size: 12px; }
+.front-spacers { margin: 2px 0 4px; font-size: 12px; }
+
+/* wymiary przestrzeni (szare, przerywana ramka) — inne niż wymiary mebli (niebieskie); zdublowany podpis — ukryty */
+.dim-label:not(.dim-label-accent) { border-style: dashed; border-color: #94a3b8; color: #475569; background: rgba(248, 250, 252, 0.92); }
+.dim-label.dim-dup { visibility: hidden; }
+
+/* pole liczbowe w menu (np. „Wymiary” płyty) */
+.context-menu-input { display: flex; align-items: center; gap: 6px; padding: 4px 10px; font-size: 13px; }
+.context-menu-input span { flex: 1; color: var(--text); }
+.context-menu-input input { width: 84px; padding: 3px 6px; }
+.context-menu-input small { color: var(--muted); }
+
+/* przycisk „wypełnij wolne miejsce” przy szufladzie */
+.fp-item [data-fpart-fill][hidden] { display: none; }
+
+/* wiersz szuflady / drzwi — klik zaznacza front w 3D */
+.fp-item[data-fpart], .fd-item[data-fdoor] { cursor: pointer; }
+.map-front { cursor: pointer; }
+
+/* wykończenie ścian (zakładka „Przestrzeń”) */
+.wall-finish { display: flex; flex-direction: column; gap: 6px; }
+.wf-item { border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; background: #fff; }
+.wf-head { display: flex; align-items: center; gap: 8px; }
+.wf-head b { flex: 1; font-size: 13px; }
+.wf-head input[type="color"], .wf-colors input[type="color"] { width: 32px; height: 22px; padding: 0; border: 1px solid var(--border); }
+.wf-item .grid-3 { margin-top: 6px; }
+.wf-colors { display: flex; align-items: center; gap: 12px; margin-top: 4px; }
+.wf-colors .color-field { display: flex; align-items: center; gap: 4px; font-size: 12px; }
+.wf-est { color: var(--muted); margin-left: auto; }
+
+.wf-quick { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px; }
+.wf-quick button { font-size: 11px; padding: 2px 6px; }
+
+/* ikonka nad zaznaczonym korpusem / frontem: otwórz / zamknij */
+.open-fronts-btn {
+  pointer-events: auto;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  font-size: 14px;
+  line-height: 1;
+  border-radius: 50%;
+  border: 1px solid var(--accent);
+  background: #fff;
+  color: var(--accent);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+}
+.open-fronts-btn:hover, .open-fronts-btn.is-open { background: var(--accent); color: #fff; }
+
+/* inspektor zaznaczonej samodzielnej płyty — okienko po prawej stronie widoku 3D */
+.board-inspector {
+  position: absolute;
+  right: 12px;
+  top: 52px;
+  z-index: 3;
+  width: 320px;
+  max-height: calc(100% - 70px);
+  overflow-y: auto;
+  padding: 8px 10px 10px;
+  background: rgba(255, 255, 255, 0.97);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  font-size: 12px;
+}
+.bi-head { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+.bi-head b { flex: 1; font-size: 14px; }
+.bi-sec { margin: 8px 0 4px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+.bi-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px 6px; }
+.bi-field { display: flex; flex-direction: column; gap: 1px; position: relative; }
+.bi-field span { font-size: 11px; color: var(--muted); }
+.bi-field input, .bi-field select { width: 100%; padding: 2px 4px; font-size: 12px; }
+.bi-field small { position: absolute; right: 5px; bottom: 4px; font-size: 10px; color: var(--muted); pointer-events: none; }
+.bi-field.wide { margin-bottom: 4px; }
+.bi-sketch { border: 1px solid var(--border); border-radius: 6px; background: #fafbfc; padding: 2px; }
+.bi-sketch .bi-board { fill: #f3e8d5; stroke: #6b7280; stroke-width: 1; }
+.bi-sketch .bi-hole { fill: #fff; stroke: #374151; stroke-width: 1; }
+.bi-sketch .bi-mount { fill: rgba(37, 99, 235, 0.15); stroke: #2563eb; stroke-width: 1; stroke-dasharray: 3 2; }
+.bi-sketch .bi-hole-edge { fill: #fff; stroke: #2563eb; stroke-width: 1.2; }
+.bi-sketch .bi-wall { stroke: #9ca3af; stroke-width: 3; }
+.bi-sketch .bi-dim, .bi-sketch .bi-tick { stroke: #2563eb; stroke-width: 1; }
+.bi-sketch .bi-dim2 { stroke: #2563eb; stroke-width: 1; stroke-dasharray: 2 2; }
+.bi-sketch .bi-txt { font-size: 10px; fill: #1d4ed8; font-weight: 600; }
+.bi-sketch .bi-small { font-size: 8.5px; fill: #4b5563; }
+.bi-note { margin: 4px 0; color: var(--muted); }
+.bi-more { width: 100%; font-size: 12px; }
+
+.bi-check { display: flex; align-items: center; gap: 6px; margin: 4px 0; font-size: 12px; }
+.bi-sketch .bi-plate { fill: rgba(220, 38, 38, 0.18); stroke: #dc2626; stroke-width: 1; }
+.bi-sketch .bi-detail { border-top: 1px dashed var(--border); margin-top: 2px; }
+
+/* powiększony szkic płyty */
+.bi-sec-row { display: flex; align-items: center; justify-content: space-between; }
+.bi-sec-row button { text-transform: none; letter-spacing: 0; font-weight: 500; }
+.board-inspector .bi-sketch { cursor: zoom-in; }
+.bi-zoom { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; background: rgba(15, 23, 42, 0.45); }
+.bi-zoom[hidden] { display: none; }
+.bi-zoom-box { width: min(1100px, 94vw); max-height: 92vh; overflow: auto; background: #fff; border-radius: 10px; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3); padding: 10px 14px 14px; }
+.bi-zoom-head { display: flex; align-items: center; margin-bottom: 6px; }
+.bi-zoom-head b { flex: 1; font-size: 15px; }
+.bi-zoom-body { cursor: default; }
+.bi-zoom-body svg { display: block; width: 100%; height: auto; }
+.bi-sketch .bi-dia { fill: #1d4ed8; font-weight: 500; }
+.bi-sketch .bi-leader { stroke: #9ca3af; stroke-width: 0.7; }
+.bi-sketch .bi-axis { stroke: #cbd5e1; stroke-width: 0.5; stroke-dasharray: 4 2 1 2; }
+.bi-fit { width: 100%; margin-top: 6px; font-size: 12px; }
+
+/* „Pobierz…” w inspektorze płyty — jeden przycisk, potem wybór formatu */
+.bi-download { position: relative; margin: 8px 0 6px; }
+.bi-download-btn { width: 100%; font-size: 12px; }
+.bi-download-menu { position: absolute; left: 0; right: 0; bottom: calc(100% + 4px); z-index: 2; display: flex; flex-direction: column; padding: 4px; background: #fff; border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18); }
+.bi-download-menu[hidden] { display: none; }
+.bi-download-menu button { text-align: left; border: 0; background: none; padding: 5px 8px; font-size: 12px; border-radius: 4px; }
+.bi-download-menu button:hover { background: color-mix(in srgb, var(--accent) 12%, #fff); }
+
+/* drugie okienko inspektora (obok, z lewej): materiał, kolor, frezy krawędzi, otwory */
+.board-inspector-extra { right: 344px; width: 340px; }
+.board-inspector-extra .field { display: flex; flex-direction: column; gap: 2px; margin-bottom: 6px; font-size: 12px; }
+.board-inspector-extra select, .board-inspector-extra input { font-size: 12px; }
+
+/* --- karty obiektów: krótkie w panelu po lewej, pełna karta zaznaczonego obiektu jako okienko po prawej --- */
+/* nieaktywna zakładka: niewidoczna i bez miejsca w układzie (przycięta do zera — nie wydłuża strony); okienko
+   obiektu z niej (position: fixed) i tak jest widoczne, bo przycięcie go nie dotyczy */
+.panel { position: relative; }
+.tab-content.tab-off { visibility: hidden; position: absolute; top: 0; left: 0; width: 0; height: 0; overflow: hidden; pointer-events: none; }
+html, body { overflow: hidden; } /* aplikacja zawsze na cały ekran — bez przewijania całej strony */
+.tab-content.tab-off .in-inspector { visibility: visible; pointer-events: auto; }
+/* w panelu po lewej — tylko nagłówek i podsumowanie (szczegóły w okienku po prawej po zaznaczeniu) */
+.tab-content .item:is(.cabinet, .trim, .obstacle, .board):not(.in-inspector) > :not(.item-head):not(.card-sum) { display: none !important; }
+.tab-content .item:is(.cabinet, .trim, .obstacle, .board):not(.in-inspector) .card-sum { display: block; }
+.tab-content .item:is(.cabinet, .trim, .obstacle, .board):not(.in-inspector) { cursor: pointer; }
+.tab-content .item:is(.cabinet, .trim, .obstacle, .board) .collapse-toggle { display: none; }
+/* okienko po prawej */
+.item.in-inspector {
+  position: fixed;
+  top: var(--insp-top, 70px);
+  right: var(--insp-right, 12px);
+  width: 380px;
+  max-height: var(--insp-h, 70vh);
+  overflow-y: auto;
+  z-index: 40;
+  margin: 0;
+  padding: 10px 12px 12px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+}
+.item.in-inspector > .card-sum { display: block; padding-left: 0; margin-bottom: 4px; }
+.item.in-inspector.collapsed > :not(.item-head):not(.card-sum) { display: revert; }
+
+/* okienko korpusu: otwarta sekcja (Korpus, Fronty, Półki…) — jako osobne okienko obok, z lewej */
+.section-close { display: none; }
+.item.in-inspector > details.section[open] > summary { background: color-mix(in srgb, var(--accent) 14%, #fff); }
+.item.in-inspector > details.section[open] > .section-body {
+  position: fixed;
+  top: var(--insp-top, 70px);
+  right: calc(var(--insp-right, 12px) + 390px);
+  width: 400px;
+  max-height: var(--insp-h, 70vh);
+  overflow-y: auto;
+  z-index: 41;
+  margin: 0;
+  padding: 36px 12px 12px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+}
+.item.in-inspector > details.section[open] > .section-body::before {
+  content: attr(data-title);
+  position: absolute;
+  top: 9px;
+  left: 12px;
+  right: 40px;
+  font-weight: 700;
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.item.in-inspector > details.section[open] > .section-body > .section-close { display: block; position: absolute; top: 7px; right: 8px; }
+.item.in-inspector > details.section > summary::before { content: "◂"; } /* otwiera się okienkiem obok, z lewej */
+.item.in-inspector > details.section[open] > summary { border-radius: 6px; }
+
+/* --- zwijany lewy panel: pasek z ikonkami zakładek --- */
+.tab-ico { display: none; }
+.tabs-collapse { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; padding: 5px 11px !important; font-weight: 700; font-size: 14px; color: var(--accent) !important; border: 1px solid var(--accent) !important; background: #fff !important; border-radius: 999px; }
+.tabs-collapse:hover { background: var(--accent) !important; color: #fff !important; }
+.tabs-collapse-label { font-size: 12px; font-weight: 600; }
+.panel.collapsed { width: 58px !important; padding: 0; overflow: visible; }
+.panel.collapsed + .panel-resizer { display: none; }
+.panel.collapsed .tabs { flex-direction: column; align-items: center; margin: 0; padding: 10px 6px; height: 100%; border-bottom: 0; box-shadow: none; position: static; }
+.panel.collapsed .tabs button { width: 44px; height: 40px; padding: 0 !important; display: grid; place-items: center; border-radius: 10px; }
+.panel.collapsed .tab-ico { display: block; font-size: 19px; line-height: 1; }
+.panel.collapsed .tab-label { display: none; }
+/* zwinięty panel — „»” (rozwiń) na górze paska, wyraźny */
+.panel.collapsed .tabs-collapse { order: -1; margin: 0 0 8px; width: 44px; height: 34px; display: grid !important; place-items: center; font-size: 18px; background: var(--accent) !important; color: #fff !important; border-radius: 10px; }
+.panel.collapsed .tabs button.active { background: transparent; color: inherit; border-color: transparent; box-shadow: none; }
+.panel.collapsed .tab-content { visibility: hidden; position: absolute; top: 0; left: 0; width: 0; height: 0; overflow: hidden; pointer-events: none; }
+.panel.collapsed .tab-content .in-inspector { visibility: visible; pointer-events: auto; }
+
+/* --- „+ Dodaj ▾” na pasku narzędzi --- */
+.add-menu { position: relative; }
+.add-menu > summary { list-style: none; cursor: pointer; padding: 5px 10px; border: 1px solid var(--accent); border-radius: 6px; color: #fff; background: var(--accent); font-weight: 600; user-select: none; }
+.add-menu > summary::-webkit-details-marker { display: none; }
+.add-menu-list { position: absolute; top: calc(100% + 4px); left: 0; z-index: 60; min-width: 240px; max-height: 70vh; overflow-y: auto; display: flex; flex-direction: column; padding: 6px; background: #fff; border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18); }
+.add-menu-title { margin: 6px 6px 2px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+.add-menu-list button { text-align: left; border: 0; background: none; padding: 5px 8px; border-radius: 4px; }
+.add-menu-list button:hover { background: color-mix(in srgb, var(--accent) 12%, #fff); }
+.add-menu > summary { display: inline-flex; align-items: center; gap: 6px; }
+.add-menu .add-ico { flex: none; }
+
+/* szkic obiektu w okienku po prawej (korpus, blat, blenda, przeszkoda) */
+.obj-sketch { display: none; }
+.item.in-inspector > .obj-sketch { display: block; margin: 4px 0 8px; cursor: zoom-in; }
+.item.in-inspector > .obj-sketch:empty { display: none; }
+.bi-sketch .bi-front { fill: #fbf7ef; stroke: #6b7280; stroke-width: 1; }
+.bi-sketch .bi-handle { stroke: #374151; stroke-width: 1.6; stroke-linecap: round; }
+.bi-sketch .bi-open { fill: none; stroke: #9ca3af; stroke-width: 0.8; stroke-dasharray: 3 2; }
+.bi-sketch .bi-leg { fill: #6b7280; }
+.bi-sketch .bi-under { fill: none; stroke: #9ca3af; stroke-width: 0.8; stroke-dasharray: 3 2; }
+.bi-sketch .bi-wallbg { fill: #f3f4f6; }
+.bi-sketch .bi-obstacle { fill: #e5e7eb; stroke: #6b7280; stroke-width: 1; }
+.bi-zoom-body svg + svg { margin-top: 8px; }
+
+/* ✕ zamknięcia okienka obiektu (tylko w okienku po prawej); usuwanie obiektu — kosz 🗑 */
+.insp-close { display: none; }
+.item.in-inspector .insp-close { display: inline-block; margin-left: 6px; padding: 2px 9px; font-size: 14px; border-color: transparent; background: transparent; color: var(--muted); }
+.item.in-inspector .insp-close:hover { color: var(--text); border-color: var(--border); background: #f3f4f6; }

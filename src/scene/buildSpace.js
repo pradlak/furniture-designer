@@ -4,7 +4,7 @@ import { createDimension } from './dimensions.js';
 import { buildWallDecor } from './wallDecor.js';
 import { formatLength, getSettings } from '../state/settings.js';
 import { boxPolyhedron, clipPolyhedron, facesToPositions, facesToEdgePositions, prismPolyhedron, clipPolygon, orientedFace } from './polyhedron.js';
-import { isObstacleOutside, isWallObstacle, slopePlanes, wallSegments } from '../model/space.js';
+import { isObstacleOutside, isWallObstacle, isWallLike, slopePlanes, wallSegments } from '../model/space.js';
 import { spaceOutline, outlineEdges, edgeLength, edgeOutward } from '../model/outline.js';
 
 // Materiały przeszkód są stałe i współdzielone między przebudowami sceny.
@@ -45,12 +45,17 @@ export function buildSpace(space, view = { showWalls: true }, { selectedObstacle
     // Każda ściana osobno (userData.wall = znacznik: floor, left, back, slope, edge:<i>…) — prawy klik w ścianę
     // pokazuje menu kształtu ścian (scene/interaction.js).
     const isVisible = (tag) => tag === 'slope' || tag.startsWith('edge:') || (tag !== 'front' && space.walls[tag]);
-    const floorMat = surfaceMaterial(group, space.colors.floor);
+    const floorMat = surfaceMaterial(group, space.colors.floor, false);
+    floorMat.emissive = new THREE.Color(space.colors.floor);
+    floorMat.emissiveIntensity = WALL_GLOW * 0.6;
     const wallMat = surfaceMaterial(group, space.colors.walls);
     for (const tag of new Set(faces.map((f) => f.tag))) {
       if (!isVisible(tag)) continue;
-      addSurface(group, faces.filter((f) => f.tag === tag), transform, tag === 'floor' ? floorMat : wallMat, tag);
+      // ściana we własnym kolorze (space.wallFinish)
+      const own = tag !== 'floor' && space.wallFinish?.[tag]?.color;
+      addSurface(group, faces.filter((f) => f.tag === tag), transform, tag === 'floor' ? floorMat : own ? surfaceMaterial(group, own) : wallMat, tag);
     }
+    addWallTiles(group, space);
   }
   if (wallHandles) addWallHandles(group, space);
 
@@ -65,17 +70,22 @@ export function buildSpace(space, view = { showWalls: true }, { selectedObstacle
     const [x, y, z] = toScene(o.x + o.width / 2, o.y + o.height / 2, o.z + o.depth / 2, space);
     const outside = isObstacleOutside(o, space);
     let mat = outside ? obstacleMaterials.bad : obstacleMaterials.ok;
-    if (isWallObstacle(o) && !outside) {
+    if (isWallLike(o) && !outside) {
       if (!wallMaterial) {
-        wallMaterial = new THREE.MeshLambertMaterial({ color: space.colors.walls, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
+        wallMaterial = new THREE.MeshLambertMaterial({ color: space.colors.walls, ...wallGlow(space.colors.walls), polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
         group.userData.disposables.push(wallMaterial);
       }
       mat = wallMaterial;
     }
+    if (o.color && !outside) {
+      // własny kolor (np. okap w kolorze frontów)
+      mat = new THREE.MeshLambertMaterial({ color: o.color.hex, ...wallGlow(o.color.hex), polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
+      group.userData.disposables.push(mat);
+    }
     const mesh = new THREE.Mesh(new THREE.BoxGeometry(o.width * MM, o.height * MM, o.depth * MM), mat);
     mesh.position.set(x, y, z);
-    let edges = isWallObstacle(o) ? wallEdgeMaterial : obstacleMaterials.edges;
-    if (isWallObstacle(o)) {
+    let edges = isWallLike(o) ? wallEdgeMaterial : obstacleMaterials.edges;
+    if (isWallLike(o)) {
       mesh.userData.obstacleId = o.id; // występ ściany — do zaznaczania, przeciągania i menu (scene/interaction.js)
       if (o.id === selectedObstacle) {
         edges = new THREE.LineBasicMaterial({ color: getSettings().highlight });
@@ -84,6 +94,8 @@ export function buildSpace(space, view = { showWalls: true }, { selectedObstacle
     }
     mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry), edges));
     group.add(mesh);
+    // zaznaczony występ ściany / okap — kółka wymiarów: boki (szerokość), przód (głębokość), góra / dół okapu (wysokość)
+    if (isWallLike(o) && o.id === selectedObstacle) addObstacleResizeHandles(group, o, space);
     // kominek / wkład / telewizor na przedniej ścianie występu (tylko wygląd)
     if (isWallObstacle(o)) {
       const decor = buildWallDecor(o, space);
@@ -94,9 +106,9 @@ export function buildSpace(space, view = { showWalls: true }, { selectedObstacle
   // Wymiary.
   const gap = Math.max(0.12, Math.max(w, h, d) * 0.06);
   const v = (x, y, z) => new THREE.Vector3(x, y, z);
-  group.add(createDimension(v(0, 0, 0), v(w, 0, 0), v(0, 0, gap), formatLength(space.width)));
+  group.add(createDimension(v(0, 0, 0), v(w, 0, 0), v(0, 0, gap), `przestrzeń ${formatLength(space.width)}`));
   // Przy występach ścian (np. kominku) — także szerokości poszczególnych wnęk i występów, bliżej przestrzeni.
-  const segments = wallSegments(space);
+  const segments = wallSegments(space, [0, space.height]); // (z okapem — jego szerokość i wnęki obok)
   if (segments.length > 1 || (segments.length === 1 && (segments[0][0] > 0 || segments[0][1] < space.width))) {
     const points = [...new Set([0, space.width, ...segments.flat()])].sort((a, b) => a - b);
     for (let i = 1; i < points.length; i++) {
@@ -119,17 +131,113 @@ export function buildSpace(space, view = { showWalls: true }, { selectedObstacle
       group.add(createDimension(v(ax, ay, az), v(bx, by, bz), v(out[0], 0, out[1]).multiplyScalar(gap * 0.35), formatLength(Math.round(len))));
     }
   }
-  group.add(createDimension(v(0, 0, 0), v(0, h, 0), v(-gap, 0, 0), formatLength(space.height)));
-  group.add(createDimension(v(w, 0, 0), v(w, 0, -d), v(gap, 0, 0), formatLength(space.depth)));
+  group.add(createDimension(v(0, 0, 0), v(0, h, 0), v(-gap, 0, 0), `przestrzeń ${formatLength(space.height)}`));
+  group.add(createDimension(v(w, 0, 0), v(w, 0, -d), v(gap, 0, 0), `przestrzeń ${formatLength(space.depth)}`));
 
   return group;
 }
 
+
+// --- płytki na ścianach (space.wallFinish; model/wallFinish.js) ---
+// Pas płytek: czworokąt nad każdym odcinkiem ściany od `from` do `to` (przycięty skosami), odsunięty 2 mm do środka,
+// widoczny tylko od wnętrza; tekstura powtarzana — jedna płytka (cegiełka: dwa rzędy z przesunięciem) z fugą.
+const tileTextures = new Map(); // wspólne między przebudowami (klucz — wygląd płytki)
+function tileTexture(t) {
+  const key = [t.width, t.height, t.grout, t.layout, t.color, t.groutColor].join('|');
+  if (tileTextures.has(key)) return tileTextures.get(key);
+  const uw = t.width + t.grout;
+  const uh = (t.height + t.grout) * (t.layout === 'brick' ? 2 : 1);
+  const s = 256 / Math.max(uw, uh); // px na mm
+  const cw = Math.max(8, Math.round(uw * s));
+  const ch = Math.max(8, Math.round(uh * s));
+  const canvas = document.createElement('canvas');
+  canvas.width = cw;
+  canvas.height = ch;
+  const g = canvas.getContext('2d');
+  g.fillStyle = t.groutColor;
+  g.fillRect(0, 0, cw, ch);
+  const gx = Math.max(1, t.grout * s);
+  const tw = t.width * s;
+  const th = t.height * s;
+  const tile = (x, y) => {
+    g.fillStyle = t.color;
+    g.fillRect(x + gx / 2, y + gx / 2, tw, th);
+    // bez przyciemniania — biała płytka ma być biała (jak ściana w tym samym kolorze)
+  };
+  tile(0, 0);
+  if (t.layout === 'brick') {
+    const rowH = ch / 2;
+    tile(-cw / 2, rowH);
+    tile(cw / 2, rowH);
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 8;
+  const value = { tex, uw, uh };
+  tileTextures.set(key, value);
+  return value;
+}
+
+function addWallTiles(group, space) {
+  const finish = space.wallFinish ?? {};
+  if (!Object.values(finish).some((f) => f.tiles)) return;
+  const pts = spaceOutline(space);
+  const planes = slopePlanes(space).map((pl) => [new THREE.Vector3(...pl.normal), pl.offset]);
+  for (const e of outlineEdges(space)) {
+    const t = finish[e.tag]?.tiles;
+    if (!t || e.open || (['left', 'right', 'back'].includes(e.tag) && space.walls[e.tag] === false)) continue;
+    const from = Math.max(0, t.from);
+    const to = Math.min(space.height, t.to);
+    const len = edgeLength(e);
+    if (to - from < 1 || len < 1) continue;
+    const [ox, oz] = edgeOutward(e, pts);
+    const off = 2; // mm do środka pomieszczenia
+    const P = (p, y) => new THREE.Vector3(p[0] - ox * off, y, p[1] - oz * off);
+    let poly = [P(e.a, from), P(e.b, from), P(e.b, to), P(e.a, to)];
+    for (const [n, o] of planes) poly = clipPolygon(poly, n, o);
+    if (poly.length < 3) continue;
+    const { tex, uw, uh } = tileTexture(t);
+    const dir = [(e.b[0] - e.a[0]) / len, (e.b[1] - e.a[1]) / len];
+    const pos = [];
+    const uv = [];
+    for (let i = 1; i < poly.length - 1; i++) {
+      let tri = [poly[0], poly[i], poly[i + 1]];
+      // normalna trójkąta do środka pomieszczenia (widoczny od wewnątrz)
+      const nrm = new THREE.Vector3().subVectors(tri[1], tri[0]).cross(new THREE.Vector3().subVectors(tri[2], tri[0]));
+      if (nrm.x * -ox + nrm.z * -oz < 0) tri = [tri[0], tri[2], tri[1]];
+      for (const p of tri) {
+        pos.push(...toScene(p.x, p.y, p.z, space));
+        const along = (p.x - e.a[0]) * dir[0] + (p.z - e.a[1]) * dir[1];
+        uv.push(along / uw, (p.y - from) / uh);
+      }
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    geometry.computeVertexNormals();
+    // ten sam rodzaj materiału co ściany — kolor płytki wygląda tak samo jak ściana w tym kolorze
+    const material = new THREE.MeshLambertMaterial({ map: tex, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: WALL_GLOW, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+    group.userData.disposables.push(material);
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.userData.wall = e.tag; // prawy klik — menu tej ściany
+    group.add(mesh);
+  }
+}
+
 // Powierzchnie rysujemy tylko od wewnątrz (BackSide): ściana między kamerą a wnętrzem
 // jest niewidoczna, więc nic nie zasłania widoku, a ściany mogą być nieprzezroczyste.
-function surfaceMaterial(group, color) {
+// Ściany jaśniejsze niż sam materiał w świetle sceny: przy tym oświetleniu biały materiał wychodzi szary (ok. 30–45%
+// jasności), więc ściany (i występy, okap, płytki) dostają stałą „poświatę” we własnym kolorze — biała ściana jest
+// prawie biała, a ściany dalej różnią się lekko odcieniem (światło kierunkowe), więc narożniki są widoczne.
+// Meble zostają w zwykłym świetle.
+const WALL_GLOW = 0.72; // biała ściana — biała także z boku i na suficie (najsłabiej oświetlone)
+const wallGlow = (color) => ({ emissive: new THREE.Color(color), emissiveIntensity: WALL_GLOW });
+
+function surfaceMaterial(group, color, glow = true) {
   const material = new THREE.MeshLambertMaterial({
     color,
+    ...(glow ? wallGlow(color) : {}),
     side: THREE.BackSide,
     polygonOffset: true, // odsuwa powierzchnię, żeby linie obrysu nie migotały
     polygonOffsetFactor: 1,
@@ -230,6 +338,33 @@ function addWallHandles(group, space) {
   const cx = pts.reduce((sum, p) => sum + p[0], 0) / pts.length;
   const cz = pts.reduce((sum, p) => sum + p[1], 0) / pts.length;
   addDisc(cx, space.height, cz, { type: 'wall', wall: 'ceiling', normal: null }, [0, 1, 0]);
+}
+
+// Kółka wymiarów występu ściany (kominka) i okapu — jak przy korpusie. userData.obstacleResize = { id, face }.
+const OBSTACLE_DISC = new THREE.CylinderGeometry(38 * MM, 38 * MM, 10 * MM, 24);
+const obstacleDiscMaterial = new THREE.MeshBasicMaterial({ color: 0x7c3aed, depthTest: false, transparent: true, opacity: 0.85 });
+function addObstacleResizeHandles(group, o, space) {
+  const midX = o.x + o.width / 2;
+  const midY = o.y + o.height / 2;
+  const midZ = o.z + o.depth / 2;
+  const hood = o.kind === 'hood';
+  const faces = [
+    ['left', [o.x - 30, midY, midZ], [1, 0, 0]],
+    ['right', [o.x + o.width + 30, midY, midZ], [1, 0, 0]],
+    ['front', [midX, hood ? o.y + Math.min(150, o.height / 3) : o.y + Math.min(300, o.height / 4), o.z + o.depth + 30], [0, 0, 1]],
+    ['back', [midX, hood ? o.y + Math.min(150, o.height / 3) : o.y + Math.min(300, o.height / 4), o.z - 30], [0, 0, 1]], // tył (przód zostaje)
+    // okap opuszcza się od sufitu — jego wysokość zmienia dolna krawędź; występ ściany — górna
+    hood ? ['bottom', [midX, o.y - 30, midZ], [0, 1, 0]] : ['top', [midX, o.y + o.height + 30, midZ], [0, 1, 0]],
+  ];
+  for (const [face, [x, y, z], axis] of faces) {
+    const mesh = new THREE.Mesh(OBSTACLE_DISC, obstacleDiscMaterial);
+    mesh.position.set(...toScene(x, y, z, space));
+    mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(...axis));
+    mesh.renderOrder = 10;
+    mesh.userData.obstacleResize = { id: o.id, face };
+    mesh.userData.noDispose = true;
+    group.add(mesh);
+  }
 }
 
 // Zwalnia zasoby usuniętej grupy. Etykiety wymiarów (CSS2DObject) to elementy HTML — Three.js usuwa je

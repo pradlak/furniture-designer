@@ -21,6 +21,8 @@ import { setEye, materialSelect, colorPicker, readColorInput, syncColorPicker } 
 import { renderSideBlendCard, updateSideBlendCard } from './sideBlends.js';
 import { renderBoardFeatures, syncBoardFeatures, readFeatureInput, readFeatureClick, applyFeatureChange } from './boardFeaturesEditor.js';
 import { createCardCollapse, COLLAPSE_BUTTON, COLLAPSE_ALL_BUTTONS } from './collapsible.js';
+import { markInspectorCard } from './inspectorCard.js';
+import { trimSketch } from './objectSketch.js';
 import { setPath, setSideBlendField, cabinetReachesTop, describeCuts } from '../model/furniture.js';
 import { updateCabinetKeepingRow } from '../model/layout.js';
 
@@ -56,6 +58,7 @@ const AUTO_TITLES = {
   x: 'Automatycznie: do ściany albo sąsiedniego mebla',
   length: 'Automatycznie: do ścian albo sąsiednich mebli',
   depth: 'Automatycznie: od pleców do frontu + wysunięcie',
+  thickness: 'Automatycznie: grubość materiału',
 };
 
 // Wartość pola do wyświetlenia (dla pól automatycznych — wyliczona).
@@ -150,6 +153,7 @@ export function createTrimsPanel(root, store, ui, { mode = 'blends' } = {}) {
         field('Od lewej (X)', 'x', { min: -20000 }),
         field('Długość', 'length'),
         field('Głębokość', 'depth'),
+        field('Grubość', 'thickness', { min: 3, max: 100 }),
       ],
     }[t.type];
     return `
@@ -159,9 +163,10 @@ export function createTrimsPanel(root, store, ui, { mode = 'blends' } = {}) {
           ${COLLAPSE_BUTTON}
           <input type="text" data-f="name" value="${escapeHtml(t.name)}" aria-label="Nazwa" />
           <button type="button" class="eye" data-toggle-trim-hidden>👁</button>
-          <button type="button" class="danger" data-remove-trim title="Usuń">✕</button>
+          <button type="button" class="danger" data-remove-trim title="Usuń" aria-label="Usuń">🗑</button>
         </div>
         <div class="card-sum" data-collapse-card title="Kliknij, aby rozwinąć"></div>
+        <div class="obj-sketch bi-sketch" title="Kliknij, aby powiększyć szkic"></div>
         <div class="trim-cabinets">
           <span>Obejmuje:</span>
           ${
@@ -210,6 +215,7 @@ export function createTrimsPanel(root, store, ui, { mode = 'blends' } = {}) {
       const el = root.querySelector(`[data-kind="trim"][data-id="${t.id}"]`);
       if (!el) continue;
       syncColorPicker(el, 'color', t.color, trimMaterial(t, project).color);
+      if (el.classList.contains('in-inspector')) el.querySelector('.obj-sketch').innerHTML = trimSketch(t, project); // szkic w okienku
       // blat: frezy krawędzi i otwory (wymiary blatu — do położenia otworów)
       if (t.type === 'countertop') {
         const cb = trimBox(t, project);
@@ -328,6 +334,13 @@ export function createTrimsPanel(root, store, ui, { mode = 'blends' } = {}) {
   function syncSelection() {
     const project = store.get();
     const selected = project.furniture.find((c) => c.id === ui.get().selectedId);
+    // jeden zaznaczony blat / blenda wspólna — karta jako okienko po prawej
+    const sel = ui.get().selectedBlends ?? [];
+    const one = sel.length === 1 && sel[0].startsWith('trim:') && !ui.get().selectedId ? sel[0].slice(5) : null;
+    const card = markInspectorCard(root, '[data-kind="trim"]', one);
+    const trim = card && project.trims.find((x) => x.id === one);
+    if (trim) card.querySelector('.obj-sketch').innerHTML = trimSketch(trim, project);
+    if (card?.classList.contains('collapsed')) cardCollapse.expand(card);
     // zaznaczone w 3D blendy (wspólne „trim:id”, boczne „idKorpusu:klucz”) — ich karty też podświetlone
     const picked = ui.get().selectedBlends ?? [];
     root.querySelectorAll('[data-kind="trim"]').forEach((el) => {

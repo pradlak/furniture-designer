@@ -7,6 +7,7 @@ import {
   HOLE_PRESETS,
   HOLE_LIMITS,
   HOLE_POSITIONS,
+  HOLE_FILLS,
   createHole,
   holeFits,
   resolveHole,
@@ -66,7 +67,10 @@ const holeRow = (h, i) => `
         ? `<label>Ø <input type="number" step="1" min="${HOLE_LIMITS.min}" max="${HOLE_LIMITS.max}" data-bf="holes.${i}.d" /></label>`
         : `<label>szer. <input type="number" step="1" min="${HOLE_LIMITS.min}" max="${HOLE_LIMITS.max}" data-bf="holes.${i}.w" /></label>
            <label>gł. <input type="number" step="1" min="${HOLE_LIMITS.min}" max="${HOLE_LIMITS.max}" data-bf="holes.${i}.h" /></label>
-           <label>R <input type="number" step="1" min="0" max="500" data-bf="holes.${i}.r" /></label>`
+           <label>R <input type="number" step="1" min="0" max="500" data-bf="holes.${i}.r" /></label>
+           <label class="bf-hole-fill" title="Płyta grzewcza w otworze — widoczna w 3D (leży na blacie, 15 mm większa od wycięcia z każdej strony)">w otworze
+             <select data-bf="holes.${i}.fill">${HOLE_FILLS.map((f) => `<option value="${f.key ?? ''}">${escapeHtml(f.label)}</option>`).join('')}</select>
+           </label>`
     }
     <button type="button" class="icon tiny danger" data-bf-remove="${i}" title="Usuń otwór">✕</button>
     <span class="bf-hole-warn" hidden>⚠ nie mieści się</span>
@@ -126,6 +130,7 @@ export function readFeatureInput(input) {
   const path = input.dataset.bf;
   if (!path) return null;
   if (/^holes\.\d+\.pos$/.test(path)) return { holePos: Number(path.split('.')[1]), value: input.value || null };
+  if (/^holes\.\d+\.fill$/.test(path)) return { path, value: input.value || null }; // płyta grzewcza w otworze
   if (input.tagName === 'SELECT') {
     // zmiana profilu: rozmiar — pierwszy typowy dla nowego profilu
     const info = profileInfo(input.value);

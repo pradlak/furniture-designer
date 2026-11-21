@@ -70,6 +70,7 @@ export class Viewer {
       this.controls.update();
       this.renderer.render(this.scene, this.camera);
       this.updateLabelOcclusion();
+      this.updateLabelOverlap();
       this.labelRenderer.render(this.scene, this.camera);
     });
   }
@@ -93,6 +94,44 @@ export class Viewer {
       this.raycaster.far = Math.max(0, dist - 0.02); // 2 cm luzu — podpis tuż przy płycie nie miga
       const hidden = this.raycaster.intersectObjects(this.occluders, false).some((h) => shown(h.object));
       label.element.classList.toggle('dim-occluded', hidden);
+    }
+  }
+
+  // Podpisy wymiarów nakładające się na ekranie (np. ta sama szerokość przestrzeni i korpusu): drugi z tym samym
+  // tekstem chowamy, z innym — odsuwamy w dół, aż się nie nakłada (najwyżej kilka razy).
+  updateLabelOverlap() {
+    if (!this.labels?.length) return;
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const pos = new THREE.Vector3();
+    const placed = [];
+    const hit = (a) => placed.find((b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h);
+    // najpierw wymiary mebli (niebieskie) — mają pierwszeństwo, wymiary przestrzeni są odsuwane
+    const ordered = [...this.labels].sort((a, b) => Number(b.element.classList.contains('dim-label-accent')) - Number(a.element.classList.contains('dim-label-accent')));
+    for (const label of ordered) {
+      const el = label.element;
+      el.style.marginTop = '';
+      el.classList.remove('dim-dup');
+      if (el.classList.contains('dim-occluded') || !el.isConnected) continue;
+      label.getWorldPosition(pos);
+      pos.project(this.camera);
+      if (pos.z > 1) continue; // za kamerą
+      const w = el.offsetWidth;
+      const h = el.offsetHeight;
+      if (!w || !h) continue;
+      const box = { x: ((pos.x + 1) / 2) * rect.width - w / 2, y: ((1 - pos.y) / 2) * rect.height - h / 2, w, h, text: el.textContent };
+      let other = hit(box);
+      if (other && other.text === box.text) {
+        el.classList.add('dim-dup');
+        continue;
+      }
+      let shift = 0;
+      for (let k = 0; other && k < 4; k++) {
+        shift += h + 2;
+        box.y += h + 2;
+        other = hit(box);
+      }
+      if (shift) el.style.marginTop = `${shift}px`;
+      placed.push(box);
     }
   }
 
@@ -144,7 +183,7 @@ export class Viewer {
     this.space = project.space;
     this.spaceGroup = new THREE.Group();
     this.spaceGroup.add(buildSpace(project.space, project.view, { selectedObstacle, wallHandles }));
-    this.furnitureGroup = buildFurniture(project, selectedIds, selectedFronts, isFrontOpen, selectedHole);
+    this.furnitureGroup = buildFurniture(project, selectedIds, selectedFronts, isFrontOpen, selectedHole, selectedObstacle);
     // Fronty nowej sceny: znane wracają do swojego bieżącego stanu (i dalej się animują), nowe — od razu w docelowym.
     this.frontPivots = [];
     this.furnitureGroup.traverse((o) => {

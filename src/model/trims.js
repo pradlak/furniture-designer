@@ -48,12 +48,12 @@ export const TRIM_DEFAULTS = {
   topBlend: { height: 60, gap: 3, toCeiling: true },
   // includeFront — wysunięcie liczone od frontu (front ma grubość blendy górnej / materiału blend)
   // extendLeft / extendRight — blat przykrywa też wolne miejsce z tej strony korpusów (do ściany / mebla)
-  countertop: { overhang: 30, includeFront: true, extendLeft: false, extendRight: false, x: null, length: null, depth: null },
+  countertop: { overhang: 30, includeFront: true, extendLeft: false, extendRight: false, x: null, length: null, depth: null, thickness: null },
 };
 
 // Pola, które mogą być automatyczne (null) — wyświetlamy wtedy wartość wyliczoną (z trimBox).
-export const AUTO_FIELDS = { plinth: ['height'], topBlend: [], countertop: ['x', 'length', 'depth'] };
-const AUTO_FROM_BOX = { height: 'height', x: 'x', length: 'width', depth: 'depth' };
+export const AUTO_FIELDS = { plinth: ['height'], topBlend: [], countertop: ['x', 'length', 'depth', 'thickness'] };
+const AUTO_FROM_BOX = { height: 'height', x: 'x', length: 'width', depth: 'depth', thickness: 'height' };
 export function trimFieldValue(trim, field, project) {
   if (trim[field] != null || !AUTO_FIELDS[trim.type]?.includes(field)) return trim[field];
   return trimBox(trim, project)?.[AUTO_FROM_BOX[field]] ?? '';
@@ -70,9 +70,9 @@ export function createTrim(type, cabinetIds, project) {
     materialId:
       type === 'countertop'
         ? (project.materials?.find((m) => m.type === 'worktop')?.id ?? null)
-        : (first?.blendMaterialId ?? project.materials?.find((m) => m.type === 'mdf')?.id ?? null),
-    // kolor — jak blendy pierwszego objętego korpusu (blat — jak w materiale)
-    color: type === 'countertop' ? null : (first?.colors?.blend ?? null),
+        : (first?.frontMaterialId ?? first?.blendMaterialId ?? project.materials?.find((m) => m.type === 'mdf')?.id ?? null),
+    // blenda dolna / górna — materiał i kolor jak fronty pierwszego objętego korpusu (blat — kolor jak w materiale)
+    color: type === 'countertop' ? null : (first?.colors?.front ?? first?.colors?.blend ?? null),
     // blat: frezy krawędzi i otwory (zlew, płyta grzewcza, przepust…) — model/boardFeatures.js
     ...(type === 'countertop' ? { edges: defaultEdges(), holes: [] } : {}),
     ...TRIM_DEFAULTS[type],
@@ -341,6 +341,7 @@ export function normalizeTrim(raw = {}, cabinetIds) {
     trim.x = opt(raw.x, -20000, 20000);
     trim.length = opt(raw.length, 1, 20000);
     trim.depth = opt(raw.depth, 1, 20000);
+    trim.thickness = opt(raw.thickness, 3, 100); // własna grubość (null — z materiału)
     trim.edges = normalizeEdges(raw.edges);
     trim.holes = normalizeHoles(raw.holes);
   }

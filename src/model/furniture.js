@@ -247,6 +247,11 @@ export function setFrontLayout(cabinet, patch, project) {
 // Czoło szuflady wewnętrznej: luz od boków korpusu i od wieńca dolnego, cofnięcie od krawędzi korpusu
 // (drzwi zamykają się przed nim).
 const INTERNAL_DRAWER = { sideGap: 2, bottomGap: 3, setback: 2 };
+// Dystanse pod prowadnice szuflad wewnętrznych (fronts.innerSpacers): listwy na bokach korpusu, na których montuje się
+// prowadnice — szuflada wewnętrzna jest węższa o 2 × INNER_SPACER mm i mija prowadniki zawiasów drzwi.
+export const INNER_SPACER = 25;
+// Zalecana największa szerokość drzwi na zawiasach puszkowych (szersze — ostrzeżenie).
+export const DOOR_MAX_WIDTH = 600;
 // Zapas między środkiem zawiasu a szufladą wewnętrzną (prowadnik zawiasu na boku korpusu ma ok. 50 mm wysokości).
 export const HINGE_DRAWER_CLEAR = 35;
 // Najmniejsza odległość środka zawiasu od górnej / dolnej krawędzi drzwi.
@@ -462,17 +467,23 @@ export function setFrontParts(cabinet, state, project) {
 }
 
 // Zakresy części [od, do] (mm) w obrębie frontów [y0, y1] ze szczeliną gv między częściami.
+// Gdy wpisane wysokości się nie mieszczą, części są zmniejszone proporcjonalnie, żeby nie wychodziły poza korpus;
+// o ile za dużo — ranges.overflow (mm, do ostrzeżenia).
 export function partRanges(parts, y0, y1, gv) {
+  const avail = Math.max(0, y1 - y0 - (parts.length - 1) * gv);
   const fixed = parts.filter((p) => p.height != null).reduce((a, p) => a + p.height, 0);
   const autos = parts.filter((p) => p.height == null).length;
-  const autoH = autos ? Math.max(0, (y1 - y0 - (parts.length - 1) * gv - fixed) / autos) : 0;
+  const scale = fixed > avail && fixed > 0 ? avail / fixed : 1;
+  const autoH = autos ? Math.max(0, (avail - fixed * scale) / autos) : 0;
   let cur = y0;
-  return parts.map((p) => {
-    const h = p.height ?? autoH;
+  const ranges = parts.map((p) => {
+    const h = p.height != null ? p.height * scale : autoH;
     const r = [cur, cur + h];
     cur += h + gv;
     return r;
   });
+  ranges.overflow = Math.max(0, fixed - avail);
+  return ranges;
 }
 
 // Kolejność frontów (klucze front-N): najpierw drzwi (od najwyżej sięgających) — drzwi zachowują front-0 / front-1
@@ -800,6 +811,13 @@ export function maxCabinetHeight(cabinet, project, x = cabinet.x, w = cabinet.wi
   const { space } = project;
   const slanted = cabinet.slopeTop?.enabled !== false;
   let top = space.height - ceilingGapFor(cabinet, project);
+  // pod wypustem od sufitu (okapem) — jak pod sufitem: do jego dołu, z luzem
+  for (const o of space.obstacles) {
+    if (o.kind !== 'hood') continue;
+    const overX = x < o.x + o.width - 0.5 && x + w > o.x + 0.5;
+    const overZ = cabinet.z < o.z + o.depth - 0.5 && cabinet.z + cabinet.depth > o.z + 0.5;
+    if (overX && overZ) top = Math.min(top, o.y - ceilingGapFor(cabinet, project));
+  }
   for (const pl of slopePlanes(space)) {
     const { normal: [a, b, c], offset, side } = pl;
     const tops = [x, x + w].flatMap((px) => [cabinet.z, cabinet.z + cabinet.depth].map((pz) => (offset - a * px - c * pz) / b));
@@ -1099,7 +1117,8 @@ export function fitCabinetToSpace(cabinet, project) {
   const extraFront = Math.max(0, b.z + b.depth - (cabinet.z + cabinet.depth));
   const { sizeMin } = CABINET_LIMITS;
   // Wnęka, w której stoi korpus — przy występie ściany (np. kominku) tylko ta po jego stronie.
-  let [segLeft, segRight] = segmentAt(space, b.x + b.width / 2);
+  // (szafka na wysokości okapu — wnęka obok niego; pod okapem — cała szerokość, wysokość do dołu okapu)
+  let [segLeft, segRight] = segmentAt(space, b.x + b.width / 2, [cabinet.y + legHeight(cabinet), cabinet.y + legHeight(cabinet) + cabinet.height]);
   // Kształt podłogi (skośne / wklęsłe ściany): dwie możliwości — mebel od tylnej ściany (węższy, mieści się
   // na całej głębokości) albo odsunięty do przodu (szerszy, płytszy); wybieramy tę o większej podstawie.
   let backZ = 0;
@@ -1361,6 +1380,7 @@ export function cabinetPanels(cabinet, project) {
   const fr = cabinet.fronts ?? defaultFronts();
   const fp = frontParts(fr);
   let partRangesOut = [];
+  let frontOverflowOut = 0; // o ile wpisane wysokości części wnętrza przekraczają wysokość frontów (mm)
   let frontAreaOut = null; // [od, do] — obszar frontów (od dołu korpusu)
   if (hasAnyFronts(fr)) {
     const g = fr.gap ?? DEFAULT_FRONT_GAP; // boczna (lewa + prawa)
@@ -1398,6 +1418,7 @@ export function cabinetPanels(cabinet, project) {
     // Części wnętrza od dołu — zakresy wysokości; drzwi od dolnej krawędzi najniższej do górnej najwyższej przykrytej.
     const ranges = partRanges(fp.parts, y0, y1, gv);
     partRangesOut = ranges.map(([a, b]) => [a - L, b - L]);
+    frontOverflowOut = ranges.overflow;
     frontAreaOut = [y0 - L, y1 - L];
     const slots = frontSlots(fp);
     const doorOrder = [...new Set(slots.fronts.filter((s) => s.door != null).map((s) => s.door))];
@@ -1437,7 +1458,8 @@ export function cabinetPanels(cabinet, project) {
       const h = py1 - yy;
       if (h <= 0) return;
       const key = `idrawer-${n}`;
-      base[key] = [tL + INTERNAL_DRAWER.sideGap, yy, D - INTERNAL_DRAWER.setback - tb, W - tL - tR - 2 * INTERNAL_DRAWER.sideGap, h, tb];
+      const sp = fr.innerSpacers ? INNER_SPACER : 0; // dystanse pod prowadnice — czoło węższe
+      base[key] = [tL + INTERNAL_DRAWER.sideGap + sp, yy, D - INTERNAL_DRAWER.setback - tb, W - tL - tR - 2 * (INTERNAL_DRAWER.sideGap + sp), h, tb];
       internalDefs.push({ key, name: `Czoło szuflady wewnętrznej ${n + 1}`, thicknessAxis: 'z', milling: null, opening: { drawer: true }, handleSpec: null, part: slot.index, door: slot.door });
       if (slot.door != null) hingeBands.push({ door: slot.door, range: [cabinet.y + yy - HINGE_DRAWER_CLEAR, cabinet.y + yy + h + HINGE_DRAWER_CLEAR] });
     });
@@ -1578,14 +1600,16 @@ export function cabinetPanels(cabinet, project) {
     // uchwyt i zawiasy frontu — liczone z gotowego położenia płyty (już po docięciu, np. przy skośnej ścianie)
     if (def.handleSpec && panel.valid) panel.handle = placeHandle(panel, def.handleSpec);
     if (panel.opening?.hinge && panel.valid) {
-      const hp = hingePlacement(panel, hingeBands.filter((b) => b.door === def.door).map((b) => b.range));
-      panel.hinges = hp.holes;
-      panel.hingesMoved = hp.moved; // zawiasy przesunięte, żeby ominąć szuflady wewnętrzne
-      panel.hingeConflict = hp.conflict; // nie da się ich ominąć
+      // zawiasy zawsze w standardowych miejscach, na całej wysokości drzwi (przesunięte w jedno miejsce drzwi by opadały);
+      // zawias na wysokości szuflady wewnętrznej (bez dystansów pod prowadnice) — ostrzeżenie
+      panel.hinges = hingeHoles(panel);
+      const bands = fr.innerSpacers ? [] : hingeBands.filter((b) => b.door === def.door).map((b) => b.range);
+      panel.hingeClash = panel.hinges.filter((h) => bands.some(([a, b]) => h.y > a && h.y < b)).map((h) => Math.round(h.y - panel.y));
     }
     panels.push(panel);
   }
   panels.partRanges = partRangesOut; // zakresy części wnętrza (od dołu korpusu) — do panelu i uchwytów w 3D
+  panels.frontOverflow = frontOverflowOut;
   panels.frontArea = frontAreaOut;
   return panels;
 }
@@ -1840,9 +1864,23 @@ export function cabinetIssues(cabinet, project) {
   if (overlapping.length) issues.push(`Elementy nachodzą na siebie: ${overlapping.join('; ')}.`);
   const tooSmallDrawers = panels.filter((p) => p.opening?.drawer && p.height < 40).map((p) => p.name);
   if (tooSmallDrawers.length) issues.push(`Szuflady nie mieszczą się w strefie szuflad (${tooSmallDrawers.join(', ')}) — zmniejsz wpisane wysokości innych części wnętrza.`);
-  const hingeClash = valid.filter((p) => p.hingeConflict).map((p) => p.name);
+  const hingeClash = valid.filter((p) => p.hingeClash?.length);
   if (hingeClash.length) {
-    issues.push(`Zawiasy kolidują z szufladą wewnętrzną i nie da się ich przesunąć (${hingeClash.join(', ')}) — zmniejsz szufladę albo użyj dystansów pod prowadnice szuflady.`);
+    issues.push(
+      `Zawiasy wypadają na szufladach wewnętrznych (${hingeClash.map((p) => `${p.name}: ${p.hingeClash.join(', ')} mm od dołu`).join('; ')}) — włącz „Dystanse pod prowadnice szuflad wewnętrznych” (sekcja Fronty) albo zmień wysokości szuflad.`,
+    );
+  }
+  // drzwi szersze niż ok. 600 mm — za ciężkie na zawiasy, mogą opadać
+  const st = frontParts(cabinet.fronts);
+  const wide = valid.filter((p) => p.opening?.hinge && p.width > DOOR_MAX_WIDTH);
+  if (wide.length) {
+    const single = wide.some((p) => st.doors[p.door]?.type === 'door');
+    issues.push(
+      `Drzwi szersze niż zalecane ok. ${DOOR_MAX_WIDTH} mm (${wide.map((p) => `${p.name}: ${Math.round(p.width)} mm`).join('; ')}) — ${single ? 'użyj drzwi podwójnych' : 'rozważ podział na dwa korpusy'}.`,
+    );
+  }
+  if (panels.frontOverflow > 0.5) {
+    issues.push(`Szuflady i części wnętrza nie mieszczą się w korpusie (o ${Math.round(panels.frontOverflow)} mm za dużo) — zmniejsz wysokości albo liczbę szuflad (na rysunku są zmniejszone).`);
   }
   const shortDoors = valid.filter((p) => p.opening?.hinge && p.height < 150 && frontParts(cabinet.fronts).parts.length > 1).map((p) => p.name);
   if (shortDoors.length) issues.push(`Za mało miejsca na drzwi (${shortDoors.join(', ')}) — zmniejsz wysokość innych sekcji frontu albo liczbę szuflad.`);
@@ -2003,6 +2041,7 @@ export function normalizeCabinet(raw = {}) {
       decorSpacing: num(raw.fronts?.decorSpacing, 100, DECOR_LIMITS.min, DECOR_LIMITS.max),
       decorGap: num(raw.fronts?.decorGap, 20, DECOR_GAP_LIMITS.min, DECOR_GAP_LIMITS.max),
       hidden: raw.fronts?.hidden === true, // fronty tego korpusu ukryte w widoku 3D
+      innerSpacers: raw.fronts?.innerSpacers === true, // dystanse pod prowadnice szuflad wewnętrznych
       ...frontParts({ ...raw.fronts, gapV: num(raw.fronts?.gapV, DEFAULT_FRONT_GAP_V, 0, FRONT_LIMITS.gapMax) }), // parts, doors
       bottomDrawers: (() => {
         const rb = raw.fronts?.bottomDrawers ?? {};

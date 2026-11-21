@@ -24,6 +24,7 @@ import {
   frontParts,
   doorSpan,
   PART_TYPES,
+  INNER_SPACER,
   setFrontLayout,
   frontLayout,
   hasAnyFronts,
@@ -56,6 +57,7 @@ import {
   defaultHandle,
   handleOffsets,
   describeHandle,
+  DEFAULT_FRONT_GAP_V,
 } from '../model/furniture.js';
 
 // Inne korpusy o tej samej wysokości i głębokości — do skopiowania półek. Szerokość nie ma znaczenia
@@ -66,7 +68,11 @@ import { duplicateCabinet, slideCabinet, slideCabinets } from '../model/placemen
 import { addCabinetToLayout, cabinetAlcoves, updateCabinetRefit, updateCabinetCeilingGap, setLegs } from '../model/layout.js';
 import { createAlcoveDialog } from './alcoveDialog.js';
 import { cabinetMapSvg } from './cabinetMap.js';
-import { addPart, setPartField, setPartKind, partKindOf, removePart, movePart, addDoor, setDoorField, setDoorHeight, removeDoor, toggleDoorCover, doorCoverOptions } from '../model/frontEdit.js';
+import { ICON_COLLAPSE, ICON_EXPAND } from './collapsible.js';
+import { duplicateSelected } from '../state/duplicate.js';
+import { markInspectorCard } from './inspectorCard.js';
+import { cabinetSketch } from './objectSketch.js';
+import { addPart, addParts, setPartField, setPartKind, partKindOf, removePart, movePart, fillFreeSpace, freeAround, fitLabel, addDoor, setDoorField, setDoorHeight, removeDoor, toggleDoorCover, doorCoverOptions } from '../model/frontEdit.js';
 import { attachDragReorder, moveInList, DRAG_HANDLE } from './dragReorder.js';
 import { cabinetMaterials } from '../model/materials.js';
 import { setEye, materialSelect, colorPicker, readColorInput, syncColorPicker } from './widgets.js';
@@ -135,6 +141,10 @@ function partLabels(parts) {
   for (let i = parts.length - 1; i >= 0; i--) labels[i] = parts[i].type !== 'space' ? `Szuflada ${++d}` : `Wolna przestrzeń ${++s}`;
   return labels;
 }
+// krótko: „Sz. 1”, „Prz. 1” (wiersze listy i pola „Przykrywa”)
+function partShortLabels(parts) {
+  return partLabels(parts).map((l) => l.replace('Szuflada ', 'Sz. ').replace('Wolna przestrzeń ', 'Prz. '));
+}
 
 // Lista części wnętrza (od góry): ⠿, rodzaj, wysokość (puste — auto), ✕; przy przykrytych — „za drzwiami N”.
 function frontPartsHtml(st) {
@@ -144,13 +154,16 @@ function frontPartsHtml(st) {
     .reverse()
     .map(({ p, i }) => {
       const j = st.doors.findIndex((d) => d.covers.includes(p.id));
+      const short = partShortLabels(st.parts)[i];
+      const where = j >= 0 ? `za drzwiami${st.doors.length > 1 ? ` ${j + 1}` : ''}` : p.type === 'drawer' ? 'z frontem' : p.type === 'innerDrawer' ? 'wewnętrzna, bez drzwi' : 'otwarta';
       return `
       <div class="fp-item fp-${p.type}" data-fpart="${i}">
         <span class="drag-handle fs-drag" draggable="true" data-fpart-drag title="Przeciągnij, aby przenieść wyżej albo niżej">⠿</span>
-        <select data-fpart-f="type" aria-label="Rodzaj części"><option value="drawer">Szuflada (z frontem)</option><option value="innerDrawer">Szuflada wewnętrzna</option><option value="space">Wolna przestrzeń</option></select>
+        <span class="fp-tag" title="${labels[i]} — ${where}">${short}${j >= 0 ? ' 🚪' : ''}</span>
+        <select data-fpart-f="type" aria-label="Rodzaj części" title="Szuflada — z własnym frontem; Szuflada wewn. — czoło w korpusie (bez frontu); Przestrzeń — wolne miejsce (otwarte albo za drzwiami)"><option value="drawer">Szuflada</option><option value="innerDrawer">Szuflada wewn.</option><option value="space">Przestrzeń</option></select>
         <label class="fs-height" title="Wysokość (szuflady — jej frontu / czoła). Puste — automatycznie: części bez wysokości dzielą resztę po równo."><input type="number" step="1" min="1" data-fpart-f="height" /><small>mm</small></label>
+        <button type="button" class="icon fp-fill" data-fpart-fill hidden title="Dopasuj wysokość szuflady do miejsca w korpusie">⤢</button>
         <button type="button" class="icon danger" data-fpart-remove title="Usuń">✕</button>
-        <span class="fp-note">${labels[i]}${j >= 0 ? ` · za drzwiami${st.doors.length > 1 ? ` ${j + 1}` : ''}` : p.type === 'drawer' ? ' · z frontem' : p.type === 'innerDrawer' ? ' · wewnętrzna, bez drzwi' : ' · otwarta'}</span>
       </div>`;
     })
     .join('');
@@ -165,7 +178,7 @@ function frontDoorsHtml(st) {
       (d, j) => `
       <div class="fd-item" data-fdoor="${j}">
         <div class="fs-head">
-          <select data-fdoor-f="type" aria-label="Rodzaj drzwi"><option value="door">Drzwi pojedyncze</option><option value="doubleDoor">Drzwi podwójne</option></select>
+          <select data-fdoor-f="type" aria-label="Rodzaj drzwi"><option value="door">Pojedyncze</option><option value="doubleDoor">Podwójne</option></select>
           <label class="fs-height" title="Wysokość drzwi — suma przykrytych części; zmienia się przykryta wolna przestrzeń (albo najwyższa część). Puste — automatycznie."><input type="number" step="1" min="1" data-fdoor-f="height" /><small>mm</small></label>
           <button type="button" class="icon danger" data-fdoor-remove title="Usuń drzwi (szuflady za nimi dostaną własne fronty)">✕</button>
         </div>
@@ -174,7 +187,7 @@ function frontDoorsHtml(st) {
           ${st.parts
             .map((_, i) => i)
             .reverse()
-            .map((i) => `<label class="check small"><input type="checkbox" data-fdoor-cover="${i}" /> ${labels[i]}</label>`)
+            .map((i) => `<label class="check small" title="${labels[i]}"><input type="checkbox" data-fdoor-cover="${i}" /> ${partShortLabels(st.parts)[i]}</label>`)
             .join('')}
         </div>
       </div>`,
@@ -288,9 +301,9 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
         project.furniture.length
           ? `<div class="cab-map" title="Mapka zabudowy (widok z przodu): klik — zaznacz korpus i pokaż jego kartę, Ctrl + klik — kilka korpusów"></div>
             <div class="collapse-all">
-              <button type="button" data-action="collapse-all" title="Zwiń wszystkie karty korpusów do nagłówków">▸ Zwiń wszystkie</button>
-              <button type="button" data-action="expand-all" title="Rozwiń wszystkie karty korpusów">▾ Rozwiń wszystkie</button>
-              <button type="button" data-action="sort-cabinets" title="Ułóż karty tak jak na mapce: od lewej do prawej">⇅ Od lewej</button>
+              <button type="button" class="icon-btn" data-action="collapse-all" title="Zwiń wszystkie karty korpusów do nagłówków" aria-label="Zwiń wszystkie">${ICON_COLLAPSE}</button>
+              <button type="button" class="icon-btn" data-action="expand-all" title="Rozwiń wszystkie karty korpusów" aria-label="Rozwiń wszystkie">${ICON_EXPAND}</button>
+              <button type="button" class="icon-btn" data-action="sort-cabinets" title="Ułóż karty tak jak na mapce: od lewej do prawej" aria-label="Ułóż od lewej"><small class="sort-ico">1→2</small></button>
             </div>`
           : ''
       }
@@ -316,7 +329,7 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
     const section = (key, title, body, extraClass = '', headExtra = '') => `
       <details class="section ${extraClass}" data-section="${key}" ${isOpen(c.id, key) ? 'open' : ''}>
         <summary><span class="section-title">${title}</span><span class="section-sum"></span>${headExtra}</summary>
-        <div class="section-body">${body}</div>
+        <div class="section-body" data-title="${escapeHtml(title)} — ${escapeHtml(c.name)}"><button type="button" class="icon tiny section-close" data-close-section title="Zamknij">✕</button>${body}</div>
       </details>`;
 
     // Zwijana podsekcja w sekcji (ramka z tytułem); key — do zapamiętania stanu, extraClass — np. do ukrywania.
@@ -488,6 +501,12 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
             <button type="button" data-fpart-add="innerDrawer" title="Nowa szuflada wewnętrzna na dole — czoło w korpusie, bez frontu (drzwi dodaj osobno i zaznacz, co przykrywają)">+ Szuflada wewnętrzna</button>
             <button type="button" data-fpart-add="space" title="Nowa wolna przestrzeń na górze">+ Wolna przestrzeń</button>
           </div>
+          <div class="front-bulk" title="Kilka szuflad naraz (na dole); wysokość puste — automatycznie">
+            Dodaj <input type="number" min="1" max="12" step="1" value="3" data-bulk-n /> ×
+            <select data-bulk-type><option value="drawer">szuflada</option><option value="innerDrawer">szuflada wewn.</option></select>
+            po <input type="number" min="20" step="1" placeholder="auto" data-bulk-h /> mm
+            <button type="button" data-bulk-add>Dodaj</button>
+          </div>
           <div class="fp-title" title="Drzwi przykrywają wybrane części wnętrza (ciągły zakres) — szuflady za nimi są wewnętrzne.">Drzwi</div>
           <div class="front-doors"></div>
           <div class="front-parts-add">
@@ -496,6 +515,9 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
           </div>
         </div>
       </div>
+      <label class="check small front-spacers" title="Listwy dystansowe na bokach korpusu pod prowadnice szuflad wewnętrznych: szuflady są węższe o 2 × ${INNER_SPACER} mm i mijają prowadniki zawiasów drzwi">
+        <input type="checkbox" data-f="fronts.innerSpacers" /> Dystanse pod prowadnice szuflad wewnętrznych (szuflady węższe o 2 × ${INNER_SPACER} mm — mijają zawiasy)
+      </label>
       <p class="hint front-bottom-info"></p>
       <div class="grid-2">
         <label class="field small front-opt" title="Szczelina boczna (lewa + prawa razem): po połowie przy każdym boku korpusu (np. 5 mm = 2,5 + 2,5 — sąsiednie korpusy mają między frontami pełne 5 mm), cała między drzwiami podwójnymi">
@@ -635,10 +657,11 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
           <input type="text" data-f="name" value="${escapeHtml(c.name)}" aria-label="Nazwa mebla" />
           <button type="button" class="eye" data-toggle-hidden="cabinet">👁</button>
           <button type="button" data-action="duplicate" title="Duplikuj (Ctrl+D)">⧉</button>
-          <button type="button" class="danger" data-remove="${c.id}" title="Usuń (Delete)">✕</button>
+          <button type="button" class="danger" data-remove="${c.id}" title="Usuń korpus (Delete)" aria-label="Usuń korpus">🗑</button>
         </div>
         <div class="card-sum" data-collapse-card title="Kliknij, aby rozwinąć"></div>
         <ul class="issues"></ul>
+        <div class="obj-sketch bi-sketch" title="Kliknij, aby powiększyć szkic"></div>
         ${section('body', 'Korpus', body)}
         ${section('fronts', 'Fronty', frontsHtml, '', '<button type="button" class="icon eye section-eye" data-toggle-fronts-hidden>👁</button>')}
         ${section('shelves', 'Półki', shelvesHtml)}
@@ -716,6 +739,8 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
         if (input.type === 'checkbox') input.checked = !!value;
         else if (!input.classList.contains('invalid')) setIfNotFocused(input, value);
       });
+      // szkic — tylko w okienku po prawej
+      if (el.classList.contains('in-inspector')) el.querySelector('.obj-sketch').innerHTML = cabinetSketch(c, project);
 
       // Blendy i blat — tylko informacja (edycja w zakładkach „Blendy” i „Blaty i półki”).
       const covering = project.trims.filter((t) => t.cabinetIds.includes(c.id));
@@ -833,6 +858,11 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
           const hIn = set(item, '[data-fpart-f="height"]', p.height ?? '');
           hIn.placeholder = ranges[i] ? `${r(ranges[i][1] - ranges[i][0])} (auto)` : 'auto';
           hIn.classList.toggle('overridden', p.height != null);
+          // szuflada z wolnym miejscem obok — przycisk „wypełnij”
+          const fill = item.querySelector('[data-fpart-fill]');
+          const gain = freeAround(st, ranges, layAll.frontArea, c.fronts?.gapV ?? DEFAULT_FRONT_GAP_V, i, layAll.frontOverflow).gain;
+          fill.hidden = !gain;
+          if (gain) fill.title = `${fitLabel(gain)} — ${gain > 0 ? 'szuflada wypełni wolne miejsce obok' : 'szuflady się nie mieszczą, ta się zmniejszy'}`;
         });
         st.doors.forEach((d, j) => {
           const item = doorsEl.querySelector(`[data-fdoor="${j}"]`);
@@ -865,13 +895,13 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
         partsEl.querySelectorAll('.fp-item').forEach((it) => it.classList.toggle('picked', picked.some((x) => x.part === Number(it.dataset.fpart))));
         doorsEl.querySelectorAll('.fd-item').forEach((it) => it.classList.toggle('picked', picked.some((x) => x.part == null && x.door === Number(it.dataset.fdoor))));
       }
+      el.querySelector('.front-spacers').hidden = !layPanels.some((x) => x.key.startsWith('idrawer-'));
       el.querySelector('.front-layout-preview').innerHTML = frontLayoutSvg(c, layPanels);
       // opis: zawiasy przy szufladach wewnętrznych
       {
         const parts = [];
         for (const d of layPanels.filter((x) => x.opening?.hinge)) {
-          if (d.hingeConflict) parts.push(`⚠ ${d.name}: zawiasy nie mieszczą się poza szufladami wewnętrznymi — zmniejsz szuflady albo użyj dystansów pod prowadnice.`);
-          else if (d.hingesMoved) parts.push(`${d.name}: zawiasy omijają szuflady wewnętrzne — wysokości od dołu drzwi: ${d.hinges.map((h) => r(h.y - d.y)).join(', ')} mm.`);
+          if (d.hingeClash?.length) parts.push(`⚠ ${d.name}: zawiasy na wysokości ${d.hingeClash.join(', ')} mm (od dołu drzwi) wypadają na szufladach wewnętrznych — włącz dystanse pod prowadnice albo zmień wysokości szuflad.`);
         }
         el.querySelector('.front-bottom-info').textContent = parts.join(' ');
       }
@@ -1100,17 +1130,61 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
   // Klik w korpus na mapce: zaznacza go (jak klik w 3D) i pokazuje jego kartę; Ctrl + klik — kilka korpusów.
   root.addEventListener('click', (e) => {
     {
-      const btn = e.target.closest('[data-fpart-add], [data-fpart-remove], [data-fdoor-add], [data-fdoor-remove]');
+      const bulk = e.target.closest('[data-bulk-add]');
+      const bulkCab = bulk?.closest('[data-kind="cabinet"]');
+      if (bulk && bulkCab) {
+        const box = bulk.closest('.front-bulk');
+        const n = Number(box.querySelector('[data-bulk-n]').value) || 1;
+        const h = Number(box.querySelector('[data-bulk-h]').value) || null;
+        const type = box.querySelector('[data-bulk-type]').value;
+        updateCabinet(bulkCab.dataset.id, (c, p) => addParts(c, type, n, h, p));
+        return;
+      }
+      const btn = e.target.closest('[data-fpart-add], [data-fpart-remove], [data-fpart-fill], [data-fdoor-add], [data-fdoor-remove]');
       const cabId = btn?.closest('[data-kind="cabinet"]')?.dataset.id;
       if (btn && cabId) {
         updateCabinet(cabId, (c, p) => {
           if (btn.dataset.fpartAdd) return addPart(c, btn.dataset.fpartAdd, p);
           if (btn.dataset.fdoorAdd) return addDoor(c, btn.dataset.fdoorAdd, p);
+          if (btn.dataset.fpartFill !== undefined) return fillFreeSpace(c, Number(btn.closest('[data-fpart]').dataset.fpart), p);
           if (btn.dataset.fpartRemove !== undefined) return removePart(c, Number(btn.closest('[data-fpart]').dataset.fpart), p);
           return removeDoor(c, Number(btn.closest('[data-fdoor]').dataset.fdoor), p);
         });
         return;
       }
+    }
+    // Klik w wiersz szuflady / drzwi (poza polami i przyciskami) albo w front na mapce — zaznacza ten front w 3D
+    const pickFront = (cabId, key) => {
+      const state = ui.get();
+      const frontId = `${cabId}:${key}`;
+      const fronts = e.ctrlKey || e.metaKey ? ((l) => (l.includes(frontId) ? l.filter((x) => x !== frontId) : [...l, frontId]))(state.selectedFronts ?? []) : [frontId];
+      ui.set({ ...state, selectedId: cabId, selectedIds: [cabId], selectedFronts: fronts, selectedBlends: [], selectedHole: null, selectedObstacle: null }, { fromPanel: true });
+    };
+    const mapFront = e.target.closest('[data-map-front]')?.dataset.mapFront;
+    if (mapFront) {
+      const [cabId, key] = mapFront.split(':');
+      pickFront(cabId, key);
+      return;
+    }
+    const row = !e.target.closest('input, select, button, label, [data-fpart-drag]') && e.target.closest('.fp-item[data-fpart], .fd-item[data-fdoor]');
+    const rowCab = row?.closest('[data-kind="cabinet"]')?.dataset.id;
+    if (row && rowCab) {
+      const prj = store.get();
+      const cab = prj.furniture.find((x) => x.id === rowCab);
+      const panels = cab ? cabinetPanels(cab, prj).filter((p) => p.valid && (p.key.startsWith('front-') || p.key.startsWith('idrawer-'))) : [];
+      let panel = null;
+      if (row.dataset.fpart != null) {
+        const i = Number(row.dataset.fpart);
+        panel = panels.find((p) => p.part === i);
+        // wolna przestrzeń — drzwi, które ją przykrywają
+        if (!panel) {
+          const st = frontParts(cab.fronts);
+          const j = st.doors.findIndex((d) => d.covers.includes(st.parts[i]?.id));
+          if (j >= 0) panel = panels.find((p) => p.door === j && p.part == null);
+        }
+      } else panel = panels.find((p) => p.door === Number(row.dataset.fdoor) && p.part == null);
+      if (panel) pickFront(rowCab, panel.key);
+      return;
     }
     const id = e.target.closest('[data-map-cab]')?.dataset.mapCab;
     if (!id) return;
@@ -1434,6 +1508,15 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
       const id = e.target.closest?.('[data-kind="cabinet"]')?.dataset.id;
       const key = e.target.dataset?.section;
       if (id && key) sectionState.set(`${id}:${key}`, e.target.open);
+      // karta w okienku po prawej: otwarta sekcja pokazuje się w okienku obok — tylko jedna naraz
+      const card = e.target.closest?.('.in-inspector');
+      if (card && e.target.open && e.target.matches('details.section')) {
+        card.querySelectorAll(':scope > details.section[open]').forEach((d) => {
+          if (d === e.target) return;
+          d.open = false;
+          sectionState.set(`${id}:${d.dataset.section}`, false);
+        });
+      }
     },
     true, // zdarzenie toggle nie „bąbelkuje”, łapiemy je w fazie przechwytywania
   );
@@ -1462,6 +1545,11 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
   );
 
   root.addEventListener('click', (e) => {
+    const closeSection = e.target.closest('[data-close-section]');
+    if (closeSection) {
+      closeSection.closest('details').open = false;
+      return;
+    }
     if (!(e.ctrlKey || e.metaKey)) selectFrom(e.target); // Ctrl + klik — obsłużony przy mousedown
     const {
       action, remove, resetPart, slide, removeStiff, toggleHidden, togglePartHidden,
@@ -1575,9 +1663,7 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
       if (alcoves.length > 1) alcoveDialog.ask(store.get().space, alcoves).then((segment) => segment && add(segment));
       else add(null);
     } else if (action === 'duplicate' && id) {
-      const copy = duplicateCabinet(store.get(), id);
-      updateFurniture((list) => [...list, copy]);
-      ui.set({ ...ui.get(), selectedId: copy.id }, { reveal: true });
+      duplicateSelected(store, ui, id);
     } else if (slide && id) {
       // kilka korpusów zaznaczonych Ctrl + klik (np. cały rząd) — dosuwamy je razem
       const ids = selectedCabinetIds(ui.get());
@@ -1610,9 +1696,23 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
     else if (wasMulti) DIM_LINKS.forEach((k) => linked[k].clear());
     if (multi !== wasMulti || multi) updateStatus(store.get());
     wasMulti = multi;
-    if (meta.reveal && selectedId) tabs.activate('furniture-panel');
+    // jeden zaznaczony korpus — jego karta jako okienko po prawej (rozwinięta)
+    const wasInInspector = root.querySelector('[data-kind="cabinet"].in-inspector')?.dataset.id;
+    const card = markInspectorCard(root, '[data-kind="cabinet"]', ids.size === 1 ? selectedId : null);
+    if (card) {
+      const cab = store.get().furniture.find((x) => x.id === selectedId);
+      if (cab) card.querySelector('.obj-sketch').innerHTML = cabinetSketch(cab, store.get());
+    }
+    if (card && wasInInspector !== selectedId) {
+      card.querySelectorAll(':scope > details.section[open]').forEach((d) => {
+        d.open = false;
+        sectionState.set(`${selectedId}:${d.dataset.section}`, false);
+      });
+    }
+    if (card && collapsed.has(selectedId)) setCollapsed([selectedId], false);
+    if (meta.reveal && selectedId && !card) tabs.activate('furniture-panel');
     const changed = accordion(ids);
-    if ((changed || meta.reveal) && selectedId) {
+    if ((changed || meta.reveal) && selectedId && !card) {
       if (collapsed.has(selectedId)) setCollapsed([selectedId], false); // pokazujemy zaznaczony korpus
       scrollUnderMap(selectedId);
     }
@@ -1675,8 +1775,9 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
     // i sekcja, przewinięcie do niej.
     // Front (np. szuflada) zaznaczony w 3D: sekcja „Fronty” i podsekcja „Front” otwarte, przewinięte do sekcji
     // frontu, w której jest ten element (podświetlonej).
-    revealFront(cabinetId, key) {
-      this.revealSection(cabinetId, 'fronts');
+    revealFront(cabinetId, key, quiet = false) {
+      // quiet — zaznaczenie kliknięciem w panelu: sekcja już widoczna, bez przewijania karty
+      if (!quiet) this.revealSection(cabinetId, 'fronts');
       const card = root.querySelector(`[data-kind="cabinet"][data-id="${cabinetId}"]`);
       const sub = card?.querySelector('[data-section="sub:front"]');
       if (sub) {
@@ -1689,18 +1790,20 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
       if (item) {
         card.querySelectorAll('.fp-item.picked, .fd-item.picked').forEach((x) => x.classList.remove('picked'));
         item.classList.add('picked');
-        requestAnimationFrame(() => item.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
+        if (!quiet) requestAnimationFrame(() => item.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
       }
     },
     revealSection(cabinetId, key) {
-      tabs.activate('furniture-panel');
+      const inInspector = root.querySelector(`[data-kind="cabinet"][data-id="${cabinetId}"].in-inspector`);
+      if (!inInspector) tabs.activate('furniture-panel');
       if (collapsed.has(cabinetId)) setCollapsed([cabinetId], false);
       const section = root.querySelector(`[data-kind="cabinet"][data-id="${cabinetId}"] [data-section="${key}"]`);
       if (!section) return;
       sectionState.set(`${cabinetId}:${key}`, true);
       section.open = true;
-      // karta pod mapką zabudowy — pozostałe sekcje są zwinięte, więc otwarta sekcja jest zaraz pod nagłówkiem
-      scrollUnderMap(cabinetId);
+      // karta w okienku po prawej — przewijamy samo okienko do sekcji; w panelu — karta pod mapką zabudowy
+      if (inInspector) requestAnimationFrame(() => section.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
+      else scrollUnderMap(cabinetId);
     },
   };
 }

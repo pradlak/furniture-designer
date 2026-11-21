@@ -28,6 +28,12 @@ import { createAccount, getProject, saveUserSettings } from './state/account.js'
 import { createProjectsDialog } from './ui/projectsDialog.js';
 import { createAccountBar } from './ui/accountBar.js';
 import { createNotesPanel } from './ui/notesPanel.js';
+import { createBoardInspector } from './ui/boardInspector.js';
+import { initSpinFromPlaceholder } from './ui/spinFromPlaceholder.js';
+import { initInspectorBox } from './ui/inspectorCard.js';
+import { initPanelCollapse } from './ui/panelCollapse.js';
+import { initAddMenu } from './ui/addMenu.js';
+import { initSketchZoom } from './ui/sketchZoom.js';
 
 // Działania w polach liczbowych (np. 1100-70 → 1030).
 initMathInputs();
@@ -43,8 +49,20 @@ const ui = createStore({ selectedId: null });
 
 const viewer = new Viewer(document.getElementById('viewport'));
 initViewportHelp(document.getElementById('viewport')); // okienko ze skrótami — można je ukryć
+initSpinFromPlaceholder(); // strzałki ▲▼ w pustym polu liczą od wartości domyślnej z podpowiedzi
+initInspectorBox(document.getElementById('viewport'), () =>
+  ui.set({ ...ui.get(), selectedId: null, selectedIds: [], selectedFronts: [], selectedBlends: [], selectedHole: null, selectedObstacle: null }),
+); // okienko karty zaznaczonego obiektu po prawej (✕ — odznacza obiekt)
+initSketchZoom(); // powiększanie szkiców obiektów
 const tabs = initTabs(document.getElementById('tabs'));
+const panelCollapse = initPanelCollapse(document.querySelector('.panel'), tabs); // zwijany lewy panel (pasek ikonek)
 const spacePanel = createSpacePanel(document.getElementById('space-panel'), store);
+// klik w krótką kartę przeszkody (poza polami) — zaznacza ją (karta pokazuje się po prawej)
+document.getElementById('space-panel').addEventListener('pointerdown', (e) => {
+  const card = e.target.closest('.item.obstacle');
+  if (!card || card.classList.contains('in-inspector') || e.target.closest('input, select, button, [data-collapse-card]')) return;
+  ui.set({ ...ui.get(), selectedId: null, selectedIds: [], selectedFronts: [], selectedBlends: [], selectedHole: null, selectedObstacle: card.dataset.id });
+});
 const trimsPanel = createTrimsPanel(document.getElementById('trims-panel'), store, ui, { mode: 'blends' });
 // Zakładka „Blaty i półki”: blaty na szafkach (ten sam panel, inne elementy) i samodzielne blaty i półki.
 const worktopsPanel = createTrimsPanel(document.getElementById('worktop-trims-panel'), store, ui, { mode: 'worktops' });
@@ -61,6 +79,13 @@ const furniturePanel = createFurniturePanel(document.getElementById('furniture-p
 const materialsPanel = createMaterialsPanel(document.getElementById('materials-panel'), store);
 // Samodzielne blaty i półki (z frezami i otworami) — w zakładce „Blaty i półki”, pod blatami na szafkach.
 const boardsPanel = createBoardsPanel(document.getElementById('boards-panel'), store, ui);
+// okienko po prawej stronie widoku 3D z ustawieniami i szkicem zaznaczonej samodzielnej półki / blatu
+createBoardInspector(document.getElementById('viewport'), store, ui, {
+  onMore: (id) => {
+    tabs.activate('worktops-panel');
+    boardsPanel.reveal(id);
+  },
+});
 // Notatki projektu — zakładka „Notatki” (na przycisku zakładki liczba niezrobionych).
 const notesTab = document.querySelector('[data-tab="notes-panel"]');
 const notesPanel = createNotesPanel(document.getElementById('notes-panel'), store, {
@@ -127,6 +152,7 @@ const toolbar = createToolbar(document.getElementById('toolbar'), store, viewer,
   onFeedback: () => feedback.open(),
   onSettings: () => settingsDialog.open(),
 });
+initAddMenu(document.getElementById('toolbar')); // „+ Dodaj ▾” — korpus, półka, blat, blendy, przeszkody
 
 // --- Konto (logowanie przez Google) i projekty w chmurze ---
 // Zmiana projektu z innego urządzenia: pytamy, którą wersję zostawić.
@@ -215,7 +241,10 @@ account.refresh().then(async () => {
 });
 attachCabinetInteraction(viewer, store, ui, {
   // kształt ścian z menu w 3D: zakładka „Przestrzeń” (z uchwytami kształtu ścian)
-  showSpace: () => tabs.activate('space-panel'),
+  showSpace: () => {
+    tabs.activate('space-panel');
+    panelCollapse.expand(); // ustawienia przestrzeni — wysuwamy panel
+  },
 });
 initShortcuts(store, ui);
 initPanelResizer(document.getElementById('panel-resizer'), document.querySelector('.panel'));
@@ -234,7 +263,7 @@ const redraw = (refit = false) =>
     selectedHole: ui.get().selectedHole ?? null,
     selectedObstacle: ui.get().selectedObstacle ?? null,
     // uchwyty kształtu ścian w 3D — gdy otwarta jest zakładka „Przestrzeń”
-    wallHandles: tabs.active() === 'space-panel',
+    wallHandles: tabs.active() === 'space-panel' && !ui.get().selectedObstacle,
   });
 tabs.onChange(() => redraw());
 onSettingsChange(() => redraw());
@@ -333,7 +362,7 @@ ui.subscribe((state, meta) => {
   redraw();
   // zaznaczony występ ściany — jego karta w zakładce „Przestrzeń”
   const obstacle = state.selectedObstacle ?? null;
-  if (obstacle && (obstacle !== lastObstacle || meta?.revealObstacle)) {
+  if (obstacle && meta?.revealObstacle) {
     tabs.activate('space-panel');
     spacePanel.reveal(obstacle);
   }
@@ -349,7 +378,7 @@ ui.subscribe((state, meta) => {
   lastPicked = newest;
   // zaznaczony front („idKorpusu:front-N”) — sekcja „Fronty” w karcie jego korpusu
   const front = (state.selectedFronts ?? []).at(-1) ?? null;
-  if (front && front !== lastFront) furniturePanel.revealFront(...front.split(':')); // sekcja tego frontu w karcie
+  if (front && front !== lastFront) furniturePanel.revealFront(...front.split(':'), !!meta?.fromPanel); // sekcja tego frontu w karcie
   lastFront = front;
   // zaznaczony otwór blatu / półki — karta płyty i wiersz otworu w panelu po lewej
   const hole = state.selectedHole;

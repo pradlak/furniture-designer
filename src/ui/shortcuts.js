@@ -1,13 +1,16 @@
-import { duplicateCabinet } from '../model/placement.js';
+import { duplicateSelected } from '../state/duplicate.js';
+import { removeParts } from '../model/mergeParts.js';
+import { selectedCabinetIds } from '../state/selection.js';
 import { removeShelves } from '../model/furniture.js';
 import { removeFronts } from '../model/frontEdit.js';
 import { moveHole } from '../model/boardFeatures.js';
+import { updateSpaceRefit } from '../model/layout.js';
 
 // Skróty klawiszowe (nie działają podczas pisania w polach formularza):
 //   Ctrl+Z / Ctrl+Y (Ctrl+Shift+Z) — cofnij / ponów
 //   dla zaznaczonego korpusu:
 //   strzałki ←/→ — X, ↑/↓ — Z (do tyłu / do przodu), PgUp/PgDn — Y; krok 10 mm, z Shift 100 mm
-//   Ctrl+D — duplikuj, Delete — usuń (zaznaczone fronty / półki — tylko one), Esc — odznacz
+//   Ctrl+D — duplikuj, Delete — usuń (zaznaczone fronty / półki — tylko one; zaznaczony kominek / okap — on), Esc — odznacz
 export function initShortcuts(store, ui) {
   const moveSelected = (axis, delta) => {
     const id = ui.get().selectedId;
@@ -34,7 +37,11 @@ export function initShortcuts(store, ui) {
     }
 
     if (key === 'escape') {
-      ui.set({ ...ui.get(), selectedId: null, selectedFronts: [], selectedBlends: [], selectedHole: null, selectedObstacle: null });
+      // zaznaczony front / płyta korpusu — Esc wraca do całego korpusu; zaznaczony korpus — Esc odznacza
+      const st = ui.get();
+      const insideCabinet = st.selectedId && ((st.selectedFronts ?? []).length || (st.selectedBlends ?? []).some((b) => b.startsWith(`${st.selectedId}:`)));
+      if (insideCabinet) ui.set({ ...st, selectedFronts: [], selectedBlends: [], selectedHole: null });
+      else ui.set({ ...st, selectedId: null, selectedFronts: [], selectedBlends: [], selectedHole: null, selectedObstacle: null });
       return;
     }
     // zaznaczony otwór blatu / półki: Delete — usuń, strzałki — przesuń (10 mm, z Shift 100 mm; ↑ — w głąb)
@@ -58,6 +65,26 @@ export function initShortcuts(store, ui) {
       }
       return;
     }
+    // zaznaczony występ ściany / okap (kominek): Delete — usuń
+    const obstacle = ui.get().selectedObstacle;
+    if (obstacle && key === 'delete') {
+      e.preventDefault();
+      ui.set({ ...ui.get(), selectedObstacle: null });
+      store.set((p) => updateSpaceRefit(p, (s) => ({ ...s, obstacles: s.obstacles.filter((o) => o.id !== obstacle) })));
+      return;
+    }
+    // zaznaczone blaty / blendy wspólne / samodzielne płyty: Delete — usuń je (razem z zaznaczonymi korpusami)
+    const parts = (ui.get().selectedBlends ?? []).filter((b) => b.startsWith('trim:') || b.startsWith('board:'));
+    if (parts.length && key === 'delete') {
+      e.preventDefault();
+      const cabs = selectedCabinetIds(ui.get());
+      ui.set({ ...ui.get(), selectedId: null, selectedIds: [], selectedFronts: [], selectedBlends: [] });
+      store.set((p) => {
+        const next = removeParts(p, parts);
+        return { ...next, furniture: next.furniture.filter((c) => !cabs.has(c.id)) };
+      });
+      return;
+    }
     const id = ui.get().selectedId;
     if (!id) return;
     const step = e.shiftKey ? 100 : 10;
@@ -75,9 +102,7 @@ export function initShortcuts(store, ui) {
       moveSelected(...moves[key]);
     } else if (ctrl && key === 'd') {
       e.preventDefault();
-      const copy = duplicateCabinet(store.get(), id);
-      store.set((p) => ({ ...p, furniture: [...p.furniture, copy] }));
-      ui.set({ ...ui.get(), selectedId: copy.id }, { reveal: true });
+      duplicateSelected(store, ui); // korpusy razem z zaznaczonymi blatami / blendami / płytami
     } else if (key === 'delete') {
       e.preventDefault();
       const fronts = ui.get().selectedFronts ?? [];

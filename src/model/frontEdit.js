@@ -30,6 +30,15 @@ const heightOf = (ranges, i) => (ranges[i] ? ranges[i][1] - ranges[i][0] : 0);
 
 // --- panel: części wnętrza ---
 
+// Zbiorczo: n szuflad (z frontem albo wewnętrznych) po height mm (null — automatycznie), na dole.
+export function addParts(cabinet, type, n, height, project) {
+  const st = stateOf(cabinet);
+  const count = Math.max(1, Math.min(PART_LIMITS_ADD, Math.round(n)));
+  for (let k = 0; k < count; k++) st.parts.unshift({ id: newId(), type, height: height ?? null });
+  return setFrontParts(cabinet, st, project);
+}
+const PART_LIMITS_ADD = 12;
+
 // Rodzaj części z listy w panelu: 'drawer' (szuflada z frontem), 'innerDrawer' (szuflada wewnętrzna — czoło w korpusie,
 // bez frontu; drzwi dodaje się osobno i wybiera, co przykrywają), 'space' (wolna przestrzeń). Szuflada z frontem
 // przykryta drzwiami wychodzi spod nich (front i drzwi by się nakładały).
@@ -49,7 +58,17 @@ export function addPart(cabinet, type, project) {
   const st = stateOf(cabinet);
   if (type === 'drawer' || type === 'innerDrawer') {
     const drawers = st.parts.filter(isDrawerPart);
-    const height = drawers.length === 0 ? FIRST_DRAWER_HEIGHT : drawers.every((p) => p.height != null) ? drawers[0].height : null;
+    let height = drawers.length === 0 ? FIRST_DRAWER_HEIGHT : drawers.every((p) => p.height != null) ? drawers[0].height : null;
+    // gdy z tą wysokością szuflady nie zmieszczą się w korpusie — wszystkie szuflady dzielą miejsce po równo
+    const { area } = geometry(cabinet, project);
+    if (height != null && area) {
+      const fixed = st.parts.reduce((a, p) => a + (p.height ?? 0), 0);
+      if (fixed + height + st.parts.length * gvOf(cabinet) > area[1] - area[0]) {
+        // brak miejsca — wszystkie szuflady po równo (wysokości automatyczne)
+        height = null;
+        st.parts.forEach((p) => p.type !== 'space' && (p.height = null));
+      }
+    }
     st.parts.unshift({ id: newId(), type, height });
   } else st.parts.push({ id: newId(), type, height: null });
   return setFrontParts(cabinet, st, project);
@@ -357,3 +376,65 @@ function moveOneDrawer(base, project, b, d) {
   const k = frontParts(cabinet.fronts).parts.findIndex((p) => p.id === me.id);
   return { cabinet, a: g.ranges[k] && g.area ? Math.round(g.ranges[k][0] - g.area[0]) : null };
 }
+
+// --- wypełnienie wolnego miejsca szufladą ---
+// Wolne miejsce przy szufladzie i: sąsiednie (ciągiem, nad i pod nią) wolne przestrzenie z tymi samymi drzwiami co
+// szuflada (albo bez drzwi) oraz niezajęte miejsce nad najwyższą częścią (gdy szuflada nie jest za drzwiami).
+// Gdy wpisane wysokości się nie mieszczą (overflow > 0) — gain ujemny: o ile zmniejszyć szufladę, żeby wszystko weszło.
+// → { gain (mm, o ile zmieni się szuflada: + rośnie, − maleje), up: [indeksy], down: [indeksy], top (mm) }
+export function freeAround(st, ranges, area, gv, i, overflow = 0) {
+  const me = st.parts[i];
+  const none = { gain: 0, up: [], down: [], top: 0 };
+  if (!me || !isDrawerPart(me) || !area) return none;
+  if (overflow > 0.5) {
+    if (me.height == null) return none; // szuflada automatyczna — przy przepełnieniu i tak ma 0
+    const shrink = Math.min(Math.ceil(overflow), me.height - FRONT_PART_MIN);
+    return shrink >= 1 ? { gain: -shrink, up: [], down: [], top: 0 } : none;
+  }
+  const door = doorOf(st, me.id);
+  const h = (j) => heightOf(ranges, j);
+  const open = (j) => st.parts[j]?.type === 'space' && doorOf(st, st.parts[j].id) === door;
+  const up = [];
+  const down = [];
+  let j = i + 1;
+  while (open(j)) up.push(j++);
+  let k = i - 1;
+  while (open(k)) down.push(k--);
+  let top = 0;
+  if (j === st.parts.length && door < 0) {
+    const last = ranges[st.parts.length - 1];
+    top = last ? Math.max(0, area[1] - last[1]) : 0;
+  }
+  const gain = [...up, ...down].reduce((a, x) => a + h(x) + gv, 0) + top;
+  return gain >= 1 ? { gain: Math.round(gain), up, down, top } : none;
+}
+
+// Szuflada wypełnia wolne miejsce obok siebie (freeAround): sąsiednie wolne przestrzenie znikają, szuflada rośnie
+// o ich wysokość (i niezajęte miejsce na górze). Pozostałe części zostają na swoich wysokościach.
+export function fillFreeSpace(cabinet, index, project) {
+  const { ranges, area, panels } = geometry(cabinet, project);
+  const st = stateOf(cabinet);
+  const f = freeAround(st, ranges, area, gvOf(cabinet), index, panels.frontOverflow);
+  if (!f.gain) return cabinet;
+  const me = st.parts[index];
+  if (f.gain < 0) {
+    // za duża — zmniejszamy tylko ją (pozostałe wpisane wysokości bez zmian)
+    me.height = Math.round(me.height + f.gain);
+    return setFrontParts(cabinet, st, project);
+  }
+  const autos = st.parts.filter((p) => p.height == null);
+  st.parts.forEach((p, j) => (p.height = Math.round(heightOf(ranges, j))));
+  // jedna część automatyczna (np. szuflada sama w korpusie) zostaje automatyczna — dalej wypełnia korpus
+  me.height = Math.round(heightOf(ranges, index) + f.gain);
+  if (autos.length === 1 && autos[0] === me) me.height = null;
+  const gone = new Set([...f.up, ...f.down].map((j) => st.parts[j].id));
+  st.parts = st.parts.filter((p) => !gone.has(p.id));
+  st.doors.forEach((d) => (d.covers = d.covers.filter((id) => !gone.has(id))));
+  return setFrontParts(cabinet, st, project);
+}
+export const freeSpaceOf = (cabinet, index, project) => {
+  const { ranges, area, panels } = geometry(cabinet, project);
+  return freeAround(stateOf(cabinet), ranges, area, gvOf(cabinet), index, panels.frontOverflow).gain;
+};
+// tekst opcji: „Dopasuj wysokość do miejsca (+294 mm)” / „(−120 mm)”
+export const fitLabel = (gain) => `Dopasuj wysokość do miejsca (${gain > 0 ? '+' : '−'}${Math.abs(gain)} mm)`;

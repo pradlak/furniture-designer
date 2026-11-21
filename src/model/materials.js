@@ -148,8 +148,12 @@ export function cabinetMaterials(cabinet, project) {
 }
 
 // Materiał blendy wspólnej (dolnej / górnej) albo blatu — w kolorze wybranym dla niej (trim.color).
-export const trimMaterial = (trim, project) =>
-  withColor(resolveMaterial(project, trim.materialId, trim.type === 'countertop' ? 'worktop' : 'mdf'), trim.color);
+// Blat może mieć własną grubość (trim.thickness; null — z materiału).
+export function trimMaterial(trim, project) {
+  const m = withColor(resolveMaterial(project, trim.materialId, trim.type === 'countertop' ? 'worktop' : 'mdf'), trim.color);
+  const t = trim.type === 'countertop' ? trim.thickness : null;
+  return t ? { ...m, thickness: t, name: m.thickness === t ? m.name : `${m.name} (gr. ${t} mm)` } : m;
+}
 
 export function normalizeMaterials(raw) {
   if (!Array.isArray(raw) || !raw.length) return defaultMaterials();

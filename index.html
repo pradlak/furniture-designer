@@ -57,12 +57,13 @@
     <main class="layout">
       <aside class="panel">
         <nav class="tabs" id="tabs">
-          <button type="button" data-tab="space-panel" class="active">Przestrzeń</button>
-          <button type="button" data-tab="furniture-panel">Meble</button>
-          <button type="button" data-tab="trims-panel">Blendy</button>
-          <button type="button" data-tab="worktops-panel">Blaty i półki</button>
-          <button type="button" data-tab="materials-panel">Materiały</button>
-          <button type="button" data-tab="notes-panel">Notatki</button>
+          <button type="button" data-tab="space-panel" class="active" title="Przestrzeń — wymiary pokoju, ściany, skosy, przeszkody"><span class="tab-ico" aria-hidden="true">🏠</span><span class="tab-label">Przestrzeń</span></button>
+          <button type="button" data-tab="furniture-panel" title="Meble — lista korpusów i mapka zabudowy"><span class="tab-ico" aria-hidden="true">🗄️</span><span class="tab-label">Meble</span></button>
+          <button type="button" data-tab="trims-panel" title="Blendy — dolne, górne i boczne"><span class="tab-ico" aria-hidden="true">▤</span><span class="tab-label">Blendy</span></button>
+          <button type="button" data-tab="worktops-panel" title="Blaty i półki"><span class="tab-ico" aria-hidden="true">▬</span><span class="tab-label">Blaty i półki</span></button>
+          <button type="button" data-tab="materials-panel" title="Materiały — płyty projektu"><span class="tab-ico" aria-hidden="true">🎨</span><span class="tab-label">Materiały</span></button>
+          <button type="button" data-tab="notes-panel" title="Notatki"><span class="tab-ico" aria-hidden="true">📝</span><span class="tab-label">Notatki</span></button>
+          <button type="button" class="tabs-collapse" title="Zwiń panel (więcej miejsca na widok 3D)" aria-label="Zwiń panel">«</button>
         </nav>
         <div id="space-panel" class="tab-content"></div>
         <div id="furniture-panel" class="tab-content" hidden></div>

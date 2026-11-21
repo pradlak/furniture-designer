@@ -1,6 +1,6 @@
 import { escapeHtml, readNumberInput, setIfNotFocused, numberField, commitEmptyAsZero } from './dom.js';
 import { materialSelect, colorPicker, readColorInput, syncColorPicker, setEye } from './widgets.js';
-import { BOARD_KINDS, BOARD_LIMITS, createBoard, boardMaterial, boardIssues } from '../model/boards.js';
+import { BOARD_KINDS, BOARD_LIMITS, createBoard, boardMaterial, boardIssues, BOARD_MOUNTS, mountPoints, MOUNT_MACHINING, normalizeMount, describeMountWork } from '../model/boards.js';
 import { setPath } from '../model/furniture.js';
 import { renderBoardFeatures, syncBoardFeatures, readFeatureInput, readFeatureClick, applyFeatureChange } from './boardFeaturesEditor.js';
 import { describeEdges, describeHoles } from '../model/boardFeatures.js';
@@ -27,7 +27,7 @@ export function createBoardsPanel(root, store, ui) {
           ${COLLAPSE_BUTTON}
           <input type="text" data-f="name" value="${escapeHtml(b.name)}" aria-label="Nazwa" />
           <button type="button" class="eye" data-board-hide title="Ukryj w widoku 3D">👁</button>
-          <button type="button" class="danger" data-board-remove title="Usuń">✕</button>
+          <button type="button" class="danger" data-board-remove title="Usuń" aria-label="Usuń">🗑</button>
         </div>
         <div class="card-sum" data-collapse-card title="Kliknij, aby rozwinąć"></div>
         <div class="grid-3">
@@ -36,12 +36,28 @@ export function createBoardsPanel(root, store, ui) {
           </label>
           ${numberField('Szerokość', 'width', b.width, { min: L.sizeMin, max: L.sizeMax, small: true, unit: 'mm' })}
           ${numberField('Głębokość', 'depth', b.depth, { min: L.sizeMin, max: L.sizeMax, small: true, unit: 'mm' })}
+          ${numberField('Grubość (puste — z materiału)', 'thickness', b.thickness ?? '', { min: 3, max: 100, small: true, unit: 'mm' })}
           ${numberField('X od lewej', 'x', b.x, { min: -L.sizeMax, max: L.sizeMax * 4, small: true, unit: 'mm' })}
           ${numberField('Y od podłogi (spód)', 'y', b.y, { min: -L.sizeMax, max: L.sizeMax * 4, small: true, unit: 'mm' })}
           ${numberField('Z od tyłu', 'z', b.z, { min: -L.sizeMax, max: L.sizeMax * 4, small: true, unit: 'mm' })}
+          ${numberField('Zapas (luz) przy wnęce', 'clearance', b.clearance ?? 0, { min: 0, max: 50, small: true, unit: 'mm' })}
         </div>
         <div class="grid-2">
           ${materialSelect('Materiał', 'materialId', project)}
+        </div>
+        <div class="grid-2 board-mount">
+          <label class="field small" title="Jak płyta trzyma się tylnej ściany — widać w 3D, a wsporniki / bolce trafiają do akcesoriów w „Formatkach”">
+            <span>Mocowanie do ściany</span>
+            <select data-mount="type">${BOARD_MOUNTS.map((m) => `<option value="${m.key ?? ''}">${escapeHtml(m.label)}</option>`).join('')}</select>
+          </label>
+          <label class="field small mount-machining" title="Ukryte mocowanie chowa się w płycie — trzeba wywiercić otwory albo wyfrezować wpust; opis z położeniami trafia do „Formatek”">
+            <span>Obróbka tylnej krawędzi</span>
+            <select data-mount="machining">${MOUNT_MACHINING.map((m) => `<option value="${m.key ?? ''}">${escapeHtml(m.label)}</option>`).join('')}</select>
+          </label>
+          <label class="field small mount-count" title="Liczba wsporników / bolców — puste: automatycznie (co ok. 70 cm, ukryte co 40 cm; skrajne: wspornik 7 cm, płytka mocowania ukrytego 3 cm od boku płyty)">
+            <span>Ilość (puste — auto)</span>
+            <input type="number" step="1" min="1" max="20" data-mount="count" />
+          </label>
         </div>
         ${colorPicker('Kolor / dekor (dąb, orzech, beton, marmur…)', 'color', { wide: true })}
         ${renderBoardFeatures()}
@@ -58,8 +74,8 @@ export function createBoardsPanel(root, store, ui) {
         i otworami (gniazdko, przepust na kable, zlew, płyta grzewcza).</p>
       <div class="items">${boards.map((b) => card(b, project)).join('')}</div>
       <div class="add-row">
-        <button type="button" data-board-add="worktop">+ Blat samodzielny</button>
-        <button type="button" data-board-add="shelf">+ Półka</button>
+        <button type="button" data-board-add="worktop" draggable="true" title="Kliknij — blat w wolnym miejscu; albo przeciągnij do widoku 3D i upuść tam, gdzie ma być">+ Blat samodzielny</button>
+        <button type="button" data-board-add="shelf" draggable="true" title="Kliknij — półka w wolnym miejscu; albo przeciągnij do widoku 3D i upuść tam, gdzie ma być">+ Półka</button>
       </div>`;
     renderedKey = structureKey(project);
     cardCollapse.applyAll();
@@ -83,11 +99,22 @@ export function createBoardsPanel(root, store, ui) {
         if (!input.classList.contains('invalid')) setIfNotFocused(input, b[input.dataset.f] ?? '');
       });
       const mat = boardMaterial(b, project);
+      // mocowanie do ściany
+      const mount = mountPoints(b);
+      setIfNotFocused(el.querySelector('[data-mount="type"]'), b.mount?.type ?? '');
+      const cnt = el.querySelector('[data-mount="count"]');
+      setIfNotFocused(cnt, b.mount?.count ?? '');
+      cnt.placeholder = mount.count && mount.type !== 'cleat' ? `${mount.count} (auto)` : '';
+      el.querySelector('.mount-count').hidden = !mount.type || mount.type === 'cleat';
+      el.querySelector('.mount-machining').hidden = mount.type !== 'hidden';
+      setIfNotFocused(el.querySelector('[data-mount="machining"]'), normalizeMount(b.mount).machining ?? '');
+      const thIn = el.querySelector('[data-f="thickness"]');
+      if (thIn) thIn.placeholder = String(boardMaterial({ ...b, thickness: null }, project).thickness);
       syncColorPicker(el, 'color', b.color, mat.color);
       setEye(el.querySelector('[data-board-hide]'), b.hidden, b.kind === 'worktop' ? 'blat' : 'półkę');
       syncBoardFeatures(el, b, b.width, b.depth);
       el.querySelector('.board-info').textContent =
-        `Formatka: ${b.width} × ${b.depth} × ${mat.thickness} mm` + [describeEdges(b.edges), describeHoles(b.holes, b.width, b.depth)].filter(Boolean).map((t) => ` · ${t}`).join('');
+        `Formatka: ${b.width} × ${b.depth} × ${mat.thickness} mm` + [describeEdges(b.edges), describeHoles(b.holes, b.width, b.depth), describeMountWork(b, mat.thickness)].filter(Boolean).map((t) => ` · ${t}`).join('');
       const issues = boardIssues(b, project);
       // podsumowanie widoczne w zwiniętej karcie
       el.querySelector('.card-sum').textContent =
@@ -108,9 +135,18 @@ export function createBoardsPanel(root, store, ui) {
     const feature = readFeatureInput(input);
     if (feature) return update(id, (b) => applyFeatureChange(b, feature, b.width, b.depth, setPath));
     if (input.dataset.bf || input.dataset.bfAdd !== undefined) return;
+    // mocowanie do ściany: rodzaj, liczba wsporników (puste — automatycznie)
+    if (input.dataset.mount === 'type') return update(id, (b) => ({ ...b, mount: { type: input.value || null, count: null } }));
+    if (input.dataset.mount === 'machining') return update(id, (b) => ({ ...b, mount: { ...normalizeMount(b.mount), machining: input.value || null } }));
+    if (input.dataset.mount === 'count') {
+      const v = input.value.trim() === '' ? null : readNumberInput(input);
+      if (v === undefined) return;
+      return update(id, (b) => ({ ...b, mount: { ...(b.mount ?? { type: null }), count: v } }));
+    }
     const field = input.dataset.f;
     if (!field) return;
     let value = input.value;
+    if (field === 'thickness' && input.value.trim() === '') return update(id, (b) => ({ ...b, thickness: null }));
     if (input.type === 'number') {
       value = readNumberInput(input);
       if (value === undefined) return;
@@ -121,7 +157,7 @@ export function createBoardsPanel(root, store, ui) {
     }
     update(id, (b) => ({ ...b, [field]: value }));
   });
-  root.addEventListener('change', (e) => commitEmptyAsZero(e.target));
+  root.addEventListener('change', (e) => e.target.dataset?.f !== 'thickness' && commitEmptyAsZero(e.target));
 
   // „Zwiń / Rozwiń wszystkie” na górze zakładki (nad blatami na szafkach, poza tym panelem) — też dla tych kart.
   root.parentElement?.addEventListener('click', (e) => {
@@ -139,6 +175,14 @@ export function createBoardsPanel(root, store, ui) {
       { ...state, selectedId: null, selectedIds: [], selectedFronts: [], selectedBlends: [pick], selectedHole: null, selectedObstacle: null },
       { fromPanel: true }, // karta jest już widoczna — bez przewijania (main.js)
     );
+  });
+
+  // przeciąganie „+ Półka” / „+ Blat” do widoku 3D (upuszczenie — scene/interaction.js); rodzaj w nazwie typu danych
+  root.addEventListener('dragstart', (e) => {
+    const kind = e.target.closest?.('[data-board-add]')?.dataset.boardAdd;
+    if (!kind) return;
+    e.dataTransfer.setData(`application/x-meble-board-${kind}`, kind);
+    e.dataTransfer.effectAllowed = 'copy';
   });
 
   root.addEventListener('click', (e) => {

@@ -1,5 +1,7 @@
 import { cabinetBounds, cabinetIssues, newId, sideBlendWidth } from './furniture.js';
 import { freeWidth, backLimit, straightenSlantedSides } from './outline.js';
+import { trimBox } from './trims.js';
+import { boardBox } from './boards.js';
 
 // Ustawianie mebli: przyciąganie, dosuwanie, duplikowanie.
 // Wszystko liczone na prostopadłościanach obejmujących meble (cabinetBounds) i przeszkody.
@@ -245,6 +247,8 @@ export function obstacleNeighbour(project, obstacleId, side) {
   const boxes = [
     ...project.furniture.map((c) => ({ ...cabinetBounds(c, project), label: `korpusu „${c.name}”` })),
     ...project.space.obstacles.filter((x) => x.id !== o.id).map((x) => ({ ...x, label: `„${x.name}”` })),
+    // samodzielne półki i blaty (np. okap rozszerzony do półki obok)
+    ...(project.boards ?? []).filter((b) => !b.hidden).map((b) => ({ ...boardBox(b, project), label: `„${b.name}”` })),
   ].filter(inBand);
   const { walls, width } = project.space;
   if (side === 'left') {
@@ -314,18 +318,27 @@ export function obstacleWithoutCollisions(project, obstacleId) {
 
 // Przyciąganie krawędzi występu (współrzędna x, mm) do ścian, korpusów i innych przeszkód — przy przeciąganiu myszką.
 export function snapObstacleEdge(project, obstacleId, x, threshold = 30) {
+  return obstacleEdgeTarget(project, obstacleId, x, threshold)?.v ?? x;
+}
+
+// Najbliższy cel przyciągania krawędzi (X) występu / okapu: ściany, boki korpusów, innych przeszkód
+// i samodzielnych płyt (półek, blatów — np. półka, do której dosuwa się okap). → { v, label } albo null.
+export function obstacleEdgeTarget(project, obstacleId, x, threshold = 30) {
   const targets = [
-    0,
-    project.space.width,
+    { v: 0, label: 'lewej ściany' },
+    { v: project.space.width, label: 'prawej ściany' },
     ...project.furniture.flatMap((c) => {
       const b = cabinetBounds(c, project);
-      return [b.x, b.x + b.width];
+      return [{ v: b.x, label: `korpusu „${c.name}”` }, { v: b.x + b.width, label: `korpusu „${c.name}”` }];
     }),
-    ...project.space.obstacles.filter((o) => o.id !== obstacleId).flatMap((o) => [o.x, o.x + o.width]),
+    ...project.space.obstacles
+      .filter((o) => o.id !== obstacleId)
+      .flatMap((o) => [{ v: o.x, label: `„${o.name || 'przeszkody'}”` }, { v: o.x + o.width, label: `„${o.name || 'przeszkody'}”` }]),
+    ...(project.boards ?? []).flatMap((b) => [{ v: b.x, label: `„${b.name}”` }, { v: b.x + b.width, label: `„${b.name}”` }]),
   ];
   let best = null;
-  for (const t of targets) if (Math.abs(t - x) < threshold && (best === null || Math.abs(t - x) < Math.abs(best - x))) best = t;
-  return best ?? x;
+  for (const t of targets) if (Math.abs(t.v - x) < threshold && (!best || Math.abs(t.v - x) < Math.abs(best.v - x))) best = t;
+  return best;
 }
 
 function freezeSideBlends(cabinet, project) {
@@ -351,4 +364,46 @@ export function duplicateCabinet(project, cabinetId) {
     if (!issues.length) return candidate;
   }
   return { ...copy, x: cabinet.x + b.width };
+}
+
+// Kopia zaznaczenia: korpusy (cabinetIds) oraz zaznaczone blaty / blendy wspólne („trim:id”) i samodzielne płyty
+// („board:id”) — wszystko przesunięte razem o szerokość grupy: w prawo, a gdy tam brak miejsca — w lewo.
+// Skopiowany blat / blenda obejmuje kopie zaznaczonych korpusów (te spoza zaznaczenia pomija).
+// → { project, cabinetIds (kopie), blendIds (kopie) }
+export function duplicateSelection(project, cabinetIds, partIds = []) {
+  const cabs = project.furniture.filter((c) => cabinetIds.includes(c.id));
+  const trims = (project.trims ?? []).filter((t) => partIds.includes(`trim:${t.id}`));
+  const boards = (project.boards ?? []).filter((b) => partIds.includes(`board:${b.id}`));
+  if (!cabs.length && !trims.length && !boards.length) return { project, cabinetIds: [], blendIds: [] };
+  const boxes = [
+    ...cabs.map((c) => cabinetBounds(c, project)),
+    ...trims.map((t) => trimBox(t, project)).filter(Boolean),
+    ...boards.map((b) => boardBox(b, project)),
+  ];
+  const x0 = Math.min(...boxes.map((b) => b.x));
+  const W = Math.max(...boxes.map((b) => b.x + b.width)) - x0;
+  const idMap = new Map(cabs.map((c) => [c.id, newId()]));
+  const build = (dx) => {
+    const furniture = cabs.map((c) => ({ ...structuredClone(c), id: idMap.get(c.id), name: `${c.name} (kopia)`, x: c.x + dx }));
+    const newTrims = trims.map((t) => ({
+      ...structuredClone(t),
+      id: newId(),
+      name: `${t.name} (kopia)`,
+      cabinetIds: t.cabinetIds.filter((id) => idMap.has(id)).map((id) => idMap.get(id)),
+      ...(t.x != null ? { x: t.x + dx } : {}),
+    }));
+    const newBoards = boards.map((b) => ({ ...structuredClone(b), id: newId(), name: `${b.name} (kopia)`, x: b.x + dx }));
+    return {
+      project: { ...project, furniture: [...project.furniture, ...furniture], trims: [...(project.trims ?? []), ...newTrims], boards: [...(project.boards ?? []), ...newBoards] },
+      cabinetIds: furniture.map((c) => c.id),
+      blendIds: [...newTrims.map((t) => `trim:${t.id}`), ...newBoards.map((b) => `board:${b.id}`)],
+      furniture,
+    };
+  };
+  const fits = (r, dx) => x0 + dx >= -0.5 && x0 + dx + W <= project.space.width + 0.5 && r.furniture.every((c) => !cabinetIssues(c, r.project).length);
+  for (const dx of [W, -W]) {
+    const r = build(dx);
+    if (fits(r, dx)) return r;
+  }
+  return build(W);
 }

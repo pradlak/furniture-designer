@@ -19,7 +19,9 @@ export function initTabs(nav) {
     current = id;
     for (const b of buttons) {
       b.classList.toggle('active', b.dataset.tab === id);
-      document.getElementById(b.dataset.tab).hidden = b.dataset.tab !== id;
+      const el = document.getElementById(b.dataset.tab);
+      el.hidden = false;
+      el.classList.toggle('tab-off', b.dataset.tab !== id); // (okienko obiektu z tej zakładki zostaje widoczne)
     }
     try {
       localStorage.setItem(STORAGE_KEY, id);
@@ -30,15 +32,17 @@ export function initTabs(nav) {
   };
 
   nav.addEventListener('click', (e) => {
-    if (e.target.dataset.tab) activate(e.target.dataset.tab);
+    const tab = e.target.closest?.('[data-tab]')?.dataset.tab;
+    if (tab) activate(tab);
   });
 
+  let saved = null;
   try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) activate(saved);
+    saved = localStorage.getItem(STORAGE_KEY);
   } catch {
     // ignorujemy
   }
+  activate(saved && buttons.some((b) => b.dataset.tab === saved) ? saved : (buttons.find((b) => b.classList.contains('active')) ?? buttons[0]).dataset.tab);
 
   // onChange(fn) — wywoływane po przełączeniu zakładki; active() — id bieżącej zakładki.
   return { activate, onChange: (fn) => listeners.push(fn), active: () => current };

@@ -1,15 +1,16 @@
 import * as THREE from 'three';
+import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { MM, toScene } from './units.js';
-import { cabinetPanels, cabinetIssues, cabinetLegs, legHeight, HANDLE_GROOVE_SIZE, cabinetBounds, frontParts, frontSlots, doorSpan } from '../model/furniture.js';
+import { cabinetPanels, cabinetIssues, cabinetLegs, legHeight, HANDLE_GROOVE_SIZE, cabinetBounds, frontParts, frontSlots, doorSpan, INNER_SPACER } from '../model/furniture.js';
 import { frontBoundaries, drawerResizeHandle, drawerMoveHandle } from '../model/frontEdit.js';
 import { trimSegments, trimIssues, trimAllowance, trimBox } from '../model/trims.js';
 import { trimMaterial, edgeColorOf, coreColorOf } from '../model/materials.js';
 import { projectSolids, panelEdgeSet, trimEdgeSet, TRIM_THICKNESS_AXIS } from '../model/edges.js';
-import { buildCabinetDimensions, buildPartDimensions, buildTotalDimensions } from './furnitureDims.js';
+import { buildCabinetDimensions, buildPartDimensions, buildTotalDimensions, buildClearanceDimensions } from './furnitureDims.js';
 import { decorSegments } from '../model/decor.js';
 import { buildSlab, needsSlab } from './slab.js';
 import { resolveHoles } from '../model/boardFeatures.js';
-import { boardBox, boardMaterial as boardPlateMaterial, boardIssues } from '../model/boards.js';
+import { boardBox, boardMaterial as boardPlateMaterial, boardIssues, mountPoints } from '../model/boards.js';
 import { getSettings } from '../state/settings.js';
 import { decorTexture, scaleBoxUVs } from './textures.js';
 
@@ -125,8 +126,10 @@ function addDrawerBox(target, p, cabinet, panels, space) {
   drawerBoxMaterial ??= new THREE.MeshLambertMaterial({ color: 0xd9d4c9 });
   const left = panels.find((x) => x.key === 'left');
   const right = panels.find((x) => x.key === 'right');
-  const x0 = (left ? left.x + left.width : cabinet.x + 18) + DRAWER_BOX.slide;
-  const x1 = (right ? right.x : cabinet.x + cabinet.width - 18) - DRAWER_BOX.slide;
+  // szuflada wewnętrzna na dystansach pod prowadnice — węższa
+  const sp = p.key.startsWith('idrawer-') && cabinet.fronts?.innerSpacers ? INNER_SPACER : 0;
+  const x0 = (left ? left.x + left.width : cabinet.x + 18) + DRAWER_BOX.slide + sp;
+  const x1 = (right ? right.x : cabinet.x + cabinet.width - 18) - DRAWER_BOX.slide - sp;
   const back = panels.find((x) => x.key === 'back');
   const zFront = p.key.startsWith('idrawer-') ? p.z : cabinet.z + cabinet.depth; // za frontem / za czołem
   const zBack = Math.max((back ? back.z + back.depth : cabinet.z) + 10, zFront - 550);
@@ -258,6 +261,12 @@ function selectedPartBoxes(project, ids) {
       const trim = project.trims?.find((t) => t.id === id.slice(5));
       const box = trim && !trim.hidden && trimBox(trim, project);
       if (box) parts.push({ box, name: trim.name });
+      continue;
+    }
+    if (id.startsWith('board:')) {
+      // samodzielna płyta (półka, blat): szerokość, grubość, głębokość
+      const board = project.boards?.find((b) => b.id === id.slice(6));
+      if (board && !board.hidden) parts.push({ box: boardBox(board, project), name: board.name, slab: true });
       continue;
     }
     const [cabinetId, key] = id.split(':');
@@ -392,7 +401,82 @@ function addFrontBoundaryHandles(group, cabinet, project, selectedKeys = [], isO
   }
 }
 
-export function buildFurniture(project, selectedIds = new Set(), selectedFronts = new Set(), isFrontOpen = () => project.view?.openFronts === true, selectedHole = null) {
+// Mała okrągła ikonka (HTML, zawsze tej samej wielkości) nad zaznaczonym korpusem — otwiera / zamyka wszystkie jego
+// fronty — albo nad zaznaczonym frontem — tylko ten front. Klik obsługuje scene/interaction.js
+// (data-open-fronts = id korpusu, data-open-front = „idKorpusu:klucz”).
+function addOpenFrontsButton(group, cabinet, project, isFrontOpen, frontKey = null) {
+  const panels = cabinetPanels(cabinet, project).filter((p) => p.valid && !p.hidden && p.opening);
+  const fronts = frontKey ? panels.filter((p) => p.key === frontKey) : panels.filter((p) => p.key.startsWith('front-'));
+  if (!fronts.length) return;
+  const open = fronts.some((p) => isFrontOpen(`${cabinet.id}:${p.key}`));
+  const drawers = fronts.every((p) => p.opening?.drawer);
+  const doors = fronts.every((p) => !p.opening?.drawer);
+  const what = frontKey ? (drawers ? 'szufladę' : 'drzwi') : drawers ? 'szuflady' : doors ? 'drzwi' : 'fronty';
+  const el = document.createElement('button');
+  el.type = 'button';
+  el.className = `open-fronts-btn${open ? ' is-open' : ''}`;
+  if (frontKey) el.dataset.openFront = `${cabinet.id}:${frontKey}`;
+  else el.dataset.openFronts = cabinet.id;
+  el.textContent = open ? '⇥' : '⇤';
+  el.title = open ? `Zamknij ${what}` : `${drawers ? 'Wysuń' : 'Otwórz'} ${what}`;
+  el.setAttribute('aria-label', el.title);
+  const label = new CSS2DObject(el);
+  if (frontKey) {
+    // nad górną krawędzią frontu, na środku
+    const p = fronts[0];
+    label.position.set(...toScene(p.x + p.width / 2, p.y + p.height, p.z + p.depth, project.space));
+  } else {
+    const b = cabinetBounds(cabinet, project);
+    label.position.set(...toScene(b.x + b.width / 2, b.y + b.height, b.z + b.depth, project.space));
+  }
+  label.center.set(0.5, 1.3);
+  group.add(label);
+}
+
+// Mocowanie samodzielnej płyty do tylnej ściany (model/boards.js — mountPoints): wsporniki kątowe (ramię pod płytą
+// i ramię na ścianie), szyny ścienne ze wspornikami, listwa pod tylną krawędzią (w kolorze płyty). Mocowanie
+// ukryte — niewidoczne (bolce w płycie).
+const MOUNT_METAL = new THREE.MeshLambertMaterial({ color: 0x4b5563 });
+function buildBoardMount(board, box, project, boardMat) {
+  const pts = mountPoints(board);
+  if (!pts.type || pts.type === 'hidden') return null;
+  const g = new THREE.Group();
+  const { space } = project;
+  const add = (w, h, d, x, y, z, material = MOUNT_METAL) => {
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(w * MM, h * MM, d * MM), material);
+    mesh.position.set(...toScene(x, y, z, space)); // środek bryły (mm)
+    g.add(mesh);
+  };
+  const wall = box.z; // tył płyty (przy ścianie)
+  const under = box.y;
+  if (pts.type === 'cleat') {
+    const len = Math.max(100, box.width - 20);
+    add(len, 40, 20, box.x + box.width / 2, under - 20, wall + 10, boardMat);
+    return g;
+  }
+  const t = 4; // grubość blachy
+  const arm = Math.max(60, Math.min(box.depth - 20, pts.type === 'rail' ? box.depth * 0.8 : 200)); // ramię pod płytą
+  const leg = Math.min(pts.type === 'rail' ? 0 : 160, under); // ramię na ścianie
+  for (const u of pts.xs) {
+    const x = box.x + u;
+    add(20, t, arm, x, under - t / 2, wall + arm / 2); // pod płytą
+    if (pts.type === 'brackets') {
+      add(20, leg, t, x, under - leg / 2, wall + t / 2); // na ścianie
+      // skos usztywniający
+      const diag = new THREE.Mesh(new THREE.BoxGeometry(16 * MM, t * MM, Math.hypot(arm * 0.6, leg * 0.6) * MM), MOUNT_METAL);
+      diag.position.set(...toScene(x, under - leg * 0.3, wall + arm * 0.3, space));
+      diag.rotation.x = -Math.atan2(leg * 0.6, arm * 0.6);
+      g.add(diag);
+    } else {
+      // szyna ścienna: od 400 mm pod płytą do 60 mm nad nią
+      const bottom = Math.max(0, under - 400);
+      add(25, under + 60 - bottom, 10, x, (bottom + under + 60) / 2, wall + 5);
+    }
+  }
+  return g;
+}
+
+export function buildFurniture(project, selectedIds = new Set(), selectedFronts = new Set(), isFrontOpen = () => project.view?.openFronts === true, selectedHole = null, selectedObstacle = null) {
   // zaznaczony otwór płyty ({ kind: "trim" | "board", id, index }) — wyróżniony sam otwór
   const holeOf = (kind, id) => (selectedHole?.kind === kind && selectedHole.id === id ? selectedHole.index : null);
   const group = new THREE.Group();
@@ -493,6 +577,9 @@ export function buildFurniture(project, selectedIds = new Set(), selectedFronts 
       if (!partOwners.has(cabinet.id)) addResizeHandles(group, cabinet, project);
       const myFronts = [...selectedFronts].filter((id) => id.startsWith(`${cabinet.id}:front-`) || id.startsWith(`${cabinet.id}:idrawer-`)).map((id) => id.split(':')[1]);
       addFrontBoundaryHandles(group, cabinet, project, myFronts, isFrontOpen);
+      // ikonka otwierania: jeden zaznaczony front — nad nim (tylko ten front); jeden zaznaczony korpus — nad korpusem (wszystkie)
+      if (myFronts.length === 1) addOpenFrontsButton(group, cabinet, project, isFrontOpen, myFronts[0]);
+      else if (selectedIds.size === 1 && !partOwners.has(cabinet.id)) addOpenFrontsButton(group, cabinet, project, isFrontOpen);
     }
 
     const legs = cabinetLegs(cabinet, project);
@@ -569,6 +656,27 @@ export function buildFurniture(project, selectedIds = new Set(), selectedFronts 
     slab.userData.boardId = board.id; // do wybierania myszką
     slab.userData.slab = { kind: 'board', id: board.id, box }; // do przesuwania otworów myszką
     group.add(slab);
+    // mocowanie do ściany (wsporniki, listwa, szyny) — część płyty (klik zaznacza płytę)
+    const mount = buildBoardMount(board, box, project, materialFor(bm.color, bm.texture));
+    if (mount) {
+      mount.userData.boardId = board.id;
+      group.add(mount);
+    }
+    // zaznaczona płyta — uchwyt zmiany wysokości (przeciąganie w górę / w dół)
+    if (picked) {
+      const handle = new THREE.Group();
+      handle.position.set(...toScene(box.x + box.width * 0.75, box.y + box.height / 2, box.z + box.depth + 40, project.space));
+      for (const [geometry, dy, rot] of [[BOUNDARY_BAR, 0, 0], [BOUNDARY_ARROW, 30, 0], [BOUNDARY_ARROW, -30, Math.PI]]) {
+        const mesh = new THREE.Mesh(geometry, BOUNDARY_MATERIAL);
+        mesh.position.y = dy * MM;
+        mesh.rotation.z = rot;
+        mesh.renderOrder = 11;
+        mesh.userData.boardLift = { id: board.id };
+        mesh.userData.noDispose = true;
+        handle.add(mesh);
+      }
+      group.add(handle);
+    }
   }
 
   // Wymiary w 3D:
@@ -581,6 +689,31 @@ export function buildFurniture(project, selectedIds = new Set(), selectedFronts 
     const owners = new Set(parts.map((p) => p.owner).filter(Boolean));
     const cabinets = project.furniture.filter((c) => selectedIds.has(c.id) && !c.hidden && !owners.has(c.id));
     if (parts.length) group.add(buildPartDimensions(parts, project.space));
+    // jedna zaznaczona samodzielna płyta — odległości w pionie: od blatu / korpusu pod nią, od podłogi, do sufitu
+    // co jest pod / przed prostopadłościanem (nachodzi w X): blaty, inne płyty, korpusy — do odległości w pionie
+    const belowOf = (box, skipBoard = null) => {
+      const overlapsX = (b) => b.x < box.x + box.width && b.x + b.width > box.x;
+      return [
+        ...(project.trims ?? []).filter((t) => t.type === 'countertop' && !t.hidden).map((t) => trimBox(t, project)).filter((b) => b && overlapsX(b)).map((b) => ({ top: b.y + b.height, front: b.z + b.depth, label: 'blatu' })),
+        ...(project.boards ?? []).filter((b) => b.id !== skipBoard && !b.hidden).map((b) => ({ b, box: boardBox(b, project) })).filter(({ box: b }) => overlapsX(b)).map(({ b, box: bb }) => ({ top: bb.y + bb.height, front: bb.z + bb.depth, label: b.kind === 'worktop' ? 'blatu' : 'półki' })),
+        ...project.furniture.filter((c) => !c.hidden).map((c) => cabinetBounds(c, project)).filter(overlapsX).map((b) => ({ top: b.y + b.height, front: b.z + b.depth, label: 'korpusu' })),
+      ];
+    };
+    const boardIds = [...selectedFronts].filter((id) => id.startsWith('board:'));
+    if (boardIds.length === 1) {
+      const board = project.boards?.find((b) => b.id === boardIds[0].slice(6));
+      if (board && !board.hidden) {
+        const box = boardBox(board, project);
+        group.add(buildClearanceDimensions(box, project.space, belowOf(box, board.id)));
+      }
+    }
+    // zaznaczony okap / występ ściany / przeszkoda — wymiary i odległości w pionie (od blatu, podłogi, do sufitu)
+    const obstacle = selectedObstacle && project.space.obstacles.find((o) => o.id === selectedObstacle);
+    if (obstacle) {
+      const box = { x: obstacle.x, y: obstacle.y, z: obstacle.z, width: obstacle.width, height: obstacle.height, depth: obstacle.depth };
+      group.add(buildPartDimensions([{ box, name: obstacle.name }], project.space));
+      group.add(buildClearanceDimensions(box, project.space, belowOf(box)));
+    }
     if (cabinets.length) group.add(buildCabinetDimensions(cabinets, project.space));
     if (parts.length && parts.length + cabinets.length > 1) {
       const boxes = [...parts.map((p) => p.box), ...cabinets.map(cabinetBox)];

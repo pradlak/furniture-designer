@@ -1,4 +1,4 @@
-import { LIMITS } from './space.js';
+import { LIMITS, isWallLike } from './space.js';
 import { cabinetBounds, legHeight, ceilingGapFor } from './furniture.js';
 import { spaceOutline, outlineEdges, edgeOutward, isFrontPoint, selfIntersects, cleanOutline } from './outline.js';
 import { updateSpaceRefit, refillRows, refillDepth } from './layout.js';
@@ -14,15 +14,23 @@ import { updateSpaceRefit, refillRows, refillDepth } from './layout.js';
 // Zwraca nowy projekt (albo ten sam, gdy przesunięcie jest niemożliwe, np. kształt przeciąłby sam siebie).
 
 // Przesunięcie wszystkiego w modelu o (dx, dz) — gdy przesuwa się początek układu (lewa / tylna ściana).
+// Przeszkody przyczepione do przesuwanej ściany (lewej: x = 0, tylnej: z = 0) zostają przy niej: występ ściany
+// i okap (kominek, filar) wydłużają się (ich przód zostaje na miejscu), zwykłe przeszkody (rura) jadą ze ścianą.
 function shiftContents(project, dx, dz) {
   const move = (o) => ({ ...o, x: o.x + dx, z: o.z + dz });
+  const moveObstacle = (o) => {
+    const m = move(o);
+    if (dz && o.z <= 0.5) Object.assign(m, { z: 0 }, isWallLike(o) ? { depth: Math.max(1, o.depth + dz) } : {});
+    if (dx && o.x <= 0.5) Object.assign(m, { x: 0 }, isWallLike(o) ? { width: Math.max(1, o.width + dx) } : {});
+    return m;
+  };
   return {
     ...project,
     furniture: project.furniture.map(move),
     boards: (project.boards ?? []).map(move),
     // blat z ręcznym położeniem (x od lewej ściany) — razem z resztą
     trims: project.trims.map((t) => (typeof t.x === 'number' ? { ...t, x: t.x + dx } : t)),
-    space: { ...project.space, obstacles: project.space.obstacles.map(move) },
+    space: { ...project.space, obstacles: project.space.obstacles.map(moveObstacle) },
   };
 }
 
@@ -44,8 +52,11 @@ export function moveWall(project, wall, d) {
   if (wall === 'ceiling') return updateSpaceRefit(project, (s) => ({ ...s, height: s.height + d }));
   // rzędy korpusów od ściany do ściany wypełniają nową szerokość (refillRows)
   if (wall === 'right') {
+    // przeszkody przy prawej ścianie — zostają przy niej (występ ściany / okap szerszy, rura jedzie ze ścianą)
+    const atRight = (o) => Math.abs(o.x + o.width - W) <= 0.5;
     const changed = updateSpaceRefit(project, (s) => ({
       ...s,
+      obstacles: s.obstacles.map((o) => (!atRight(o) ? o : isWallLike(o) ? { ...o, width: Math.max(1, o.width + d) } : { ...o, x: o.x + d })),
       width: W + d,
       outline: outline && fitOutline(outline.map(([x, z]) => [Math.abs(x - W) < 0.5 ? W + d : x, z]), { ...s, width: W + d }),
     }));

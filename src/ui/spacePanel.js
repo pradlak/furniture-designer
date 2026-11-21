@@ -6,6 +6,8 @@ import {
   OBSTACLE_KINDS,
   WALL_DECORS,
   isWallObstacle,
+  isWallLike,
+  isHoodObstacle,
   DEFAULT_COLORS,
   createSlope,
   isObstacleOutside,
@@ -26,8 +28,13 @@ import {
   resizeOutline,
 } from '../model/outline.js';
 import { escapeHtml, numberField, readNumberInput, setIfNotFocused, round1, commitEmptyAsZero } from './dom.js';
+import { colorPicker, readColorInput, syncColorPicker } from './widgets.js';
 import { createCardCollapse, COLLAPSE_BUTTON, COLLAPSE_ALL_BUTTONS } from './collapsible.js';
+import { markInspectorCard } from './inspectorCard.js';
+import { obstacleSketch } from './objectSketch.js';
 import { updateSpaceRefit, refillRows, refillDepth } from '../model/layout.js';
+import { tileTargets } from '../model/tileTargets.js';
+import { wallList, wallFinishOf, setWallFinish, tilesEstimate, TILE_DEFAULTS, TILE_LAYOUTS, TILE_LIMITS } from '../model/wallFinish.js';
 
 const SPACE_FIELDS = [
   { key: 'width', label: 'Szerokość' },
@@ -59,7 +66,8 @@ export function createSpacePanel(root, store) {
   const cardCollapse = createCardCollapse(root); // zwijane karty skosów i przeszkód (jak karty korpusów)
 
   const structureKey = ({ space }) =>
-    [...space.slopes.map((s) => s.id), '#', `outline:${space.outline?.length ?? 0}`, '#', ...space.obstacles.map((o) => o.id)].join('|');
+    [...space.slopes.map((s) => s.id), '#', `outline:${space.outline?.length ?? 0}`, '#', ...space.obstacles.map((o) => o.id), '#',
+      ...wallList(space).map((w) => `${w.tag}:${wallFinishOf(space, w.tag).tiles ? 't' : ''}`), JSON.stringify(space.walls)].join('|');
 
   // Po każdej zmianie przestrzeni (wymiary, skosy) korpusy z wysokością automatyczną dopasowują się same.
   // (zmiana szerokości / głębokości — korpusy od ściany do ściany wypełniają nowe wymiary)
@@ -113,6 +121,12 @@ export function createSpacePanel(root, store) {
         <button type="button" data-action="reset-colors">Domyślne</button>
       </div>
 
+      <h3>Wykończenie ścian</h3>
+      <p class="hint">Kolor pojedynczej ściany i płytki (np. pas nad blatem) — tylko wygląd w widoku 3D. To samo: prawy klik w ścianę w 3D.</p>
+      <div class="wall-finish">
+        ${wallList(space).map((w) => renderWallFinish(space, w)).join('')}
+      </div>
+
       <h3>Skosy</h3>
       <p class="hint">Np. poddasze. Ścianka kolankowa to wysokość, na której skos zaczyna się przy ścianie.
         Długość skosu mierzymy w poziomie — od ściany do miejsca, gdzie skos spotyka sufit.</p>
@@ -164,7 +178,7 @@ export function createSpacePanel(root, store) {
           <select data-f="side" aria-label="Strona skosu">
             ${SLOPE_SIDES.map((o) => `<option value="${o.key}" ${o.key === s.side ? 'selected' : ''}>${o.label}</option>`).join('')}
           </select>
-          <button type="button" class="danger" data-remove="${s.id}" title="Usuń">✕</button>
+          <button type="button" class="danger" data-remove="${s.id}" title="Usuń skos" aria-label="Usuń skos">🗑</button>
         </div>
         <div class="card-sum" data-collapse-card title="Kliknij, aby rozwinąć"></div>
         <div class="grid-3">
@@ -205,7 +219,7 @@ export function createSpacePanel(root, store) {
     const outline = spaceOutline(space);
     const pts = outline.map(([x, z]) => `${x},${z}`).join(' ');
     const walls = space.obstacles
-      .filter(isWallObstacle)
+      .filter(isWallLike)
       .map((o) => `<rect x="${o.x}" y="${o.z}" width="${o.width}" height="${o.depth}" class="plan-wall" />`)
       .join('');
     const cabs = project.furniture
@@ -229,6 +243,36 @@ export function createSpacePanel(root, store) {
     </svg>`;
   }
 
+  function renderWallFinish(space, w) {
+    const f = wallFinishOf(space, w.tag);
+    const t = f.tiles;
+    const tf = (label, key, min, max) => `<label class="field small"><span>${label}</span><input type="number" step="1" min="${min}" max="${max}" data-wf-tile="${key}" value="${t[key]}" /></label>`;
+    return `
+      <div class="wf-item" data-wf="${w.tag}">
+        <div class="wf-head">
+          <b>${escapeHtml(w.label)}</b>
+          <label class="color-field" title="Kolor tej ściany"><input type="color" data-wf-color value="${f.color ?? space.colors.walls}" /></label>
+          <button type="button" class="icon tiny" data-wf-reset title="Kolor jak pozostałe ściany" ${f.color ? '' : 'hidden'}>↺</button>
+          <label class="check small"><input type="checkbox" data-wf-tiles ${t ? 'checked' : ''} /> płytki</label>
+        </div>
+        ${t ? `
+          <div class="grid-3">
+            ${tf('Od wysokości', 'from', 0, 20000)}
+            ${tf('Do wysokości', 'to', 0, 20000)}
+            ${tf('Fuga', 'grout', 0, TILE_LIMITS.groutMax)}
+            ${tf('Płytka — szer.', 'width', TILE_LIMITS.sizeMin, TILE_LIMITS.sizeMax)}
+            ${tf('Płytka — wys.', 'height', TILE_LIMITS.sizeMin, TILE_LIMITS.sizeMax)}
+            <div class="wf-quick">${tileTargets(store.get()).map((q) => `<button type="button" data-wf-quick="${q.key}" title="${escapeHtml(q.label)}">${q.icon} ${escapeHtml(q.label.replace(/ \(.*\)$/, ''))}</button>`).join('')}</div>
+            <label class="field small"><span>Układ</span><select data-wf-tile="layout">${TILE_LAYOUTS.map((l) => `<option value="${l.key}" ${l.key === t.layout ? 'selected' : ''}>${l.label}</option>`).join('')}</select></label>
+          </div>
+          <div class="wf-colors">
+            <label class="color-field"><input type="color" data-wf-tile="color" value="${t.color}" /><span>płytki</span></label>
+            <label class="color-field"><input type="color" data-wf-tile="groutColor" value="${t.groutColor}" /><span>fuga</span></label>
+            <small class="wf-est"></small>
+          </div>` : ''}
+      </div>`;
+  }
+
   function renderObstacle(o) {
     return `
       <div class="item obstacle" data-kind="obstacle" data-id="${o.id}">
@@ -238,9 +282,10 @@ export function createSpacePanel(root, store) {
           <select data-f="kind" class="obstacle-kind" aria-label="Rodzaj" title="Występ ściany (kominek, filar) wygląda jak ściana i dzieli przestrzeń na osobne wnęki — „Dopasuj do wnęki” i „+ Korpus” wypełniają wnękę po jednej stronie">
             ${OBSTACLE_KINDS.map((k) => `<option value="${k.key}" ${k.key === o.kind ? 'selected' : ''}>${k.label}</option>`).join('')}
           </select>
-          <button type="button" class="danger" data-remove="${o.id}" title="Usuń">✕</button>
+          <button type="button" class="danger" data-remove="${o.id}" title="Usuń przeszkodę" aria-label="Usuń przeszkodę">🗑</button>
         </div>
         <div class="card-sum" data-collapse-card title="Kliknij, aby rozwinąć"></div>
+        <div class="obj-sketch bi-sketch" title="Kliknij, aby powiększyć szkic"></div>
         <div class="grid-3">
           ${OBSTACLE_FIELDS.map((f) => numberField(f.label, f.key, o[f.key], { min: f.min, small: true })).join('')}
         </div>
@@ -250,6 +295,7 @@ export function createSpacePanel(root, store) {
             ${WALL_DECORS.map((d) => `<option value="${d.key ?? ''}" ${d.key === (o.decor ?? null) ? 'selected' : ''}>${d.label}</option>`).join('')}
           </select>
         </label>
+        ${colorPicker('Kolor (tylko wygląd w 3D)', 'color', { resetLabel: 'domyślny (jak ściany)' })}
         <p class="warning" hidden>Przeszkoda wystaje poza przestrzeń.</p>
       </div>`;
   }
@@ -275,9 +321,22 @@ export function createSpacePanel(root, store) {
         row.querySelector('[data-pt-remove]').disabled = !canRemovePoint(space, i);
       });
     }
+    // wykończenie ścian: wartości i orientacyjna ilość płytek
+    for (const w of wallList(space)) {
+      const el = root.querySelector(`.wf-item[data-wf="${w.tag}"]`);
+      if (!el) continue;
+      const f = wallFinishOf(space, w.tag);
+      setIfNotFocused(el.querySelector('[data-wf-color]'), f.color ?? space.colors.walls);
+      el.querySelector('[data-wf-reset]').hidden = !f.color;
+      if (!f.tiles) continue;
+      el.querySelectorAll('[data-wf-tile]').forEach((inp) => !inp.classList.contains('invalid') && setIfNotFocused(inp, f.tiles[inp.dataset.wfTile]));
+      const est = tilesEstimate(space, w.tag);
+      el.querySelector('.wf-est').textContent = est ? `ok. ${est.area.toFixed(2).replace('.', ',')} m² · ok. ${est.count} płytek (z 10% zapasu)` : '';
+    }
     for (const o of space.obstacles) {
       const el = itemEl('obstacle', o.id);
       if (!el) continue;
+      if (el.classList.contains('in-inspector')) el.querySelector('.obj-sketch').innerHTML = obstacleSketch(o, space); // szkic w okienku
       const outside = isObstacleOutside(o, space);
       el.querySelector('.warning').hidden = !outside;
       // Podsumowanie widoczne w zwiniętej karcie.
@@ -285,10 +344,17 @@ export function createSpacePanel(root, store) {
         `${o.width} × ${o.height} × ${o.depth} mm · od lewej ${o.x}, od podłogi ${o.y}, od tyłu ${o.z}` +
         (outside ? ' · ⚠ wystaje poza przestrzeń' : '');
       el.classList.toggle('has-issues', outside);
-      el.classList.toggle('wall-part', isWallObstacle(o));
+      el.classList.toggle('wall-part', isWallLike(o));
+      // okap: przyczepiony do sufitu — „od podłogi” wynika z wysokości
+      const yIn = el.querySelector('[data-f="y"]');
+      if (yIn) {
+        yIn.disabled = isHoodObstacle(o);
+        yIn.title = isHoodObstacle(o) ? 'Okap jest przyczepiony do sufitu — zmień jego wysokość (od sufitu w dół)' : '';
+      }
       el.querySelector('[data-f="kind"]').value = o.kind;
       el.querySelector('.obstacle-decor').hidden = !isWallObstacle(o);
       el.querySelector('[data-f="decor"]').value = o.decor ?? '';
+      syncColorPicker(el, 'color', o.color, isWallLike(o) ? space.colors.walls : '#f59e0b');
     }
     for (const s of space.slopes) {
       const el = itemEl('slope', s.id);
@@ -333,6 +399,28 @@ export function createSpacePanel(root, store) {
     }
     if (input.dataset.color) {
       updateSpace((s) => ({ ...s, colors: { ...s.colors, [input.dataset.color]: input.value } }));
+      return;
+    }
+    // wykończenie ściany: kolor, płytki
+    const wf = input.closest('[data-wf]')?.dataset.wf;
+    if (wf) {
+      const setF = (patch) => store.set((p) => ({ ...p, space: setWallFinish(p.space, wf, patch) }));
+      if (input.dataset.wfColor !== undefined) return setF({ color: input.value });
+      if (input.dataset.wfTiles !== undefined) return setF({ tiles: input.checked ? { ...TILE_DEFAULTS } : null });
+      const key = input.dataset.wfTile;
+      if (!key) return;
+      if (input.type === 'number') {
+        const v = readNumberInput(input);
+        if (v === undefined) return;
+        return setF({ tiles: { [key]: v } });
+      }
+      return setF({ tiles: { [key]: input.value } });
+    }
+    // kolor przeszkody (lista kolorów / próbnik)
+    const pickedColor = readColorInput(input);
+    if (pickedColor) {
+      const node = input.closest('[data-kind="obstacle"]');
+      if (node) updateItem('obstacle', node.dataset.id, { color: pickedColor.value });
       return;
     }
 
@@ -397,6 +485,19 @@ export function createSpacePanel(root, store) {
 
   root.addEventListener('click', (e) => {
     if (cardCollapse.handleClick(e.target)) return;
+    const wfQuick = e.target.closest?.('[data-wf-quick]');
+    if (wfQuick) {
+      const tag = wfQuick.closest('[data-wf]').dataset.wf;
+      const q = tileTargets(store.get()).find((x) => x.key === wfQuick.dataset.wfQuick);
+      if (q) store.set((p) => ({ ...p, space: setWallFinish(p.space, tag, { tiles: q.patch }) }));
+      return;
+    }
+    const wfReset = e.target.closest?.('[data-wf-reset]');
+    if (wfReset) {
+      const tag = wfReset.closest('[data-wf]').dataset.wf;
+      store.set((p) => ({ ...p, space: setWallFinish(p.space, tag, { color: null }) }));
+      return;
+    }
     const { action, addObstacle, outlinePreset, ptRemove, remove } = e.target.dataset ?? {};
     const space = store.get().space;
     if (action === 'add-slope') {
@@ -446,6 +547,11 @@ export function createSpacePanel(root, store) {
     markPicked(id) {
       root.querySelectorAll('.item.obstacle.picked').forEach((el) => el.classList.remove('picked'));
       if (id) itemEl('obstacle', id)?.classList.add('picked');
+      // zaznaczona przeszkoda — karta jako okienko po prawej
+      const card = markInspectorCard(root, '.item.obstacle', id);
+      if (card?.classList.contains('collapsed')) cardCollapse.expand(card);
+      const o = card && store.get().space.obstacles.find((x) => x.id === id);
+      if (o) card.querySelector('.obj-sketch').innerHTML = obstacleSketch(o, store.get().space);
     },
   };
 }

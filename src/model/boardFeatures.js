@@ -31,11 +31,20 @@ export const HOLE_PRESETS = [
   { key: 'tap', label: 'Otwór pod kran Ø35', name: 'kran', shape: 'circle', d: 35 },
   { key: 'sink', label: 'Zlew (wycięcie 780 × 480)', name: 'zlew', shape: 'rect', w: 780, h: 480, r: 10 },
   { key: 'hob', label: 'Płyta grzewcza (wycięcie 560 × 490)', name: 'płyta grzewcza', shape: 'rect', w: 560, h: 490, r: 5 },
+  { key: 'induction', label: 'Płyta indukcyjna (wycięcie 560 × 490, z płytą)', name: 'płyta indukcyjna', shape: 'rect', w: 560, h: 490, r: 5, fill: 'induction' },
+  { key: 'gas', label: 'Płyta gazowa (wycięcie 560 × 480, z płytą)', name: 'płyta gazowa', shape: 'rect', w: 560, h: 480, r: 5, fill: 'gas' },
   { key: 'circle', label: 'Okrągły (własny)', shape: 'circle', d: 50 },
   { key: 'rect', label: 'Prostokątny (własny)', shape: 'rect', w: 200, h: 100, r: 0 },
 ];
 
 export const HOLE_LIMITS = { min: 5, max: 3000 };
+
+// Wypełnienie otworu prostokątnego (tylko wygląd w 3D i opis): płyta grzewcza leżąca na blacie nad wycięciem.
+export const HOLE_FILLS = [
+  { key: null, label: 'puste (bez płyty)' },
+  { key: 'induction', label: 'płyta indukcyjna', name: 'płyta indukcyjna' },
+  { key: 'gas', label: 'płyta gazowa', name: 'płyta gazowa' },
+];
 
 // Położenie otworu (jak uchwytu na froncie): pos — null (własne: x, y wpisane ręcznie) albo dwie litery:
 // rząd f / c / b (przód / środek / tył) i kolumna l / c / r (lewa / środek / prawa), np. 'fl' — lewy przedni róg.
@@ -165,6 +174,7 @@ export function normalizeHoles(raw) {
               w: n(h.w, 200, HOLE_LIMITS.min),
               h: n(h.h, 100, HOLE_LIMITS.min),
               r: n(h.r, 0, 0, 500),
+              fill: HOLE_FILLS.some((f) => f.key && f.key === h.fill) ? h.fill : null,
             };
       // położenie (róg / środek krawędzi z odstępem) — tylko poprawne klucze; bez niego — własne x, y
       if (HOLE_POSITIONS.some((p) => p.key && p.key === h.pos)) Object.assign(hole, { pos: h.pos, gx: n(h.gx, 0), gy: n(h.gy, 0) });
@@ -176,7 +186,7 @@ export function normalizeHoles(raw) {
 export function createHole(presetKey, width, depth) {
   const p = HOLE_PRESETS.find((x) => x.key === presetKey) ?? HOLE_PRESETS[0];
   const base = { shape: p.shape, label: p.name ?? '', x: Math.round(width / 2), y: Math.round(depth / 2) };
-  return p.shape === 'circle' ? { ...base, d: p.d } : { ...base, w: p.w, h: p.h, r: p.r };
+  return p.shape === 'circle' ? { ...base, d: p.d } : { ...base, w: p.w, h: p.h, r: p.r, fill: p.fill ?? null };
 }
 
 // Czy otwór mieści się w płycie (z zapasem 10 mm od krawędzi).
@@ -206,7 +216,9 @@ export function describeHoles(holes, width, depth) {
   if (!holes?.length) return '';
   const list = resolveHoles(holes, width, depth).map((h) => {
     const what = h.shape === 'circle' ? `Ø${fmt(h.d)}` : `wycięcie ${fmt(h.w)} × ${fmt(h.h)}${h.r ? ` R${fmt(h.r)}` : ''}`;
-    return `${h.label ? `${h.label}: ` : ''}${what} (x ${fmt(h.x)}; y ${fmt(h.y)})`;
+    const fillName = HOLE_FILLS.find((f) => f.key === h.fill)?.name;
+    const fill = fillName && fillName !== h.label ? ` — ${fillName}` : ''; // (bez powtórzenia, gdy nazwa otworu to już nazwa płyty)
+    return `${h.label ? `${h.label}: ` : ''}${what}${fill} (x ${fmt(h.x)}; y ${fmt(h.y)})`;
   });
   return `otwory: ${list.join(', ')} — środek w mm od lewej i od przedniej krawędzi, patrząc z góry`;
 }

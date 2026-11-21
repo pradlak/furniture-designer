@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { MM } from './units.js';
 import { edgeInset, profileBreaks } from '../model/boardFeatures.js';
+import { buildHob } from './hob.js';
 
 // Płyta pozioma (blat, półka) z otworami i frezami krawędzi — do widoku 3D.
 // Otwory są naprawdę wycięte: kształt płyty (z góry) z dziurami „wyciągnięty” na grubość.
@@ -42,9 +43,24 @@ export function buildSlab(box, { edges, holes = [], material, edgeMaterial, spac
     group.add(new THREE.Mesh(geometry, material));
   }
   if (edgeMaterial) group.add(slabEdges(box, edges, holes, edgeMaterial, space));
+  // niewidoczne „tafle” w otworach na wysokości wierzchu — klik w środek pustego otworu trafia w płytę
+  // (zaznaczenie / przeciąganie otworu; scene/interaction.js — holeAt), a nie w to, co jest pod blatem
+  holes.forEach((hole, index) => {
+    const geometry = new THREE.ShapeGeometry(new THREE.Shape(holePath(hole).getPoints(32)));
+    geometry.rotateX(-Math.PI / 2);
+    geometry.scale(MM, MM, MM);
+    geometry.translate(box.x * MM, (box.y + t - 0.5) * MM, (box.z + D - space.depth) * MM);
+    const pick = new THREE.Mesh(geometry, HOLE_PICK_MATERIAL);
+    pick.userData.holePick = index;
+    group.add(pick);
+  });
+  // płyta indukcyjna / gazowa w otworze
+  for (const hole of holes) if (hole.fill) group.add(buildHob(box, hole, space));
   if (pickedHole != null && holes[pickedHole]) group.add(holeHighlight(box, holes[pickedHole], pickedColor, space));
   return group;
 }
+
+const HOLE_PICK_MATERIAL = new THREE.MeshBasicMaterial({ visible: false, side: THREE.DoubleSide });
 
 // Zaznaczony otwór: półprzezroczysta „tafla” w otworze tuż pod wierzchem płyty i obrys na wierzchu i spodzie
 // w kolorze zaznaczenia — widać, który otwór jest wybrany (płyta zostaje w swoim kolorze).

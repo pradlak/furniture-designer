@@ -68,12 +68,12 @@ export function buildPartDimensions(parts, space) {
   const off = (dx, dy, dz) => p(dx, dy, dz).sub(p(0, 0, 0));
   const add = (a, b, o, text) => group.add(createDimension(a, b, o, text, 'accent'));
   const named = parts.length > 1;
-  for (const { box, name, round } of parts) {
+  for (const { box, name, round, slab } of parts) {
     const { x, y, z, width: W, height: H, depth: D } = box;
     const front = z + D;
     const top = y + H;
     const prefix = named ? `${name}: ` : '';
-    add(p(x, y, front), p(x, top, front), off(0, 0, NEAR), `${prefix}wys. ${fmt(H)}`);
+    add(p(x, y, front), p(x, top, front), off(0, 0, NEAR), `${prefix}${slab ? "gr." : "wys."} ${fmt(H)}`); // (płyta pozioma — grubość)
     if (round) {
       // element okrągły (nóżka) — sama średnica, pod spodem przed elementem
       add(p(x, y, front), p(x + W, y, front), off(0, 0, NEAR / 2), `${prefix}Ø ${fmt(W)}`);
@@ -108,3 +108,24 @@ export function buildTotalDimensions(boxes, space) {
 
 // w jednostkach z ustawień programu (mm / cm / m)
 const fmt = (v) => formatLength(v);
+
+// Odległości w pionie zaznaczonej płyty (półki, blatu samodzielnego): od podłogi, do sufitu i — gdy pod nią jest
+// blat (na szafkach albo samodzielny) albo wierzch korpusu — od niego. Linie przy prawym końcu płyty, wysunięte
+// przed nią. box — płyta (mm), below — [{ top, label }] (wierzchy rzeczy pod płytą, nachodzących na nią w X).
+export function buildClearanceDimensions(box, space, below = []) {
+  const group = new THREE.Group();
+  const p = (px, py, pz) => new THREE.Vector3(...toScene(px, py, pz, space));
+  const off = (dx, dy, dz) => p(dx, dy, dz).sub(p(0, 0, 0));
+  const x = box.x + box.width;
+  // przed płytą i przed wszystkim, co jest pod nią (np. korpus głębszy niż półka) — linie nie chowają się za meblem
+  const z = Math.max(box.z + box.depth, ...below.map((b) => b.front ?? 0));
+  const add = (y0, y1, o, text) => y1 - y0 >= 1 && group.add(createDimension(p(x, y0, z), p(x, y1, z), o, text, 'accent'));
+  const bottom = box.y;
+  const top = box.y + box.height;
+  // najbliższy blat / wierzch pod płytą
+  const under = below.filter((b) => b.top <= bottom + 0.5).sort((a, b) => b.top - a.top)[0];
+  if (under) add(under.top, bottom, off(0, 0, NEAR), `od ${under.label} ${fmt(bottom - under.top)}`);
+  add(0, bottom, off(0, 0, under ? FAR : NEAR), `od podłogi ${fmt(bottom)}`);
+  add(top, space.height, off(0, 0, NEAR), `do sufitu ${fmt(space.height - top)}`);
+  return group;
+}

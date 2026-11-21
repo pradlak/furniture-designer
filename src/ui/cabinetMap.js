@@ -1,6 +1,6 @@
 import { escapeHtml } from './dom.js';
 import { legHeight, cabinetIssues, cabinetPanels } from '../model/furniture.js';
-import { isWallObstacle } from '../model/space.js';
+import { isWallLike } from '../model/space.js';
 import { trimBox } from '../model/trims.js';
 import { getSettings } from '../state/settings.js';
 
@@ -19,7 +19,7 @@ export function cabinetMapSvg(project, selectedIds, selectedParts = new Set()) {
   const parts = [];
 
   parts.push(`<rect x="0" y="0" width="${W}" height="${H}" class="map-space" />`);
-  for (const o of space.obstacles.filter(isWallObstacle)) {
+  for (const o of space.obstacles.filter(isWallLike)) {
     parts.push(`<rect x="${o.x}" y="${Y(o.y + o.height)}" width="${o.width}" height="${o.height}" class="map-wall"><title>${escapeHtml(o.name || 'Występ ściany')}</title></rect>`);
   }
   for (const t of (project.trims ?? []).filter((t) => t.type === 'countertop' && !t.hidden)) {
@@ -63,7 +63,7 @@ function frontsSvg(c, project, selectedParts, Y, highlight) {
     if (!p.valid || p.hidden || !(p.key.startsWith('front-') || p.key.startsWith('idrawer-'))) continue;
     const picked = selectedParts.has(`${c.id}:${p.key}`);
     const cls = p.key.startsWith('idrawer-') ? 'map-front map-inner' : 'map-front';
-    parts.push(`<rect x="${p.x}" y="${Y(p.y + p.height)}" width="${p.width}" height="${p.height}" class="${cls}${picked ? ' picked' : ''}" ${picked ? `style="fill:${highlight}"` : ''} />`);
+    parts.push(`<rect x="${p.x}" y="${Y(p.y + p.height)}" width="${p.width}" height="${p.height}" class="${cls}${picked ? ' picked' : ''}" data-map-front="${c.id}:${p.key}" ${picked ? `style="fill:${highlight}"` : ''}><title>${escapeHtml(p.name ?? '')}</title></rect>`);
     if (p.opening?.drawer && !p.key.startsWith('idrawer-')) {
       const cy = Y(p.y + p.height / 2);
       parts.push(`<line x1="${p.x + p.width * 0.4}" y1="${cy}" x2="${p.x + p.width * 0.6}" y2="${cy}" class="map-front-handle" />`);

@@ -7,6 +7,7 @@
 //   z — od tylnej ściany do przodu (0..depth)
 
 import { distanceOutside, normalizeOutline, outlineFromCuts, cutCorner } from './outline.js';
+import { normalizeWallFinish } from './wallFinish.js';
 
 export const WALLS = [
   { key: 'floor', label: 'Podłoga' },
@@ -52,8 +53,19 @@ export function createDefaultSpace() {
 export const OBSTACLE_KINDS = [
   { key: 'obstacle', label: 'Przeszkoda' },
   { key: 'wall', label: 'Występ ściany' },
+  { key: 'hood', label: 'Wypust od sufitu (okap)' },
 ];
 export const isWallObstacle = (o) => o?.kind === 'wall';
+// Wypust od sufitu (okap, obudowa okapu, podciąg): przyczepiony do sufitu, opuszczony do wysokości przestrzeń − height.
+// Wygląda jak ściana; dzieli przestrzeń na wnęki tylko dla mebli na jego wysokości (szafki wiszące, półki obok okapu),
+// a meble pod nim (szafki dolne) mają wysokość najwyżej do jego dołu.
+export const isHoodObstacle = (o) => o?.kind === 'hood';
+export const isWallLike = (o) => isWallObstacle(o) || isHoodObstacle(o);
+// Wypusty od sufitu zawsze przy suficie (także po zmianie wysokości przestrzeni).
+export function anchorHoods(space) {
+  if (!space.obstacles.some(isHoodObstacle)) return space;
+  return { ...space, obstacles: space.obstacles.map((o) => (isHoodObstacle(o) ? { ...o, y: space.height - o.height } : o)) };
+}
 
 // Wygląd występu ściany (tylko widok 3D — nie wpływa na formatki, kolizje ani obrzeże): na przedniej ścianie
 // występu rysujemy kominek, wkład kominkowy albo telewizor (scene/wallDecor.js).
@@ -100,6 +112,25 @@ export const OBSTACLE_PRESETS = [
       createObstacle({ name: 'Rura', x: 50, y: 0, z: 0, width: 40, height: space.height, depth: 40 }),
   },
   {
+    // okap (obudowa komina okapu) — od sufitu w dół, na środku tylnej ściany; po bokach półki / szafki wiszące
+    key: 'hood',
+    label: 'Okap / wypust od sufitu',
+    create: (space) => {
+      const width = Math.min(600, Math.round(space.width / 3));
+      const height = Math.min(800, Math.round(space.height / 3));
+      return createObstacle({
+        kind: 'hood',
+        name: 'Okap',
+        x: Math.round((space.width - width) / 2),
+        y: space.height - height,
+        z: 0,
+        width,
+        height,
+        depth: Math.min(500, space.depth),
+      });
+    },
+  },
+  {
     // na środku tylnej ściany, od podłogi do sufitu, wystaje na całą głębokość — po bokach dwie wnęki
     key: 'chimney',
     label: 'Kominek / występ ściany',
@@ -122,9 +153,10 @@ export const OBSTACLE_PRESETS = [
 
 // Wnęki wzdłuż szerokości przestrzeni: odcinki [od, do] (mm, oś X) między ścianami bocznymi
 // a występami ścian (np. kominkiem). Bez występów — jedna wnęka na całą szerokość.
-export function wallSegments(space) {
+// yRange — [od, do] w pionie (mm): wypusty od sufitu (okap) dzielą przestrzeń tylko, gdy na tej wysokości.
+export function wallSegments(space, yRange = null) {
   const covered = space.obstacles
-    .filter(isWallObstacle)
+    .filter((o) => isWallObstacle(o) || (isHoodObstacle(o) && yRange && o.y < yRange[1] && o.y + o.height > yRange[0]))
     .map((o) => [Math.max(0, o.x), Math.min(space.width, o.x + o.width)])
     .filter(([a, b]) => b > a)
     .sort((p, q) => p[0] - q[0]);
@@ -139,8 +171,8 @@ export function wallSegments(space) {
 }
 
 // Wnęka, w której leży punkt x (albo najbliższa, gdy x wypada na występie ściany).
-export function segmentAt(space, x) {
-  const segments = wallSegments(space);
+export function segmentAt(space, x, yRange = null) {
+  const segments = wallSegments(space, yRange);
   if (!segments.length) return [0, space.width];
   const dist = ([a, b]) => (x < a ? a - x : x > b ? x - b : 0);
   return segments.reduce((best, s) => (dist(s) < dist(best) ? s : best));
@@ -342,6 +374,7 @@ export function normalizeSpace(raw = {}) {
     colors,
     slopes: Array.isArray(raw.slopes) ? raw.slopes.map(normalizeSlope) : [],
     obstacles: Array.isArray(raw.obstacles) ? raw.obstacles.map(normalizeObstacle) : [],
+    wallFinish: normalizeWallFinish(raw.wallFinish), // kolor pojedynczych ścian i płytki (model/wallFinish.js)
   };
   // kształt podłogi; starsze zapisy — skośne ściany jako ścięcia narożników
   space.outline = Array.isArray(raw.outline)
@@ -349,7 +382,7 @@ export function normalizeSpace(raw = {}) {
     : Array.isArray(raw.cuts) && raw.cuts.length
       ? outlineFromCuts(raw.cuts, space)
       : null;
-  return space;
+  return anchorHoods(space);
 }
 
 function normalizeSlope(raw = {}) {
@@ -366,8 +399,10 @@ function normalizeObstacle(raw = {}) {
   const def = createObstacle();
   return {
     id: typeof raw.id === 'string' && raw.id ? raw.id : def.id,
-    kind: raw.kind === 'wall' ? 'wall' : 'obstacle',
+    kind: raw.kind === 'wall' || raw.kind === 'hood' ? raw.kind : 'obstacle',
     decor: WALL_DECORS.some((d) => d.key && d.key === raw.decor) ? raw.decor : null,
+    // własny kolor (tylko wygląd w 3D): { hex, name } albo null — występ / okap jak ściany, przeszkoda pomarańczowa
+    color: raw.color && isHexColor(raw.color.hex) ? { hex: raw.color.hex, name: typeof raw.color.name === 'string' ? raw.color.name : raw.color.hex } : null,
     name: typeof raw.name === 'string' ? raw.name : def.name,
     x: num(raw.x, 0, -LIMITS.spaceMax, LIMITS.spaceMax),
     y: num(raw.y, 0, -LIMITS.spaceMax, LIMITS.spaceMax),
