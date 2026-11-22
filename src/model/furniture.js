@@ -1,4 +1,5 @@
 import { LIMITS, isPointInside, describeOutside, slopePlanes, DEFAULT_SLOPE_GAP, DEFAULT_CEILING_GAP, segmentAt } from './space.js';
+import { normalizeDrawerSystem } from './drawerSystems.js';
 import { freeWidth, backLimit, frontLimit, outlineEdges, edgeOutward, straightenSlantedSides, isSideWallNormal } from './outline.js';
 import { FRONT_DECORS, DECOR_LIMITS, DECOR_GAP_LIMITS, describeDecor } from './decor.js';
 import { cabinetMaterials, trimMaterial, normalizeColor, withColor } from './materials.js';
@@ -393,7 +394,14 @@ export function doorSpan(door, parts) {
 function normalizeParts(raw) {
   const parts = (Array.isArray(raw?.parts) ? raw.parts : [])
     .slice(0, PART_LIMITS.parts)
-    .map((p) => ({ id: typeof p?.id === 'string' && p.id ? p.id : newId(), type: p?.type === 'drawer' || p?.type === 'innerDrawer' ? p.type : 'space', height: partHeight(p?.height) }));
+    .map((p) => {
+      const type = p?.type === 'drawer' || p?.type === 'innerDrawer' ? p.type : 'space';
+      const part = { id: typeof p?.id === 'string' && p.id ? p.id : newId(), type, height: partHeight(p?.height) };
+      // system szuflady (metalowe boki, docinane dno i plecy) — model/drawerSystems.js
+      const system = type !== 'space' ? normalizeDrawerSystem(p?.system) : null;
+      if (system) part.system = system;
+      return part;
+    });
   const used = new Set();
   const doors = [];
   for (const d of (Array.isArray(raw?.doors) ? raw.doors : []).slice(0, PART_LIMITS.doors)) {
@@ -469,17 +477,19 @@ export function setFrontParts(cabinet, state, project) {
 // Zakresy części [od, do] (mm) w obrębie frontów [y0, y1] ze szczeliną gv między częściami.
 // Gdy wpisane wysokości się nie mieszczą, części są zmniejszone proporcjonalnie, żeby nie wychodziły poza korpus;
 // o ile za dużo — ranges.overflow (mm, do ostrzeżenia).
-export function partRanges(parts, y0, y1, gv) {
-  const avail = Math.max(0, y1 - y0 - (parts.length - 1) * gv);
+// extra[i] — dodatkowe miejsce nad częścią i (np. odstęp na palce nad szufladą wewnętrzną) — nie wlicza się do jej wysokości
+export function partRanges(parts, y0, y1, gv, extra = []) {
+  const extraSum = parts.reduce((a, _, i) => a + (i < parts.length - 1 ? extra[i] ?? 0 : 0), 0);
+  const avail = Math.max(0, y1 - y0 - (parts.length - 1) * gv - extraSum);
   const fixed = parts.filter((p) => p.height != null).reduce((a, p) => a + p.height, 0);
   const autos = parts.filter((p) => p.height == null).length;
   const scale = fixed > avail && fixed > 0 ? avail / fixed : 1;
   const autoH = autos ? Math.max(0, (avail - fixed * scale) / autos) : 0;
   let cur = y0;
-  const ranges = parts.map((p) => {
+  const ranges = parts.map((p, i) => {
     const h = p.height != null ? p.height * scale : autoH;
     const r = [cur, cur + h];
-    cur += h + gv;
+    cur += h + gv + (extra[i] ?? 0);
     return r;
   });
   ranges.overflow = Math.max(0, fixed - avail);
@@ -1416,7 +1426,16 @@ export function cabinetPanels(cabinet, project) {
       frontDefs.push({ key, name, thicknessAxis: 'z', milling: hasMilling ? milling : null, opening, handleSpec, ...meta });
     };
     // Części wnętrza od dołu — zakresy wysokości; drzwi od dolnej krawędzi najniższej do górnej najwyższej przykrytej.
-    const ranges = partRanges(fp.parts, y0, y1, gv);
+    // odstęp na palce nad szufladą wewnętrzną (czoło bez uchwytu), gdy bezpośrednio nad nią jest inna szuflada —
+    // dodatkowe miejsce nad czołem (wysokość szuflady = pełna wysokość czoła)
+    const gripGapMm = fr.innerGrip === 'groove' ? 0 : Number.isFinite(fr.innerGripGap) ? fr.innerGripGap : 30;
+    const coveredIds = new Set(fp.doors.flatMap((d) => d.covers));
+    const isInnerPart = (p) => p && (p.type === 'innerDrawer' || (p.type === 'drawer' && coveredIds.has(p.id)));
+    const isDrawerPart = (p) => p && (p.type === 'drawer' || p.type === 'innerDrawer');
+    const gripExtra = fp.parts.map((p, i) => (gripGapMm && isInnerPart(p) && isDrawerPart(fp.parts[i + 1]) ? gripGapMm : 0));
+    // najniższa część to szuflada wewnętrzna — liczona od wieńca dolnego (czoło stoi na nim; wysokość = pełne czoło)
+    const yStart = isInnerPart(fp.parts[0]) ? Math.max(y0, L + tB + INTERNAL_DRAWER.bottomGap) : y0;
+    const ranges = partRanges(fp.parts, yStart, y1, gv, gripExtra);
     partRangesOut = ranges.map(([a, b]) => [a - L, b - L]);
     frontOverflowOut = ranges.overflow;
     frontAreaOut = [y0 - L, y1 - L];
@@ -1452,15 +1471,22 @@ export function cabinetPanels(cabinet, project) {
     // czoła szuflad przykrytych drzwiami (między bokami, za drzwiami); najniższe stoją na wieńcu dolnym
     const tb = mats.body.thickness;
     const floor = L + tB + INTERNAL_DRAWER.bottomGap;
+    const grip = fr.innerGrip === 'groove' ? 'groove' : 'gap';
+    const gripGap = Number.isFinite(fr.innerGripGap) ? fr.innerGripGap : 30;
     slots.inner.forEach((slot, n) => {
       const [py0, py1] = ranges[slot.index];
       const yy = Math.max(py0, floor);
+      // nad szufladą jest inna szuflada — bez frezu uchwytowego czoło niższe o odstęp na palce (żeby ją chwycić od góry)
+      const above = fp.parts[slot.index + 1];
+      const drawerAbove = above && (above.type === 'drawer' || above.type === 'innerDrawer');
+      const lower = grip === 'gap' && drawerAbove ? gripGap : 0; // (odstęp nad czołem — w zakresach części)
       const h = py1 - yy;
       if (h <= 0) return;
       const key = `idrawer-${n}`;
       const sp = fr.innerSpacers ? INNER_SPACER : 0; // dystanse pod prowadnice — czoło węższe
       base[key] = [tL + INTERNAL_DRAWER.sideGap + sp, yy, D - INTERNAL_DRAWER.setback - tb, W - tL - tR - 2 * (INTERNAL_DRAWER.sideGap + sp), h, tb];
-      internalDefs.push({ key, name: `Czoło szuflady wewnętrznej ${n + 1}`, thicknessAxis: 'z', milling: null, opening: { drawer: true }, handleSpec: null, part: slot.index, door: slot.door });
+      const gripMilling = grip === 'groove' ? { groove: 'yMax', decor: 'none' } : null; // frez uchwytowy w górnej krawędzi
+      internalDefs.push({ key, name: `Czoło szuflady wewnętrznej ${n + 1}`, thicknessAxis: 'z', milling: gripMilling, opening: { drawer: true }, handleSpec: null, part: slot.index, door: slot.door, gripGap: lower });
       if (slot.door != null) hingeBands.push({ door: slot.door, range: [cabinet.y + yy - HINGE_DRAWER_CLEAR, cabinet.y + yy + h + HINGE_DRAWER_CLEAR] });
     });
     frontDefs.push(...internalDefs);
@@ -2042,6 +2068,10 @@ export function normalizeCabinet(raw = {}) {
       decorGap: num(raw.fronts?.decorGap, 20, DECOR_GAP_LIMITS.min, DECOR_GAP_LIMITS.max),
       hidden: raw.fronts?.hidden === true, // fronty tego korpusu ukryte w widoku 3D
       innerSpacers: raw.fronts?.innerSpacers === true, // dystanse pod prowadnice szuflad wewnętrznych
+      // uchwyt szuflady wewnętrznej (czoło bez uchwytu): 'gap' — odstęp na palce nad czołem, gdy nad nią jest inna
+      // szuflada (innerGripGap mm); 'groove' — frez uchwytowy w górnej krawędzi czoła (bez odstępu)
+      innerGrip: raw.fronts?.innerGrip === 'groove' ? 'groove' : 'gap',
+      innerGripGap: Number.isFinite(Number(raw.fronts?.innerGripGap)) ? Math.min(100, Math.max(0, Math.round(Number(raw.fronts.innerGripGap)))) : 30,
       ...frontParts({ ...raw.fronts, gapV: num(raw.fronts?.gapV, DEFAULT_FRONT_GAP_V, 0, FRONT_LIMITS.gapMax) }), // parts, doors
       bottomDrawers: (() => {
         const rb = raw.fronts?.bottomDrawers ?? {};

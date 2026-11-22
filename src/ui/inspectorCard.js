@@ -40,5 +40,6 @@ export function initInspectorBox(viewport, onClose) {
   };
   set();
   window.addEventListener('resize', set);
+  window.addEventListener('scroll', set, { passive: true });
   if (typeof ResizeObserver !== 'undefined') new ResizeObserver(set).observe(viewport);
 }

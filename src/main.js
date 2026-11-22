@@ -1,3 +1,4 @@
+import { scrollIntoPanel } from './ui/dom.js';
 import './style.css';
 import { createStore } from './state/store.js';
 import { createDefaultProject, loadProject, saveProject, normalizeProject } from './model/project.js';
@@ -33,6 +34,13 @@ import { initSpinFromPlaceholder } from './ui/spinFromPlaceholder.js';
 import { initInspectorBox } from './ui/inspectorCard.js';
 import { initPanelCollapse } from './ui/panelCollapse.js';
 import { initAddMenu } from './ui/addMenu.js';
+import { initWindowsMenu } from './ui/windowsMenu.js';
+import { initMapWindow } from './ui/mapWindow.js';
+import { initMiniCabinet } from './scene/miniCabinet.js';
+import { createDecorInspector } from './ui/decorInspector.js';
+import { createDrawerWindow } from './ui/drawerWindow.js';
+import { createDecoration } from './model/decorations.js';
+import { createDecorAddWindow } from './ui/decorAddWindow.js';
 import { initSketchZoom } from './ui/sketchZoom.js';
 
 // Działania w polach liczbowych (np. 1100-70 → 1030).
@@ -54,9 +62,44 @@ initInspectorBox(document.getElementById('viewport'), () =>
   ui.set({ ...ui.get(), selectedId: null, selectedIds: [], selectedFronts: [], selectedBlends: [], selectedHole: null, selectedObstacle: null }),
 ); // okienko karty zaznaczonego obiektu po prawej (✕ — odznacza obiekt)
 initSketchZoom(); // powiększanie szkiców obiektów
+initMapWindow(document.getElementById('viewport')); // mapka zabudowy — okienko w lewym górnym rogu
+initMiniCabinet(store, ui); // mini-podgląd 3D zaznaczonego korpusu pod mapką — klik zaznacza płytę
+createDecorInspector(document.getElementById('viewport'), store, ui); // okienko dekoracji (lampa, kwiatek, okno…)
+createDrawerWindow(store, ui); // okienko jednej zaznaczonej szuflady (mini-podgląd 3D, ustawienia)
+// okienko „Dekoracje”: wybór i dodawanie (nowa — w sensownym miejscu, od razu zaznaczona — jej ustawienia po prawej)
+const decorAdd = createDecorAddWindow(document.getElementById('decor-add-panel'), {
+  onAdd: (type) => {
+    const d = createDecoration(store.get(), type, { onCabinetId: ui.get().selectedId });
+    store.set((p) => ({ ...p, decorations: [...(p.decorations ?? []), d] }));
+    ui.set({ ...ui.get(), selectedId: null, selectedIds: [], selectedFronts: [], selectedBlends: [`decor:${d.id}`], selectedHole: null, selectedObstacle: null, spaceOpen: false, panelWin: null });
+  },
+});
+ui.subscribe((st) => decorAdd.setOpen(st.panelWin === 'decor'));
+document.addEventListener('click', (e) => {
+  if (e.target.closest?.('[data-side-close]')) ui.set({ ...ui.get(), sideBlendsFor: null }); // ✕ okienka blend bocznych
+});
 const tabs = initTabs(document.getElementById('tabs'));
 const panelCollapse = initPanelCollapse(document.querySelector('.panel'), tabs); // zwijany lewy panel (pasek ikonek)
 const spacePanel = createSpacePanel(document.getElementById('space-panel'), store);
+// Przestrzeń — okienko po prawej: przycisk 🏠 na pasku zakładek (przełącza), klik w podłogę / ścianę, menu w 3D
+// Okienko materiałów / notatek (przyciski na górnym pasku): otwarcie odznacza obiekty i zamyka przestrzeń.
+function openPanelWin(name) {
+  const st = ui.get();
+  ui.set(name ? { ...st, selectedId: null, selectedIds: [], selectedFronts: [], selectedBlends: [], selectedHole: null, selectedObstacle: null, spaceOpen: false, panelWin: name } : { ...st, panelWin: null });
+}
+document.addEventListener('click', (e) => {
+  const open = e.target.closest?.('[data-win-open]')?.dataset.winOpen;
+  if (open) openPanelWin(ui.get().panelWin === open ? null : open);
+  else if (e.target.closest?.('[data-win-close]')) openPanelWin(null);
+});
+function openSpace(open = true) {
+  const st = ui.get();
+  ui.set(open ? { ...st, selectedId: null, selectedIds: [], selectedFronts: [], selectedBlends: [], selectedHole: null, selectedObstacle: null, spaceOpen: true, panelWin: null } : { ...st, spaceOpen: false });
+}
+document.querySelector('[data-open-space]')?.addEventListener('click', () => openSpace(!ui.get().spaceOpen));
+document.getElementById('space-panel').addEventListener('click', (e) => {
+  if (e.target.closest('[data-space-close]')) openSpace(false);
+});
 // klik w krótką kartę przeszkody (poza polami) — zaznacza ją (karta pokazuje się po prawej)
 document.getElementById('space-panel').addEventListener('pointerdown', (e) => {
   const card = e.target.closest('.item.obstacle');
@@ -67,14 +110,10 @@ const trimsPanel = createTrimsPanel(document.getElementById('trims-panel'), stor
 // Zakładka „Blaty i półki”: blaty na szafkach (ten sam panel, inne elementy) i samodzielne blaty i półki.
 const worktopsPanel = createTrimsPanel(document.getElementById('worktop-trims-panel'), store, ui, { mode: 'worktops' });
 const furniturePanel = createFurniturePanel(document.getElementById('furniture-panel'), store, ui, tabs, {
-  onShowWorktop: (trimId) => {
-    tabs.activate('worktops-panel');
-    worktopsPanel.revealTrim(trimId);
-  },
-  onShowTrims: (cabinetId) => {
-    tabs.activate('trims-panel');
-    trimsPanel.reveal(cabinetId);
-  },
+  // „Blat →” — okienko blatu; „Blendy →” — okienko blend bocznych obok okienka korpusu (przełącza)
+  onShowWorktop: (trimId) =>
+    ui.set({ ...ui.get(), selectedId: null, selectedIds: [], selectedFronts: [], selectedBlends: [`trim:${trimId}`], selectedHole: null, selectedObstacle: null }),
+  onShowTrims: (cabinetId) => ui.set({ ...ui.get(), sideBlendsFor: ui.get().sideBlendsFor === cabinetId ? null : cabinetId }),
 });
 const materialsPanel = createMaterialsPanel(document.getElementById('materials-panel'), store);
 // Samodzielne blaty i półki (z frezami i otworami) — w zakładce „Blaty i półki”, pod blatami na szafkach.
@@ -86,8 +125,8 @@ createBoardInspector(document.getElementById('viewport'), store, ui, {
     boardsPanel.reveal(id);
   },
 });
-// Notatki projektu — zakładka „Notatki” (na przycisku zakładki liczba niezrobionych).
-const notesTab = document.querySelector('[data-tab="notes-panel"]');
+// Notatki projektu — okienko „Notatki” (na przycisku na górnym pasku liczba niezrobionych).
+const notesTab = { set textContent(t) { document.querySelectorAll('[data-win-open="notes"]').forEach((b) => (b.textContent = `📝 ${t}`)); } };
 const notesPanel = createNotesPanel(document.getElementById('notes-panel'), store, {
   onShowCabinet: (id) => {
     tabs.activate('furniture-panel');
@@ -152,7 +191,12 @@ const toolbar = createToolbar(document.getElementById('toolbar'), store, viewer,
   onFeedback: () => feedback.open(),
   onSettings: () => settingsDialog.open(),
 });
-initAddMenu(document.getElementById('toolbar')); // „+ Dodaj ▾” — korpus, półka, blat, blendy, przeszkody
+initAddMenu(document.getElementById('toolbar'), {
+  // dekoracje (tylko wygląd): nowa — w sensownym miejscu, od razu zaznaczona (okienko po prawej)
+  // dekoracje — osobne okienko po prawej (kategoria, wyszukiwarka, dekoracja, podgląd 3D)
+  extra: [{ title: '', items: [{ label: '🎨 Dekoracje (tylko wygląd)…', run: () => openPanelWin('decor') }] }],
+}); // „+ Dodaj ▾” — korpus, półka, blat, blendy, przeszkody, dekoracje
+initWindowsMenu(document.getElementById('toolbar'), store, ui, { openSpace: (open) => openSpace(open) }); // „🏠 Przestrzeń”, „🗄️ Korpusy ▾”
 
 // --- Konto (logowanie przez Google) i projekty w chmurze ---
 // Zmiana projektu z innego urządzenia: pytamy, którą wersję zostawić.
@@ -180,8 +224,8 @@ materialsPanel.setAccount(account); // materiały zapisane na koncie
 createUserMenu(document.querySelector('.user-slot'), account, {
   onProjects: () => projectsDialog.open(),
   onMaterials: () => {
-    tabs.activate('materials-panel');
-    document.querySelector('#materials-panel .material-library')?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    openPanelWin('materials');
+    scrollIntoPanel(document.querySelector('#materials-panel .material-library'), { block: 'start', behavior: 'smooth' });
   },
   onLogout: () => account.logout().catch((err) => alert(err.message)),
 });
@@ -241,10 +285,7 @@ account.refresh().then(async () => {
 });
 attachCabinetInteraction(viewer, store, ui, {
   // kształt ścian z menu w 3D: zakładka „Przestrzeń” (z uchwytami kształtu ścian)
-  showSpace: () => {
-    tabs.activate('space-panel');
-    panelCollapse.expand(); // ustawienia przestrzeni — wysuwamy panel
-  },
+  showSpace: () => openSpace(),
 });
 initShortcuts(store, ui);
 initPanelResizer(document.getElementById('panel-resizer'), document.querySelector('.panel'));
@@ -262,8 +303,8 @@ const redraw = (refit = false) =>
     isFrontOpen,
     selectedHole: ui.get().selectedHole ?? null,
     selectedObstacle: ui.get().selectedObstacle ?? null,
-    // uchwyty kształtu ścian w 3D — gdy otwarta jest zakładka „Przestrzeń”
-    wallHandles: tabs.active() === 'space-panel' && !ui.get().selectedObstacle,
+    // uchwyty kształtu ścian w 3D — gdy otwarte jest okienko „Przestrzeń”
+    wallHandles: !!ui.get().spaceOpen && !ui.get().selectedObstacle,
   });
 tabs.onChange(() => redraw());
 onSettingsChange(() => redraw());
@@ -303,6 +344,7 @@ let lastPicked = null;
 let lastFront = null;
 let lastObstacle = null;
 function revealPicked(id) {
+  if (id.startsWith('decor:')) return; // dekoracja — okienko po prawej (ui/decorInspector.js)
   if (id.startsWith('board:')) {
     // samodzielny blat / półka → karta w zakładce „Blaty i półki”
     tabs.activate('worktops-panel');
@@ -334,7 +376,7 @@ function revealPicked(id) {
   else if (BLEND_KEYS.includes(key)) {
     tabs.activate('trims-panel');
     trimsPanel.reveal(cabinetId);
-  } else furniturePanel.revealSection(cabinetId, 'body');
+  } else furniturePanel.revealSection(cabinetId, 'parts'); // płyta korpusu — sekcja „Elementy” (ze szkicem płyty)
 }
 
 // Podświetlenie wierszy zaznaczonych półek w karcie korpusu (sekcja „Półki”).
@@ -359,13 +401,27 @@ ui.subscribe((state, meta) => {
     ui.set({ ...state, selectedObstacle: null });
     return;
   }
+  // okienko przestrzeni zamyka się przy zaznaczeniu obiektu
+  if (state.spaceOpen && (state.selectedId || state.selectedBlends?.length || state.selectedFronts?.length || state.selectedHole || state.selectedObstacle)) {
+    ui.set({ ...state, spaceOpen: false });
+    return;
+  }
+  // okienko materiałów / notatek — tak samo (zajmuje to samo miejsce po prawej)
+  if (state.panelWin && (state.selectedId || state.selectedBlends?.length || state.selectedFronts?.length || state.selectedHole || state.selectedObstacle || state.spaceOpen)) {
+    ui.set({ ...state, panelWin: null });
+    return;
+  }
+  document.querySelectorAll('.win-shell').forEach((w) => w.classList.toggle('open', w.dataset.win === state.panelWin));
+  document.querySelectorAll('[data-win-open]').forEach((b) => b.classList.toggle('active', b.dataset.winOpen === state.panelWin));
+  document.getElementById('space-panel').classList.toggle('open', !!state.spaceOpen);
+  // okienko przestrzeni zamknięte — jego grupy (okienka obok) też
+  // (poza zaznaczonym okapem / przeszkodą — jej karta jest w grupie „Przeszkody”)
+  if (!state.spaceOpen && !state.selectedObstacle) document.querySelectorAll('#space-panel > details.panel-sec[open]').forEach((d) => (d.open = false));
+  document.querySelector('.tabs-space')?.classList.toggle('active', !!state.spaceOpen);
   redraw();
   // zaznaczony występ ściany — jego karta w zakładce „Przestrzeń”
   const obstacle = state.selectedObstacle ?? null;
-  if (obstacle && meta?.revealObstacle) {
-    tabs.activate('space-panel');
-    spacePanel.reveal(obstacle);
-  }
+  if (obstacle && meta?.revealObstacle) spacePanel.reveal(obstacle);
   spacePanel.markPicked(obstacle);
   lastObstacle = obstacle;
   furniturePanel.syncSelection(meta);

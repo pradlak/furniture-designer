@@ -1,10 +1,10 @@
 import * as THREE from 'three';
 import { MM, toScene } from './units.js';
 import { createDimension } from './dimensions.js';
-import { buildWallDecor } from './wallDecor.js';
+import { buildWallDecor, buildHoodDecor } from './wallDecor.js';
 import { formatLength, getSettings } from '../state/settings.js';
 import { boxPolyhedron, clipPolyhedron, facesToPositions, facesToEdgePositions, prismPolyhedron, clipPolygon, orientedFace } from './polyhedron.js';
-import { isObstacleOutside, isWallObstacle, isWallLike, slopePlanes, wallSegments } from '../model/space.js';
+import { isObstacleOutside, isWallObstacle, isWallLike, isHoodObstacle, slopePlanes, wallSegments } from '../model/space.js';
 import { spaceOutline, outlineEdges, edgeLength, edgeOutward } from '../model/outline.js';
 
 // Materiały przeszkód są stałe i współdzielone między przebudowami sceny.
@@ -100,6 +100,9 @@ export function buildSpace(space, view = { showWalls: true }, { selectedObstacle
     if (isWallObstacle(o)) {
       const decor = buildWallDecor(o, space);
       if (decor) group.add(decor);
+    } else if (isHoodObstacle(o)) {
+      const hood = buildHoodDecor(o, space); // okap (urządzenie) pod zabudową
+      if (hood) group.add(hood);
     }
   }
 

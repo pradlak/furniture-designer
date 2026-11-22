@@ -8,7 +8,7 @@ import { COLLAPSE_BUTTON, COLLAPSE_ALL_BUTTONS, createCardCollapse } from './col
 import { GOOGLE_ICON } from './projectsDialog.js';
 import { listAccountMaterials, createAccountMaterial, updateAccountMaterial, deleteAccountMaterial } from '../state/account.js';
 import { normalizeMaterials } from '../model/materials.js';
-import { escapeHtml, readNumberInput, setIfNotFocused, commitEmptyAsZero } from './dom.js';
+import { escapeHtml, readNumberInput, setIfNotFocused, commitEmptyAsZero, scrollIntoPanel } from './dom.js';
 
 // Zakładka „Materiały”: biblioteka płyt projektu. Zmiana grubości materiału od razu przebudowuje
 // wszystkie korpusy i blendy, które go używają.
@@ -312,7 +312,7 @@ export function createMaterialsPanel(root, store) {
       // kopia materiału z konta w projekcie (z własnym identyfikatorem w projekcie)
       const [material] = normalizeMaterials([{ ...item.data, id: createMaterial().id, cloudId }]);
       store.set((p) => ({ ...p, materials: [...p.materials, material] }));
-      root.querySelector('.items > .material:last-child')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      scrollIntoPanel(root.querySelector('.items > .material:last-child'), { block: 'nearest', behavior: 'smooth' });
     } else if (action === 'delete') {
       if (!confirm(`Usunąć „${item.data.name}” z konta? Materiały w projektach zostaną bez zmian.`)) return;
       try {
@@ -336,7 +336,7 @@ export function createMaterialsPanel(root, store) {
       box.innerHTML = `<h3>Moje materiały na koncie</h3>
         <p class="hint">Po zalogowaniu zapiszesz tu swoje płyty — z kolorem, grubością i obrzeżem — i wstawisz je
           w kolejnych projektach, na każdym urządzeniu. Konto znajdziesz też pod ikonką w prawym górnym rogu.</p>
-        <a class="google-login library-login" href="${account.loginUrl}">${GOOGLE_ICON}<span>Zaloguj przez Google</span></a>`;
+        <a class="google-login library-login" href="${account.loginUrl}" rel="nofollow">${GOOGLE_ICON}<span>Zaloguj przez Google</span></a>`;
       return;
     }
     const inProject = new Set(store.get().materials.map((m) => m.cloudId).filter(Boolean));

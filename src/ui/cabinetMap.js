@@ -2,11 +2,13 @@ import { escapeHtml } from './dom.js';
 import { legHeight, cabinetIssues, cabinetPanels } from '../model/furniture.js';
 import { isWallLike } from '../model/space.js';
 import { trimBox } from '../model/trims.js';
+import { boardBox } from '../model/boards.js';
 import { getSettings } from '../state/settings.js';
 
 // Mapka zabudowy na górze zakładki „Meble”: schemat ściany z przodu (mm → SVG), korpusy jako prostokąty
 // z nazwą albo numerem, występy ścian (kominek) szare, blaty jako cienkie paski. Klik w korpus — zaznacza go
-// (jak klik w 3D) i pokazuje jego kartę; Ctrl + klik — dodaje do zaznaczenia / usuwa z niego.
+// (jak klik w 3D) i pokazuje jego kartę; Ctrl + klik — dodaje do zaznaczenia / usuwa z niego. Klik w front
+// zaznaczonego korpusu (albo dwuklik) — zaznacza ten front (szufladę, drzwi).
 // Korpus z ostrzeżeniami ma czerwoną ramkę. Rysowana na nowo przy każdej zmianie projektu i zaznaczenia.
 // selectedParts — zaznaczone elementy („idKorpusu:klucz”, np. front szuflady): na mapce wyróżnione, a ich korpus —
 // tylko obramowany (jak w 3D). Fronty (drzwi, szuflady, czoła szuflad wewnętrznych) rysowane na korpusach.
@@ -19,8 +21,10 @@ export function cabinetMapSvg(project, selectedIds, selectedParts = new Set()) {
   const parts = [];
 
   parts.push(`<rect x="0" y="0" width="${W}" height="${H}" class="map-space" />`);
-  for (const o of space.obstacles.filter(isWallLike)) {
-    parts.push(`<rect x="${o.x}" y="${Y(o.y + o.height)}" width="${o.width}" height="${o.height}" class="map-wall"><title>${escapeHtml(o.name || 'Występ ściany')}</title></rect>`);
+  const pickedObstacle = [...selectedParts].find((id) => id.startsWith('obstacle:'))?.slice(9) ?? null;
+  for (const o of space.obstacles) {
+    const cls = isWallLike(o) ? (o.kind === 'hood' ? 'map-wall map-hood' : 'map-wall') : 'map-obstacle';
+    parts.push(`<rect x="${o.x}" y="${Y(o.y + o.height)}" width="${o.width}" height="${Math.max(o.height, H * 0.01)}" class="${cls}${o.id === pickedObstacle ? ' picked' : ''}" data-map-obstacle="${o.id}" ${o.color?.hex ? `style="fill:${o.color.hex}"` : ''}><title>${escapeHtml(o.name || 'Przeszkoda')}</title></rect>`);
   }
   for (const t of (project.trims ?? []).filter((t) => t.type === 'countertop' && !t.hidden)) {
     const b = trimBox(t, project);
@@ -51,6 +55,12 @@ export function cabinetMapSvg(project, selectedIds, selectedParts = new Set()) {
         ${frontsSvg(c, project, selectedParts, Y, highlight)}
         <text x="${c.x + c.width / 2}" y="${Y(y0 + c.height / 2)}" font-size="${fs}">${escapeHtml(label)}</text>
       </g>`);
+  }
+  // samodzielne półki i blaty (widok z przodu: pas na wysokości płyty)
+  for (const b of (project.boards ?? []).filter((x) => !x.hidden)) {
+    const box = boardBox(b, project);
+    const picked = selectedParts.has(`board:${b.id}`);
+    parts.push(`<rect x="${box.x}" y="${Y(box.y + box.height)}" width="${box.width}" height="${Math.max(box.height, H * 0.012)}" class="map-board${picked ? ' picked' : ''}" data-map-board="${b.id}" ${picked ? `style="fill:${highlight}"` : ''}><title>${escapeHtml(b.name)}</title></rect>`);
   }
   return `<svg viewBox="${-pad} ${-pad} ${W + 2 * pad} ${H + 2 * pad}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Mapka zabudowy">${parts.join('')}</svg>`;
 }

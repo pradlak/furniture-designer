@@ -145,3 +145,13 @@ details p { margin: 8px 0 0; }
 
 .site-footer { border-top: 1px solid var(--border); color: var(--muted); font-size: 14px; padding: 20px 0 32px; }
 .site-footer a { color: var(--muted); }
+
+/* strony pod frazy (scripts/landing-pages.mjs): obrazek z podpisem, FAQ, dwa przyciski */
+figure { margin: 18px 0; }
+figure img { width: 100%; height: auto; border-radius: 8px; border: 1px solid rgba(0, 0, 0, 0.08); }
+figcaption { font-size: 14px; opacity: 0.75; margin-top: 6px; }
+.cta-row { display: flex; flex-wrap: wrap; gap: 10px; margin: 24px 0; }
+.cta-secondary { background: transparent !important; color: inherit !important; border: 1px solid currentColor; }
+.faq details { border: 1px solid rgba(0, 0, 0, 0.12); border-radius: 8px; padding: 10px 14px; margin: 8px 0; }
+.faq summary { cursor: pointer; font-weight: 600; }
+.faq details p { margin: 8px 0 0; }

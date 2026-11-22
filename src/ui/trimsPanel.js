@@ -16,13 +16,15 @@ import {
 } from '../model/trims.js';
 import { attachDragReorder, moveInList, DRAG_HANDLE } from './dragReorder.js';
 import { trimMaterial } from '../model/materials.js';
-import { escapeHtml, numberField, readNumberInput, setIfNotFocused, round1, commitEmptyAsZero } from './dom.js';
+import { escapeHtml, numberField, readNumberInput, setIfNotFocused, round1, commitEmptyAsZero, scrollIntoPanel } from './dom.js';
 import { setEye, materialSelect, colorPicker, readColorInput, syncColorPicker } from './widgets.js';
 import { renderSideBlendCard, updateSideBlendCard } from './sideBlends.js';
 import { renderBoardFeatures, syncBoardFeatures, readFeatureInput, readFeatureClick, applyFeatureChange } from './boardFeaturesEditor.js';
 import { createCardCollapse, COLLAPSE_BUTTON, COLLAPSE_ALL_BUTTONS } from './collapsible.js';
 import { markInspectorCard } from './inspectorCard.js';
+import { groupPanelSections } from './panelSections.js';
 import { trimSketch } from './objectSketch.js';
+import { downloadTrimCutList, downloadTrimDrawing } from './boardExport.js';
 import { setPath, setSideBlendField, cabinetReachesTop, describeCuts } from '../model/furniture.js';
 import { updateCabinetKeepingRow } from '../model/layout.js';
 
@@ -113,6 +115,7 @@ export function createTrimsPanel(root, store, ui, { mode = 'blends' } = {}) {
       ).join('')}
     `;
     cardCollapse.applyAll();
+    groupPanelSections(root, `furnitureDesigner.sec.${mode}`, true); // grupy zwijane z licznikami
     renderedKey = structureKey(project);
     updateStatus(project);
     syncSelection();
@@ -201,6 +204,15 @@ export function createTrimsPanel(root, store, ui, { mode = 'blends' } = {}) {
         <p class="trim-size"></p>
         <p class="allowance-note trim-allowance"></p>
         <ul class="issues"></ul>
+        <div class="bi-download trim-download">
+          <button type="button" class="bi-download-btn" data-trim-download-toggle>💾 Pobierz… <small>▾</small></button>
+          <div class="bi-download-menu" hidden>
+            <button type="button" data-trim-download="xlsx">Formatka — Excel (.xlsx)</button>
+            <button type="button" data-trim-download="csv">Formatka — CSV (.csv)</button>
+            <button type="button" data-trim-drawing="pdf">Rysunek z wymiarami — PDF</button>
+            <button type="button" data-trim-drawing="png">Rysunek z wymiarami — obraz PNG</button>
+          </div>
+        </div>
       </div>`;
   }
 
@@ -347,6 +359,22 @@ export function createTrimsPanel(root, store, ui, { mode = 'blends' } = {}) {
       const t = project.trims.find((x) => x.id === el.dataset.id);
       el.classList.toggle('related', !!(selected && t?.cabinetIds.includes(selected.id)) || picked.includes(`trim:${el.dataset.id}`));
     });
+    // blendy boczne: okienko obok okienka korpusu — po „Blendy →” w karcie korpusu (ui.sideBlendsFor) albo po
+    // zaznaczeniu blendy bocznej w 3D
+    {
+      const st = ui.get();
+      const pickedSide = picked.map((id) => id.split(':')).find(([cid, key]) => key && !cid.startsWith('trim') && !cid.startsWith('board') && project.furniture.some((c) => c.id === cid) && /^(blend|wallPanel|sidePlinth)/.test(key));
+      const sideId = (st.sideBlendsFor && st.sideBlendsFor === st.selectedId ? st.sideBlendsFor : null) ?? pickedSide?.[0] ?? null;
+      root.querySelectorAll('[data-kind="side-blends"]').forEach((el) => {
+        const on = el.dataset.id === sideId;
+        el.classList.toggle('in-inspector', on);
+        el.classList.toggle('in-inspector-2', on);
+        if (on && !el.querySelector('[data-side-close]')) {
+          el.querySelector('.item-head')?.insertAdjacentHTML('beforeend', '<button type="button" class="insp-close side-close" data-side-close title="Zamknij okienko blend bocznych" aria-label="Zamknij">✕</button>');
+        }
+        if (on && el.classList.contains('collapsed')) cardCollapse.expand(el);
+      });
+    }
     root.querySelectorAll('[data-kind="side-blends"]').forEach((el) => {
       // tylko blendy boczne (płyty z grupy „blend”) — nie np. bok korpusu zaznaczony z menu w 3D
       const cab = project.furniture.find((c) => c.id === el.dataset.id);
@@ -462,6 +490,19 @@ export function createTrimsPanel(root, store, ui, { mode = 'blends' } = {}) {
 
   root.addEventListener('click', (e) => {
     if (cardCollapse.handleClick(e.target)) return;
+    // „💾 Pobierz…” w karcie blatu / blendy
+    const dl = e.target.closest('[data-trim-download-toggle], [data-trim-download], [data-trim-drawing]');
+    if (dl) {
+      const card = dl.closest('[data-kind="trim"]');
+      const list = card?.querySelector('.trim-download .bi-download-menu');
+      if (dl.dataset.trimDownloadToggle !== undefined) list.hidden = !list.hidden;
+      else {
+        list.hidden = true;
+        if (dl.dataset.trimDownload) downloadTrimCutList(store.get(), card.dataset.id, dl.dataset.trimDownload);
+        else downloadTrimDrawing(store.get(), card.dataset.id, dl.dataset.trimDrawing);
+      }
+      return;
+    }
     const data = e.target.dataset ?? {};
     const id = e.target.closest('[data-kind="trim"]')?.dataset.id;
     const cabinetId = e.target.closest('[data-kind="side-blends"]')?.dataset.id;
@@ -527,14 +568,14 @@ export function createTrimsPanel(root, store, ui, { mode = 'blends' } = {}) {
       syncSelection();
       const card = root.querySelector(`[data-kind="side-blends"][data-id="${cabinetId}"]`);
       cardCollapse.expand(card); // karta mogła być zwinięta
-      card?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      scrollIntoPanel(card, { block: 'start', behavior: 'smooth' });
     },
     // Przewija do karty blendy wspólnej / blatu (po zaznaczeniu jej w 3D) i ją rozwija.
     revealTrim(trimId) {
       syncSelection();
       const card = root.querySelector(`[data-kind="trim"][data-id="${trimId}"]`);
       cardCollapse.expand(card);
-      card?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      scrollIntoPanel(card, { block: 'start', behavior: 'smooth' });
     },
   };
 }

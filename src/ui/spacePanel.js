@@ -5,6 +5,7 @@ import {
   OBSTACLE_PRESETS,
   OBSTACLE_KINDS,
   WALL_DECORS,
+  HOOD_DECORS,
   isWallObstacle,
   isWallLike,
   isHoodObstacle,
@@ -27,10 +28,11 @@ import {
   selfIntersects,
   resizeOutline,
 } from '../model/outline.js';
-import { escapeHtml, numberField, readNumberInput, setIfNotFocused, round1, commitEmptyAsZero } from './dom.js';
+import { escapeHtml, numberField, readNumberInput, setIfNotFocused, round1, commitEmptyAsZero, scrollIntoPanel } from './dom.js';
 import { colorPicker, readColorInput, syncColorPicker } from './widgets.js';
 import { createCardCollapse, COLLAPSE_BUTTON, COLLAPSE_ALL_BUTTONS } from './collapsible.js';
 import { markInspectorCard } from './inspectorCard.js';
+import { groupPanelSections } from './panelSections.js';
 import { obstacleSketch } from './objectSketch.js';
 import { updateSpaceRefit, refillRows, refillDepth } from '../model/layout.js';
 import { tileTargets } from '../model/tileTargets.js';
@@ -81,7 +83,7 @@ export function createSpacePanel(root, store) {
   function render(project) {
     const { space } = project;
     root.innerHTML = `
-      <h2>Przestrzeń</h2>
+      <div class="space-head"><h2>Przestrzeń</h2><button type="button" class="insp-close" data-space-close title="Zamknij okienko" aria-label="Zamknij okienko">✕</button></div>
       <label class="field">
         <span>Nazwa</span>
         <input type="text" data-f="name" value="${escapeHtml(space.name)}" />
@@ -165,6 +167,8 @@ export function createSpacePanel(root, store) {
       </div>
     `;
     cardCollapse.applyAll();
+    // grupy zwijane (Ściany, Kolory, Wykończenie, Skosy, Kształt, Przeszkody) — wymiary na górze zawsze widoczne
+    groupPanelSections(root, 'furnitureDesigner.sec.space', [], { windows: true }); // grupy otwierają się w okienku obok
     renderedKey = structureKey(project);
     updateStatus(project);
   }
@@ -292,7 +296,8 @@ export function createSpacePanel(root, store) {
         <label class="field small obstacle-decor" title="Tylko wygląd w widoku 3D — nie zmienia formatek ani wymiarów">
           <span>Wygląd (na przedniej ścianie)</span>
           <select data-f="decor">
-            ${WALL_DECORS.map((d) => `<option value="${d.key ?? ''}" ${d.key === (o.decor ?? null) ? 'selected' : ''}>${d.label}</option>`).join('')}
+            ${WALL_DECORS.map((d) => `<option data-for="wall" value="${d.key ?? ''}" ${d.key === (o.decor ?? null) ? 'selected' : ''}>${d.label}</option>`).join('')}
+            ${HOOD_DECORS.filter((d) => d.key).map((d) => `<option data-for="hood" value="${d.key}" ${d.key === (o.decor ?? null) ? 'selected' : ''}>${d.label}</option>`).join('')}
           </select>
         </label>
         ${colorPicker('Kolor (tylko wygląd w 3D)', 'color', { resetLabel: 'domyślny (jak ściany)' })}
@@ -352,7 +357,13 @@ export function createSpacePanel(root, store) {
         yIn.title = isHoodObstacle(o) ? 'Okap jest przyczepiony do sufitu — zmień jego wysokość (od sufitu w dół)' : '';
       }
       el.querySelector('[data-f="kind"]').value = o.kind;
-      el.querySelector('.obstacle-decor').hidden = !isWallObstacle(o);
+      el.querySelector('.obstacle-decor').hidden = !isWallObstacle(o) && !isHoodObstacle(o);
+      // opcje wyglądu według rodzaju: występ ściany — kominek / telewizor, okap — urządzenie (puste — bez dekoracji)
+      el.querySelectorAll('.obstacle-decor option').forEach((opt) => {
+        const forKind = opt.dataset.for;
+        opt.hidden = opt.value ? forKind !== o.kind : false;
+        if (!opt.value) opt.textContent = isHoodObstacle(o) ? 'Sama zabudowa (bez okapu)' : 'Sama ściana';
+      });
       el.querySelector('[data-f="decor"]').value = o.decor ?? '';
       syncColorPicker(el, 'color', o.color, isWallLike(o) ? space.colors.walls : '#f59e0b');
     }
@@ -541,7 +552,7 @@ export function createSpacePanel(root, store) {
       const el = itemEl(kind, id);
       if (!el) return;
       cardCollapse.expand(el);
-      el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      scrollIntoPanel(el, { block: 'nearest', behavior: 'smooth' });
     },
     // Wyróżnienie karty zaznaczonego w 3D występu ściany (null — żadnej).
     markPicked(id) {
@@ -550,6 +561,9 @@ export function createSpacePanel(root, store) {
       // zaznaczona przeszkoda — karta jako okienko po prawej
       const card = markInspectorCard(root, '.item.obstacle', id);
       if (card?.classList.contains('collapsed')) cardCollapse.expand(card);
+      // karta jest w grupie „Przeszkody” — zwinięta grupa nie pokazuje treści, więc ją rozwijamy
+      const group = card?.closest('details.panel-sec');
+      if (group && !group.open) group.open = true;
       const o = card && store.get().space.obstacles.find((x) => x.id === id);
       if (o) card.querySelector('.obj-sketch').innerHTML = obstacleSketch(o, store.get().space);
     },

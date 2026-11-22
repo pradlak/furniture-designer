@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+import { buildDecorations } from './buildDecorations.js';
 import { MM, toScene } from './units.js';
 import { cabinetPanels, cabinetIssues, cabinetLegs, legHeight, HANDLE_GROOVE_SIZE, cabinetBounds, frontParts, frontSlots, doorSpan, INNER_SPACER } from '../model/furniture.js';
 import { frontBoundaries, drawerResizeHandle, drawerMoveHandle } from '../model/frontEdit.js';
@@ -679,6 +680,9 @@ export function buildFurniture(project, selectedIds = new Set(), selectedFronts 
     }
   }
 
+  // dekoracje (tylko wygląd) — zaznaczone: „decor:id” w zbiorze zaznaczonych elementów
+  group.add(buildDecorations(project, selectedFronts));
+
   // Wymiary w 3D:
   //  - zaznaczone elementy (fronty, blendy, nóżki) — wymiary każdego,
   //  - zaznaczone korpusy — wymiary korpusu / grupy korpusów; korpus, którego element jest zaznaczony
@@ -715,7 +719,7 @@ export function buildFurniture(project, selectedIds = new Set(), selectedFronts 
       group.add(buildClearanceDimensions(box, project.space, belowOf(box)));
     }
     if (cabinets.length) group.add(buildCabinetDimensions(cabinets, project.space));
-    if (parts.length && parts.length + cabinets.length > 1) {
+    if (parts.length && cabinets.length) {
       const boxes = [...parts.map((p) => p.box), ...cabinets.map(cabinetBox)];
       group.add(buildTotalDimensions(boxes, project.space));
     }

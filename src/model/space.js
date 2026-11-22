@@ -75,6 +75,16 @@ export const WALL_DECORS = [
   { key: 'insert', label: 'Kominek nowoczesny (wkład z szybą)' },
   { key: 'tv', label: 'Telewizor' },
 ];
+// Wygląd okapu (wypustu od sufitu): urządzenie pod zabudową — tylko wygląd w 3D (scene/wallDecor.js).
+export const HOOD_DECORS = [
+  { key: null, label: 'Sama zabudowa (bez okapu)' },
+  { key: 'hoodChimney', label: 'Okap kominowy (stal)' },
+  { key: 'hoodBox', label: 'Okap prostokątny (box)' },
+  { key: 'hoodGlass', label: 'Okap szklany skośny' },
+  { key: 'hoodBuiltIn', label: 'Okap do zabudowy (w pełni schowany — widać tylko od spodu)' },
+];
+// lista wyglądów dla rodzaju przeszkody (występ ściany — kominek / telewizor, okap — urządzenie)
+export const decorsFor = (o) => (o?.kind === 'hood' ? HOOD_DECORS : o?.kind === 'wall' ? WALL_DECORS : []);
 
 export function createObstacle(overrides = {}) {
   return {
@@ -400,7 +410,7 @@ function normalizeObstacle(raw = {}) {
   return {
     id: typeof raw.id === 'string' && raw.id ? raw.id : def.id,
     kind: raw.kind === 'wall' || raw.kind === 'hood' ? raw.kind : 'obstacle',
-    decor: WALL_DECORS.some((d) => d.key && d.key === raw.decor) ? raw.decor : null,
+    decor: [...WALL_DECORS, ...HOOD_DECORS].some((d) => d.key && d.key === raw.decor) ? raw.decor : null,
     // własny kolor (tylko wygląd w 3D): { hex, name } albo null — występ / okap jak ściany, przeszkoda pomarańczowa
     color: raw.color && isHexColor(raw.color.hex) ? { hex: raw.color.hex, name: typeof raw.color.name === 'string' ? raw.color.name : raw.color.hex } : null,
     name: typeof raw.name === 'string' ? raw.name : def.name,

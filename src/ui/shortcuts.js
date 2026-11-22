@@ -41,7 +41,7 @@ export function initShortcuts(store, ui) {
       const st = ui.get();
       const insideCabinet = st.selectedId && ((st.selectedFronts ?? []).length || (st.selectedBlends ?? []).some((b) => b.startsWith(`${st.selectedId}:`)));
       if (insideCabinet) ui.set({ ...st, selectedFronts: [], selectedBlends: [], selectedHole: null });
-      else ui.set({ ...st, selectedId: null, selectedFronts: [], selectedBlends: [], selectedHole: null, selectedObstacle: null });
+      else ui.set({ ...st, selectedId: null, selectedFronts: [], selectedBlends: [], selectedHole: null, selectedObstacle: null, spaceOpen: false, panelWin: null });
       return;
     }
     // zaznaczony otwór blatu / półki: Delete — usuń, strzałki — przesuń (10 mm, z Shift 100 mm; ↑ — w głąb)
@@ -74,6 +74,13 @@ export function initShortcuts(store, ui) {
       return;
     }
     // zaznaczone blaty / blendy wspólne / samodzielne płyty: Delete — usuń je (razem z zaznaczonymi korpusami)
+    const decorSel = (ui.get().selectedBlends ?? []).filter((b) => b.startsWith('decor:')).map((b) => b.slice(6));
+    if (decorSel.length && key === 'delete') {
+      e.preventDefault();
+      ui.set({ ...ui.get(), selectedBlends: [] });
+      store.set((p) => ({ ...p, decorations: (p.decorations ?? []).filter((d) => !decorSel.includes(d.id)) }));
+      return;
+    }
     const parts = (ui.get().selectedBlends ?? []).filter((b) => b.startsWith('trim:') || b.startsWith('board:'));
     if (parts.length && key === 'delete') {
       e.preventDefault();

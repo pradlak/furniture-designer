@@ -43,7 +43,7 @@ export function createProjectsDialog(store, account) {
         <p>Zaloguj się, żeby zapisywać projekty na koncie i wracać do nich na każdym komputerze i telefonie.</p>
         ${
           s.loginAvailable
-            ? `<p><a class="google-login" href="${account.loginUrl}">${GOOGLE_ICON}<span>Zaloguj przez Google</span></a></p>
+            ? `<p><a class="google-login" href="${account.loginUrl}" rel="nofollow">${GOOGLE_ICON}<span>Zaloguj przez Google</span></a></p>
                <p class="welcome-note">Zapisujemy tylko Twój adres e-mail, imię i projekty. Szczegóły:
                  <a href="/polityka-prywatnosci" target="_blank" rel="noopener">polityka prywatności</a>.</p>`
             : '<p class="welcome-note">Logowanie nie jest jeszcze dostępne.</p>'

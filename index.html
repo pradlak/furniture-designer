@@ -49,33 +49,89 @@
       }
     </script>
 
+    <!-- Dane strukturalne: najczęstsze pytania (te same co w sekcji „Najczęstsze pytania” na stronie) -->
+    <script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "Czy projektant mebli jest darmowy?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Tak. Program działa w przeglądarce, jest całkowicie darmowy i nie wymaga instalacji."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Czy trzeba się rejestrować?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Nie. Projekt zapisuje się w przeglądarce i możesz go wyeksportować do pliku. Logowanie przez Google jest opcjonalne — przydaje się, gdy chcesz mieć projekty na kilku komputerach."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Jak zamówić rozkrój płyt?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Pobierz listę formatek w Excelu albo CSV i zanieś ją do hurtowni płyt, albo wczytaj gotowy plik w konfiguratorze rozkroju na meble.pl. Na liście są wymiary do cięcia, ilości i okleina krawędzi."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Jakiej grubości płyty użyć?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Na korpusy i półki najczęściej płyta meblowa 18 mm, na plecy HDF 3 mm, na blat 28–38 mm. W programie wybierasz materiał i grubość, a formatki przeliczają się same."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Czy program działa na telefonie?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Działa w każdej nowoczesnej przeglądarce, ale do projektowania najwygodniejszy jest komputer z myszką."
+      }
+    }
+  ]
+}
+    </script>
+
     <!-- Statystyki odwiedzin (Umami — bez ciasteczek) -->
     <script defer src="https://cloud.umami.is/script.js" data-website-id="39838671-7a5f-40d9-9c8e-09fd94afeb92" data-domains="meblesamemu.pl,www.meblesamemu.pl"></script>
   </head>
   <body>
+    <div class="app">
     <header id="toolbar" class="toolbar"></header>
     <main class="layout">
-      <aside class="panel">
-        <nav class="tabs" id="tabs">
-          <button type="button" data-tab="space-panel" class="active" title="Przestrzeń — wymiary pokoju, ściany, skosy, przeszkody"><span class="tab-ico" aria-hidden="true">🏠</span><span class="tab-label">Przestrzeń</span></button>
-          <button type="button" data-tab="furniture-panel" title="Meble — lista korpusów i mapka zabudowy"><span class="tab-ico" aria-hidden="true">🗄️</span><span class="tab-label">Meble</span></button>
-          <button type="button" data-tab="trims-panel" title="Blendy — dolne, górne i boczne"><span class="tab-ico" aria-hidden="true">▤</span><span class="tab-label">Blendy</span></button>
-          <button type="button" data-tab="worktops-panel" title="Blaty i półki"><span class="tab-ico" aria-hidden="true">▬</span><span class="tab-label">Blaty i półki</span></button>
-          <button type="button" data-tab="materials-panel" title="Materiały — płyty projektu"><span class="tab-ico" aria-hidden="true">🎨</span><span class="tab-label">Materiały</span></button>
-          <button type="button" data-tab="notes-panel" title="Notatki"><span class="tab-ico" aria-hidden="true">📝</span><span class="tab-label">Notatki</span></button>
-          <button type="button" class="tabs-collapse" title="Zwiń panel (więcej miejsca na widok 3D)" aria-label="Zwiń panel">«</button>
-        </nav>
-        <div id="space-panel" class="tab-content"></div>
-        <div id="furniture-panel" class="tab-content" hidden></div>
-        <div id="trims-panel" class="tab-content" hidden></div>
-        <div id="worktops-panel" class="tab-content" hidden>
+      <!-- Bez lewego panelu: wszystko w okienkach (po prawej: obiekty, przestrzeń, materiały, notatki; mapka — z lewej u góry).
+           Ten element tylko przechowuje panele, z których okienka są „przypinane” do ekranu. -->
+      <aside class="panel panel-host">
+        <!-- Przestrzeń — okienko po prawej (otwierane przyciskiem 🏠 albo klikiem w podłogę / ścianę) -->
+        <div id="space-panel" class="space-window"></div>
+        <!-- mapka zabudowy (zawsze widoczna); karty korpusów trafiają stąd do okienka po prawej -->
+        <div id="furniture-panel" class="map-panel card-host"></div>
+        <!-- blaty, półki i blendy — karty otwierane w okienkach po prawej (lista: „Obiekty ▾” na górnym pasku) -->
+        <div id="worktops-panel" class="card-host">
           <div id="worktop-trims-panel"></div>
           <div id="boards-panel"></div>
+          <div id="trims-panel"></div>
         </div>
-        <div id="materials-panel" class="tab-content" hidden></div>
-        <div id="notes-panel" class="tab-content" hidden></div>
+        <div class="win-shell" data-win="materials">
+          <div class="win-shell-head"><b>🎨 Materiały</b><button type="button" class="insp-close" data-win-close title="Zamknij okienko" aria-label="Zamknij">✕</button></div>
+          <div id="materials-panel"></div>
+        </div>
+        <div class="win-shell" data-win="decor">
+          <div class="win-shell-head"><b>🎨 Dekoracje (tylko wygląd)</b><button type="button" class="insp-close" data-win-close title="Zamknij okienko" aria-label="Zamknij">✕</button></div>
+          <div id="decor-add-panel"></div>
+        </div>
+        <div class="win-shell" data-win="notes">
+          <div class="win-shell-head"><b>📝 Notatki</b><button type="button" class="insp-close" data-win-close title="Zamknij okienko" aria-label="Zamknij">✕</button></div>
+          <div id="notes-panel"></div>
+        </div>
       </aside>
-      <div class="panel-resizer" id="panel-resizer" title="Przeciągnij, aby zmienić szerokość panelu (dwuklik — domyślna)"></div>
       <section id="viewport" class="viewport">
         <div class="viewport-help">
           <b>Klik</b> — zaznacz korpus · <b>przeciągnij</b> — przesuń (Shift: w pionie, Alt: bez przyciągania) ·
@@ -92,6 +148,11 @@
             <summary>☰ Menu</summary>
             <ul>
               <li><a href="/o-programie">O programie</a></li>
+              <li><a href="#o-projektancie">Opis i najczęstsze pytania ↓</a></li>
+              <li><a href="/projektant-szaf">Projektant szaf</a></li>
+              <li><a href="/szafa-na-skosy">Szafa na skosy</a></li>
+              <li><a href="/projektant-kuchni">Projektant kuchni</a></li>
+              <li><a href="/lista-formatek">Lista formatek do rozkroju</a></li>
               <li><button type="button" class="site-menu-action" data-open-feedback>💬 Zgłoś uwagę lub propozycję</button></li>
               <li><a href="/polityka-prywatnosci">Polityka prywatności</a></li>
               <li>
@@ -112,9 +173,75 @@
         </nav>
       </section>
     </main>
+    </div>
+    <!-- Opis programu dla ludzi i wyszukiwarek — zwykły HTML pod edytorem (widoczny bez JavaScriptu, od razu w kodzie strony) -->
+    <section class="seo-home" id="o-projektancie" aria-labelledby="seo-h1">
+      <div class="seo-wrap">
+        <h1 id="seo-h1">Projektant szaf i zabudów online — za darmo, w 3D</h1>
+        <p class="seo-lead">
+          Meble Samemu to darmowy program do projektowania mebli w przeglądarce. Zaprojektujesz w nim szafę do wnęki,
+          zabudowę poddasza ze skosem, szafki kuchenne z blatem, regał albo komodę — a potem pobierzesz listę formatek
+          do rozkroju płyt i zamówisz pocięte płyty. Bez instalacji i bez rejestracji.
+        </p>
+        <figure>
+          <img src="/og-image-2.png" width="1200" height="630" loading="lazy" decoding="async"
+            alt="Szafa we wnęce z trzema korpusami, drzwiami, blendami i cokołem zaprojektowana w 3D w programie Meble Samemu" />
+          <figcaption>Szafa do wnęki zaprojektowana w programie: korpusy do sufitu, blendy przy ścianach, cokół i drzwi.</figcaption>
+        </figure>
+
+        <h2>Co zaprojektujesz</h2>
+        <div class="seo-grid">
+          <article>
+            <h3><a href="/projektant-szaf">Szafa na wymiar</a></h3>
+            <p>Wpisz wymiary wnęki, dodaj korpusy, półki, drzwi i szuflady. Program dzieli wnękę na korpusy, rozkłada
+              zawiasy i pilnuje luzu pod sufitem, a blendy zakryją szczeliny przy krzywych ścianach.</p>
+          </article>
+          <article>
+            <h3><a href="/szafa-na-skosy">Zabudowa poddasza ze skosem</a></h3>
+            <p>Podaj ściankę kolankową i skos — korpusy pod dachem dostaną skośną górę i boki, a lista formatek
+              zawiera skośne cięcia z wymiarami.</p>
+          </article>
+          <article>
+            <h3><a href="/projektant-kuchni">Szafki kuchenne</a></h3>
+            <p>Szafki dolne i wiszące, szuflady, blat z wycięciem na zlew i płytę indukcyjną albo gazową, cokół,
+              okap i płytki nad blatem — wszystko w 3D.</p>
+          </article>
+          <article>
+            <h3><a href="/lista-formatek">Lista formatek do rozkroju</a></h3>
+            <p>Wymiary do cięcia z okleiną, ilości, obróbka i akcesoria (zawiasy, prowadnice, nóżki). Excel, CSV
+              i gotowy plik do rozkroju na meble.pl, a także rysunki frontów i półek z otworami.</p>
+          </article>
+        </div>
+
+        <h2>Jak to działa</h2>
+        <ol class="seo-steps">
+          <li><b>Wymiary miejsca</b> — wnęka prostokątna, poddasze ze skosem albo dowolny kształt ścian; przeszkody takie jak okap, rura czy kominek.</li>
+          <li><b>Meble w 3D</b> — korpusy, półki, drzwi, szuflady, blendy i blaty; wymiary zmieniasz myszką albo wpisując liczby.</li>
+          <li><b>Formatki i zamówienie</b> — pobierasz listę płyt do cięcia i zamawiasz rozkrój w hurtowni albo na meble.pl.</li>
+        </ol>
+        <p>
+          Krok po kroku opisaliśmy to w poradnikach:
+          <a href="/poradniki/szafa-do-wneki">szafa do wnęki</a>,
+          <a href="/poradniki/zabudowa-poddasza-skos">zabudowa poddasza ze skosem</a>,
+          <a href="/poradniki/formatki-rozkroj-plyt">formatki i rozkrój płyt</a> oraz
+          <a href="/poradniki/rozkroj-meble-pl-csv">rozkrój na meble.pl z pliku CSV</a>.
+        </p>
+
+        <h2>Najczęstsze pytania</h2>
+        <div class="seo-faq">
+          <details><summary>Czy projektant mebli jest darmowy?</summary><p>Tak. Program działa w przeglądarce, jest całkowicie darmowy i nie wymaga instalacji.</p></details>
+          <details><summary>Czy trzeba się rejestrować?</summary><p>Nie. Projekt zapisuje się w przeglądarce i możesz go wyeksportować do pliku. Logowanie przez Google jest opcjonalne — przydaje się, gdy chcesz mieć projekty na kilku komputerach.</p></details>
+          <details><summary>Jak zamówić rozkrój płyt?</summary><p>Pobierz listę formatek w Excelu albo CSV i zanieś ją do hurtowni płyt, albo wczytaj gotowy plik w konfiguratorze rozkroju na meble.pl. Na liście są wymiary do cięcia, ilości i okleina krawędzi.</p></details>
+          <details><summary>Jakiej grubości płyty użyć?</summary><p>Na korpusy i półki najczęściej płyta meblowa 18 mm, na plecy HDF 3 mm, na blat 28–38 mm. W programie wybierasz materiał i grubość, a formatki przeliczają się same.</p></details>
+          <details><summary>Czy program działa na telefonie?</summary><p>Działa w każdej nowoczesnej przeglądarce, ale do projektowania najwygodniejszy jest komputer z myszką.</p></details>
+        </div>
+        <p class="seo-cta"><a href="#viewport" class="seo-btn">↑ Wróć do projektanta</a></p>
+      </div>
+    </section>
+
     <noscript>
       <div class="noscript">
-        <h1>Darmowy projektant mebli online</h1>
+        <h2>Projektant działa w przeglądarce z włączonym JavaScriptem</h2>
         <p>Zaprojektuj szafę do wnęki, zabudowę poddasza ze skosem albo szafki kuchenne w 3D i pobierz listę formatek
           do rozkroju płyt (Excel, CSV, plik do rozkroju na meble.pl). Projektant działa w przeglądarce i wymaga
           włączonego JavaScriptu.</p>

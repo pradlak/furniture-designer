@@ -19,7 +19,7 @@ export function createUserMenu(root, account, { onProjects, onMaterials, onLogou
         <span class="avatar avatar-lg"></span>
         <div class="user-menu-who"><b class="user-name"></b><small class="user-email"></small></div>
       </div>
-      <a class="google-login user-menu-login" href="${account.loginUrl}">${GOOGLE_ICON}<span>Zaloguj przez Google</span></a>
+      <a class="google-login user-menu-login" href="${account.loginUrl}" rel="nofollow">${GOOGLE_ICON}<span>Zaloguj przez Google</span></a>
       <button type="button" class="user-menu-item" data-um="projects">☁ Moje projekty</button>
       <button type="button" class="user-menu-item" data-um="materials">🎨 Moje materiały</button>
       <p class="user-menu-note">Po zalogowaniu zapiszesz projekty i materiały na koncie i otworzysz je na każdym urządzeniu.</p>

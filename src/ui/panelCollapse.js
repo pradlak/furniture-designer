@@ -4,7 +4,8 @@
 const STORAGE_KEY = 'furnitureDesigner.panelCollapsed';
 
 export function initPanelCollapse(panel, tabs) {
-  const nav = panel.querySelector('.tabs');
+  const nav = panel?.querySelector('.tabs');
+  if (!nav) return { expand: () => {}, collapse: () => {}, isCollapsed: () => true }; // (bez lewego panelu)
   let collapsed = true;
   try {
     const saved = localStorage.getItem(STORAGE_KEY);

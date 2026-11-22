@@ -20,6 +20,7 @@ export function initSketchZoom() {
     }
   }, true);
   document.addEventListener('click', (e) => {
+    if (e.target.closest?.('[data-edge-toggle]')) return; // (przełącznik obrzeża na szkicu płyty)
     const sk = e.target.closest?.('.obj-sketch');
     if (!sk || !sk.innerHTML.trim()) return;
     const card = sk.closest('.item');

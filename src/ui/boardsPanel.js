@@ -1,4 +1,4 @@
-import { escapeHtml, readNumberInput, setIfNotFocused, numberField, commitEmptyAsZero } from './dom.js';
+import { escapeHtml, readNumberInput, setIfNotFocused, numberField, commitEmptyAsZero, scrollIntoPanel } from './dom.js';
 import { materialSelect, colorPicker, readColorInput, syncColorPicker, setEye } from './widgets.js';
 import { BOARD_KINDS, BOARD_LIMITS, createBoard, boardMaterial, boardIssues, BOARD_MOUNTS, mountPoints, MOUNT_MACHINING, normalizeMount, describeMountWork } from '../model/boards.js';
 import { setPath } from '../model/furniture.js';
@@ -6,6 +6,7 @@ import { renderBoardFeatures, syncBoardFeatures, readFeatureInput, readFeatureCl
 import { describeEdges, describeHoles } from '../model/boardFeatures.js';
 import { attachDragReorder, moveInList, DRAG_HANDLE } from './dragReorder.js';
 import { createCardCollapse, COLLAPSE_BUTTON } from './collapsible.js';
+import { groupPanelSections } from './panelSections.js';
 
 // Samodzielne płyty (blaty, półki) w zakładce „Blaty i półki”, pod blatami na szafkach: dodawanie, wymiary, położenie,
 // materiał i kolor, frezy krawędzi i otwory.
@@ -81,6 +82,7 @@ export function createBoardsPanel(root, store, ui) {
     cardCollapse.applyAll();
     sync(project);
     markPicked();
+    groupPanelSections(root, 'furnitureDesigner.sec.boards', true);
   }
 
   // Karta płyty zaznaczonej (w 3D albo kliknięciem w kartę) — wyróżniona.
@@ -190,7 +192,7 @@ export function createBoardsPanel(root, store, ui) {
     const add = e.target.closest('[data-board-add]')?.dataset.boardAdd;
     if (add) {
       store.set((p) => ({ ...p, boards: [...(p.boards ?? []), createBoard(p, add)] }));
-      root.querySelector('.items > .board:last-child')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      scrollIntoPanel(root.querySelector('.items > .board:last-child'), { block: 'nearest', behavior: 'smooth' });
       return;
     }
     const id = e.target.closest('[data-kind="board"]')?.dataset.id;
@@ -213,7 +215,7 @@ export function createBoardsPanel(root, store, ui) {
     reveal(id) {
       const card = root.querySelector(`[data-kind="board"][data-id="${id}"]`);
       cardCollapse.expand(card); // karta mogła być zwinięta
-      card?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      scrollIntoPanel(card, { block: 'start', behavior: 'smooth' });
     },
     sync(project, meta = {}) {
       if (meta.replace || structureKey(project) !== renderedKey) render(project);

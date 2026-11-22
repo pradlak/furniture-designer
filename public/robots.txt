@@ -1,5 +1,6 @@
 # Strona publiczna — wyszukiwarki mogą ją indeksować.
 User-agent: *
 Allow: /
+Disallow: /api/
 
 Sitemap: https://meblesamemu.pl/sitemap.xml

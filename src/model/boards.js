@@ -289,6 +289,8 @@ export function normalizeMount(raw) {
     slotLen: dim(raw?.slotLen, 20, 600),
     slotDepth: dim(raw?.slotDepth, 1, 40),
     plate: raw?.plate !== false, // wpust pod płytkę montażową (domyślnie tak)
+    // wpust: 'each' — osobno przy każdym pręcie, 'long' — jeden długi (od pierwszej do ostatniej płytki, np. pod listwę)
+    plateMode: raw?.plateMode === 'long' ? 'long' : 'each',
     edge: dim(raw?.edge, 0, 1000), // odstęp skrajnego elementu od boku płyty (null — domyślny)
     plateW: dim(raw?.plateW, 10, 400),
     plateH: dim(raw?.plateH, 5, 100),
@@ -339,7 +341,7 @@ export function mountMachining(board) {
         kind: 'holes',
         d: m.holeD ?? info.d,
         depth: m.holeDepth ?? info.depth,
-        plate: m.plate ? { w: m.plateW ?? info.plateW, h: m.plateH ?? info.plateH, depth: m.plateDepth ?? info.plateDepth } : null,
+        plate: m.plate ? { w: m.plateW ?? info.plateW, h: m.plateH ?? info.plateH, depth: m.plateDepth ?? info.plateDepth, long: m.plateMode === 'long' } : null,
       }
     : { kind: 'slot', w: m.slotW ?? info.w, len: m.slotLen ?? info.len, depth: m.slotDepth ?? info.depth };
 }
@@ -349,10 +351,24 @@ export function describeMountWork(board, thickness) {
   const pts = mountPoints(board);
   const at = pts.xs.map(fmtMm).join('; ');
   if (w.kind === 'holes') {
-    const plate = w.plate
-      ? `; wpust pod płytkę montażową w tylnej krawędzi: ${fmtMm(w.plate.w)} × ${fmtMm(Math.min(w.plate.h, thickness))} mm (szer. × wys., w osi grubości), gł. ${fmtMm(w.plate.depth)} mm, przy każdym otworze`
-      : '';
+    const span = plateSpans(board)[0];
+    const plate = !w.plate
+      ? ''
+      : w.plate.long
+        ? `; jeden wpust pod płytkę montażową w tylnej krawędzi na długości ${fmtMm(span[1] - span[0])} mm (od x ${fmtMm(span[0])} do ${fmtMm(span[1])} mm), wys. ${fmtMm(Math.min(w.plate.h, thickness))} mm w osi grubości, gł. ${fmtMm(w.plate.depth)} mm`
+        : `; wpust pod płytkę montażową w tylnej krawędzi: ${fmtMm(w.plate.w)} × ${fmtMm(Math.min(w.plate.h, thickness))} mm (szer. × wys., w osi grubości), gł. ${fmtMm(w.plate.depth)} mm, przy każdym otworze`;
     return `mocowanie ukryte: ${pts.count} otw. Ø${fmtMm(w.d)} gł. ${fmtMm(w.depth)} mm w tylnej krawędzi, w osi grubości (${fmtMm(thickness / 2)} mm od spodu), x od lewej: ${at} mm${plate}`;
   }
   return `mocowanie ukryte: ${pts.count} frezy w spodzie od tylnej krawędzi ${fmtMm(w.w)} × ${fmtMm(w.len)} mm, gł. ${fmtMm(w.depth)} mm, środek x od lewej: ${at} mm`;
+}
+
+// Wpusty pod płytki montażowe (tylna krawędź): [[od, do]] w mm od lewej — przy każdym pręcie osobno albo jeden długi.
+export function plateSpans(board) {
+  const work = mountMachining(board);
+  if (!work?.plate) return [];
+  const { xs } = mountPoints(board);
+  if (!xs.length) return [];
+  const half = work.plate.w / 2;
+  if (work.plate.long) return [[Math.max(0, xs[0] - half), Math.min(board.width, xs[xs.length - 1] + half)]];
+  return xs.map((u) => [u - half, u + half]);
 }

@@ -9,6 +9,7 @@ import {
   boardNicheWidth,
   mountPoints,
   mountMachining,
+  plateSpans,
   normalizeMount,
 } from '../model/boards.js';
 import { resolveHoles } from '../model/boardFeatures.js';
@@ -163,7 +164,13 @@ export function createBoardInspector(viewport, store, ui, { onMore } = {}) {
                     </label>
                     ${
                       work.plate
-                        ? `<div class="bi-grid">
+                        ? `<label class="bi-field wide"><span>Wpust pod płytkę</span>
+                            <select data-bi="mount.plateMode">
+                              <option value="each" ${m.plateMode !== 'long' ? 'selected' : ''}>osobno przy każdym pręcie</option>
+                              <option value="long" ${m.plateMode === 'long' ? 'selected' : ''}>jeden długi — od pierwszej do ostatniej płytki</option>
+                            </select>
+                          </label>
+                          <div class="bi-grid">
                             ${num('Szer. płytki', 'mount.plateW', m.plateW ?? '', { min: 10, max: 400, placeholder: `${work.plate.w}` })}
                             ${num('Wys. płytki', 'mount.plateH', m.plateH ?? '', { min: 5, max: 100, placeholder: `${work.plate.h}`, title: 'Wymiar w pionie — w osi grubości płyty' })}
                             ${num('Gł. wpustu', 'mount.plateDepth', m.plateDepth ?? '', { min: 1, max: 30, step: 0.5, placeholder: `${work.plate.depth}`, title: 'Grubość płytki — o tyle wpust wchodzi w płytę od tylnej krawędzi' })}
@@ -238,7 +245,7 @@ export function createBoardInspector(viewport, store, ui, { onMore } = {}) {
     }
     const project = store.get();
     const m = normalizeMount(board.mount);
-    const nextSig = [board.id, board.name, m.type, m.machining, m.type && m.type !== 'cleat', m.plate].join('|');
+    const nextSig = [board.id, board.name, m.type, m.machining, m.type && m.type !== 'cleat', m.plate, m.plateMode].join('|');
     if (nextSig !== sig || shownId !== board.id) {
       render(board, project);
       sig = nextSig;
@@ -341,11 +348,14 @@ export function sketchSvg(board, box) {
   const work = mountMachining(board);
   for (const u of pts.xs) {
     if (work?.kind === 'holes') out.push(`<rect x="${X(u) - Math.max(1, (work.d / 2) * s)}" y="${Yt(0)}" width="${Math.max(2, work.d * s)}" height="${Math.min(D, work.depth) * s}" class="bi-mount"/>`);
-    if (work?.plate) out.push(`<rect x="${X(u - work.plate.w / 2)}" y="${Yt(0)}" width="${work.plate.w * s}" height="${Math.max(2, work.plate.depth * s)}" class="bi-plate"/>`);
-    else if (work?.kind === 'slot') out.push(`<rect x="${X(u - work.w / 2)}" y="${Yt(0)}" width="${work.w * s}" height="${Math.min(D, work.len) * s}" class="bi-mount"/>`);
+    if (work?.plate) {
+      // (wpusty pod płytki — niżej, wg plateSpans)
+    } else if (work?.kind === 'slot') out.push(`<rect x="${X(u - work.w / 2)}" y="${Yt(0)}" width="${work.w * s}" height="${Math.min(D, work.len) * s}" class="bi-mount"/>`);
     else if (pts.type === 'brackets' || pts.type === 'rail') out.push(`<rect x="${X(u) - 2}" y="${Yt(0)}" width="4" height="${Math.min(D - 20, pts.type === 'rail' ? D * 0.8 : 200) * s}" class="bi-mount"/>`);
   }
   if (pts.type === 'cleat') out.push(`<rect x="${X(10)}" y="${Yt(0)}" width="${(W - 20) * s}" height="${20 * s}" class="bi-mount"/>`);
+  const spans = plateSpans(board);
+  for (const [a0, a1] of spans) out.push(`<rect x="${X(a0)}" y="${Yt(0)}" width="${(a1 - a0) * s}" height="${Math.max(2, work.plate.depth * s)}" class="bi-plate"/>`);
   // wymiary: szerokość (pod spodem widoku z góry), głębokość (z prawej)
   const wy = Yt(D) + 14;
   line(X(0), wy, X(W), wy);
@@ -379,11 +389,11 @@ export function sketchSvg(board, box) {
   // widok tylnej krawędzi (od ściany)
   text(pad.l, ey - 8, 'tylna krawędź (widok od ściany):', 'bi-small', 'start');
   out.push(`<rect x="${X(0)}" y="${ey}" width="${W * s}" height="${edgeH}" class="bi-board"/>`);
+  for (const [a0, a1] of spans) {
+    const ph = Math.min(edgeH, (Math.min(work.plate.h, T) / T) * edgeH);
+    out.push(`<rect x="${X(a0)}" y="${ey + (edgeH - ph) / 2}" width="${(a1 - a0) * s}" height="${ph}" class="bi-plate"/>`);
+  }
   for (const u of pts.xs) {
-    if (work?.plate) {
-      const ph = Math.min(edgeH, (Math.min(work.plate.h, T) / T) * edgeH);
-      out.push(`<rect x="${X(u - work.plate.w / 2)}" y="${ey + (edgeH - ph) / 2}" width="${work.plate.w * s}" height="${ph}" class="bi-plate"/>`);
-    }
     if (work?.kind === 'holes') {
       const r = Math.min(edgeH / 2 - 1, Math.max(2, (work.d / T) * (edgeH / 2)));
       out.push(`<circle cx="${X(u)}" cy="${ey + edgeH / 2}" r="${r}" class="bi-hole-edge"/>`);
@@ -403,7 +413,7 @@ export function sketchSvg(board, box) {
   line(tx, ey, tx, ey + edgeH);
   text(tx + 4, ey + edgeH / 2 + 3, `${fmt(T)}`, 'bi-txt', 'start');
   if (work?.kind === 'holes') text(X(W / 2), ey + edgeH + 16, `otwory Ø${fmt(work.d)} w osi grubości (${fmt(T / 2)} od spodu)`, 'bi-small');
-  if (work?.plate) text(X(W / 2), ey + edgeH + 27, `wpust pod płytkę ${fmt(work.plate.w)} × ${fmt(Math.min(work.plate.h, T))}, gł. ${fmt(work.plate.depth)}`, 'bi-small');
+  if (work?.plate) text(X(W / 2), ey + edgeH + 27, work.plate.long && spans[0] ? `jeden wpust pod płytkę dł. ${fmt(spans[0][1] - spans[0][0])} × ${fmt(Math.min(work.plate.h, T))}, gł. ${fmt(work.plate.depth)}` : `wpust pod płytkę ${fmt(work.plate.w)} × ${fmt(Math.min(work.plate.h, T))}, gł. ${fmt(work.plate.depth)}`, 'bi-small');
   if (work?.kind === 'slot') text(X(W / 2), ey + edgeH + 16, `frez ${fmt(work.w)} × ${fmt(work.len)}, gł. ${fmt(work.depth)} od spodu`, 'bi-small');
   let detail = '';
   if (pts.xs.length && (work || pts.type === 'brackets' || pts.type === 'rail')) detail = detailSvg(pts, work, T, W);
@@ -437,7 +447,8 @@ function detailSvg(pts, work, T, W) {
   const x0 = u - ew / 2;
   if (work?.plate) {
     const ph = Math.min(work.plate.h, T);
-    out.push(`<rect x="${X(x0)}" y="${Y(T / 2 + ph / 2)}" width="${ew * s}" height="${ph * s}" class="bi-plate"/>`);
+    const pw = work.plate.long ? region - x0 : ew; // jeden długi wpust — ciągnie się dalej
+    out.push(`<rect x="${X(x0)}" y="${Y(T / 2 + ph / 2)}" width="${pw * s}" height="${ph * s}" class="bi-plate"/>`);
     const rx = X(region) + 10;
     line(rx, Y(T / 2 + ph / 2), rx, Y(T / 2 - ph / 2));
     text(rx + 3, Y(T / 2) + 3, `płytka ${fmt(ph)}`, 'bi-small', 'start');

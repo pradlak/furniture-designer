@@ -3,6 +3,9 @@ import { boardBox, boardMaterial, describeMountWork, mountInfo, mountPoints } fr
 import { describeEdges, describeHoles } from '../model/boardFeatures.js';
 import { saveFile } from './saveFile.js';
 import { sketchSvg } from './boardInspector.js';
+import { trimSketch } from './objectSketch.js';
+import { trimBox, TRIM_TYPES } from '../model/trims.js';
+import { trimMaterial } from '../model/materials.js';
 
 // Pobieranie danych jednej samodzielnej płyty (półki, blatu): formatka (Excel / CSV — z obróbką i akcesoriami)
 // oraz rysunek techniczny (PNG / PDF, A4 poziomo): szkic z wymiarami, detal mocowania i opis obróbki.
@@ -186,7 +189,10 @@ export function downloadBoardDrawing(project, boardId, format = 'pdf') {
   const board = project.boards?.find((b) => b.id === boardId);
   const svg = board && boardDrawingSvg(project, boardId);
   if (!svg) return;
-  const name = `${fileBase(board)}_rysunek`;
+  saveDrawing(svg, `${fileBase(board)}_rysunek`, format);
+}
+
+function saveDrawing(svg, name, format) {
   if (format === 'svg') {
     saveFile(new Blob([svg], { type: 'image/svg+xml' }), `${name}.svg`, { description: 'Rysunek SVG' });
     return;
@@ -201,4 +207,79 @@ export function downloadBoardDrawing(project, boardId, format = 'pdf') {
     for (let i = 0; i < data.length; i++) jpeg[i] = data.charCodeAt(i);
     saveFile(pdfWithJpeg(jpeg, canvas.width, canvas.height), `${name}.pdf`, { description: 'Dokument PDF' });
   });
+}
+
+// --- blat na szafkach / blenda dolna, górna: formatka i rysunek ---
+const trimFilter = (trimId) => ({ cabinetIds: new Set(), boards: false, trimIds: new Set([trimId]) });
+
+export function downloadTrimCutList(project, trimId, format = 'xlsx') {
+  const trim = project.trims?.find((t) => t.id === trimId);
+  if (!trim) return;
+  const options = { accessories: false, filter: trimFilter(trimId) };
+  const xlsx = format === 'xlsx';
+  const blob = xlsx
+    ? new Blob([cutListXlsx(project, options)], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+    : new Blob([cutListCsv(project, options)], { type: 'text/csv;charset=utf-16le' });
+  saveFile(blob, `${fileBase(trim)}_formatka.${xlsx ? 'xlsx' : 'csv'}`, { description: xlsx ? 'Arkusz Excel' : 'Plik CSV' });
+}
+
+export function trimDrawingSvg(project, trimId) {
+  const trim = project.trims?.find((t) => t.id === trimId);
+  const box = trim && trimBox(trim, project);
+  if (!box) return null;
+  const mat = trimMaterial(trim, project);
+  const m = trimSketch(trim, project).match(/<svg viewBox="0 0 ([\d.]+) ([\d.]+)"[^>]*>([\s\S]*?)<\/svg>/);
+  const left = { x: 30, y: 90, w: 720 };
+  const h = m ? Math.min(+m[2] * (left.w / +m[1]), PAGE.h - left.y - 30) : 0;
+  const w = m ? (h / +m[2]) * +m[1] : 0;
+  const nested = m ? `<svg x="${left.x}" y="${left.y}" width="${w}" height="${h}" viewBox="0 0 ${m[1]} ${m[2]}">${m[3]}</svg>` : '';
+  const rows = cutListRows(project, ALL_PARTS, trimFilter(trimId));
+  const cabs = trim.cabinetIds.map((id) => project.furniture.find((c) => c.id === id)?.name).filter(Boolean);
+  const sections = [
+    [TRIM_TYPES[trim.type]?.label ?? 'Element', [
+      `Wymiary: ${Math.round(box.width)} × ${Math.round(box.depth)} × ${Math.round(box.height)} mm`,
+      `Materiał: ${mat.name}`,
+      cabs.length ? `Na korpusach: ${cabs.join(', ')}` : '',
+      `Wierzch ${Math.round(box.y + box.height)} mm od podłogi`,
+    ]],
+    ['Do cięcia', rows.map((r) => `${r.cutLength} × ${r.cutWidth} × ${r.thickness} mm${r.qty > 1 ? ` — ${r.qty} szt.` : ''}${r.edgeNames ? `, okleina: ${r.edgeNames}` : ''}${r.shape ? ` — ${r.shape}` : ''}`)],
+    ['Obróbka', [describeEdges(trim.edges), describeHoles(trim.holes, box.width, box.depth)].filter(Boolean)],
+  ];
+  const rx = 780;
+  let ty = 100;
+  const text = [];
+  for (const [head, lines] of sections) {
+    const body = lines.filter(Boolean);
+    if (!body.length) continue;
+    text.push(`<text x="${rx}" y="${ty}" class="t-h">${esc(head)}</text>`);
+    ty += 18;
+    for (const l of body) {
+      for (const line of wrap(l, 58)) {
+        text.push(`<text x="${rx}" y="${ty}" class="t-p">${esc(line)}</text>`);
+        ty += 16;
+      }
+      ty += 3;
+    }
+    ty += 10;
+  }
+  const date = new Date().toLocaleDateString('pl-PL');
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${PAGE.w}" height="${PAGE.h}" viewBox="0 0 ${PAGE.w} ${PAGE.h}">
+    <style>${SKETCH_CSS}
+  .bi-under { fill: none; stroke: #9ca3af; stroke-width: 0.8; stroke-dasharray: 3 2; }
+  .bi-front { fill: #fbf7ef; stroke: #6b7280; stroke-width: 1; }</style>
+    <rect width="100%" height="100%" fill="#ffffff"/>
+    <rect x="12" y="12" width="${PAGE.w - 24}" height="${PAGE.h - 24}" fill="none" stroke="#9ca3af"/>
+    <text x="30" y="48" class="t-title">${esc(trim.name)}</text>
+    <text x="30" y="70" class="t-sub">${esc(`${project.space.name || 'Projekt'} · rysunek · wymiary w mm · ${date}`)}</text>
+    <line x1="765" y1="85" x2="765" y2="${PAGE.h - 30}" stroke="#e5e7eb"/>
+    ${nested}
+    ${text.join('')}
+  </svg>`;
+}
+
+export function downloadTrimDrawing(project, trimId, format = 'pdf') {
+  const trim = project.trims?.find((t) => t.id === trimId);
+  const svg = trim && trimDrawingSvg(project, trimId);
+  if (!svg) return;
+  saveDrawing(svg, `${fileBase(trim)}_rysunek`, format);
 }

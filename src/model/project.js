@@ -3,6 +3,7 @@ import { normalizeCabinet } from './furniture.js';
 import { normalizeTrim, createTrim } from './trims.js';
 import { defaultMaterials, normalizeMaterials } from './materials.js';
 import { normalizeBoard } from './boards.js';
+import { normalizeDecoration } from './decorations.js';
 import { normalizeNote } from './notes.js';
 
 // Projekt = przestrzeń + materiały + meble + blendy wspólne + notatki + ustawienia widoku.
@@ -23,6 +24,7 @@ export function createDefaultProject() {
     furniture: [],
     trims: [],
     boards: [], // samodzielne blaty i półki (model/boards.js)
+    decorations: [], // dekoracje — tylko wygląd (model/decorations.js)
     notes: [], // notatki użytkownika (model/notes.js)
     view: createDefaultView(),
   };
@@ -42,6 +44,7 @@ export function normalizeProject(raw) {
     furniture,
     trims: (Array.isArray(raw.trims) ? raw.trims : []).map((t) => normalizeTrim(t, ids)).filter(Boolean),
     boards: (Array.isArray(raw.boards) ? raw.boards : []).map(normalizeBoard),
+    decorations: (Array.isArray(raw.decorations) ? raw.decorations : []).map(normalizeDecoration),
     notes: (Array.isArray(raw.notes) ? raw.notes : []).map((n) => normalizeNote(n, ids)).filter(Boolean),
     view: {
       showWalls: raw.view?.showWalls !== false,

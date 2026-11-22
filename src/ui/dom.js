@@ -48,3 +48,24 @@ export function setIfNotFocused(input, value) {
 export function round1(v) {
   return Math.round(v * 10) / 10;
 }
+
+// Przewija element do widoku tylko w jego najbliższym przewijanym kontenerze (okienko, sekcja) — nigdy całej strony
+// (pod edytorem jest opis programu, a przewinięcie strony chowało górny pasek). Element w ukrytym panelu — nic.
+export function scrollIntoPanel(el, { block = 'nearest', behavior = 'smooth' } = {}) {
+  if (!el) return;
+  let box = el.parentElement;
+  while (box && box !== document.body && box !== document.documentElement) {
+    const oy = getComputedStyle(box).overflowY;
+    if ((oy === 'auto' || oy === 'scroll') && box.scrollHeight > box.clientHeight + 1 && box.clientHeight > 0) break;
+    box = box.parentElement;
+  }
+  if (!box || box === document.body || box === document.documentElement) return;
+  const r = el.getBoundingClientRect();
+  const b = box.getBoundingClientRect();
+  if (!r.height && !r.width) return; // niewidoczny
+  let delta = 0;
+  if (block === 'start') delta = r.top - b.top;
+  else if (r.top < b.top) delta = r.top - b.top;
+  else if (r.bottom > b.bottom) delta = Math.min(r.bottom - b.bottom, r.top - b.top);
+  if (Math.abs(delta) > 0.5) box.scrollBy({ top: delta, behavior });
+}

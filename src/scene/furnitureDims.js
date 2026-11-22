@@ -67,7 +67,23 @@ export function buildPartDimensions(parts, space) {
   const p = (px, py, pz) => new THREE.Vector3(...toScene(px, py, pz, space));
   const off = (dx, dy, dz) => p(dx, dy, dz).sub(p(0, 0, 0));
   const add = (a, b, o, text) => group.add(createDimension(a, b, o, text, 'accent'));
-  const named = parts.length > 1;
+  // kilka zaznaczonych elementów (np. szuflady): tylko wysokości (same liczby) wzdłuż lewej krawędzi, jedna wspólna
+  // szerokość (gdy różne — każda osobno, krótko) i wysokość razem; bez głębokości i bez nazw
+  if (parts.length > 1) {
+    const list = [...parts].sort((a, b) => a.box.y - b.box.y);
+    const x0 = Math.min(...list.map((p) => p.box.x));
+    const x1 = Math.max(...list.map((p) => p.box.x + p.box.width));
+    const front = Math.max(...list.map((p) => p.box.z + p.box.depth));
+    const y0 = Math.min(...list.map((p) => p.box.y));
+    const top = Math.max(...list.map((p) => p.box.y + p.box.height));
+    for (const { box } of list) add(p(x0, box.y, front), p(x0, box.y + box.height, front), off(0, 0, NEAR), fmt(box.height));
+    add(p(x0, y0, front), p(x0, top, front), off(0, 0, FAR), `razem ${fmt(top - y0)}`);
+    const widths = new Set(list.map((q) => Math.round(q.box.width)));
+    if (widths.size === 1) add(p(x0, top, front), p(x1, top, front), off(0, NEAR, 0), `szer. ${fmt(x1 - x0)}`);
+    else for (const { box } of list) add(p(box.x, box.y + box.height, front), p(box.x + box.width, box.y + box.height, front), off(0, NEAR / 2, 0), fmt(box.width));
+    return group;
+  }
+  const named = false;
   for (const { box, name, round, slab } of parts) {
     const { x, y, z, width: W, height: H, depth: D } = box;
     const front = z + D;

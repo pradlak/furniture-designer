@@ -18,17 +18,18 @@ import { cabinetPanels, legHeight, shelfKey, setShelfY, handleOffsetsFor, fitCab
 import { moveFrontBoundary, movePart, coverWithDoor, uncoverPart, canUncover, setPartKind, fillFreeSpace, freeSpaceOf, fitLabel } from '../model/frontEdit.js';
 import { createContextMenu } from '../ui/contextMenu.js';
 import { duplicateSelected } from '../state/duplicate.js';
-import { downloadBoardCutList, downloadBoardDrawing } from '../ui/boardExport.js';
+import { downloadBoardCutList, downloadBoardDrawing, downloadTrimCutList, downloadTrimDrawing } from '../ui/boardExport.js';
 import { mergeCandidate, mergeParts, removableCount, removeParts } from '../model/mergeParts.js';
 import { selectedCabinetIds, toggleCabinet } from '../state/selection.js';
 import { COLOR_PRESETS, cabinetMaterials, trimMaterial } from '../model/materials.js';
-import { WALL_DECORS, OUTLINE_PRESETS, applyOutlinePreset } from '../model/space.js';
-import { spaceOutline, outlineEdges, insertPoint, isFrontPoint, cleanOutline, selfIntersects, canRemovePoint } from '../model/outline.js';
+import { WALL_DECORS, HOOD_DECORS, OUTLINE_PRESETS, applyOutlinePreset } from '../model/space.js';
+import { spaceOutline, outlineEdges, insertPoint, isFrontPoint, cleanOutline, selfIntersects, canRemovePoint, edgeOutward } from '../model/outline.js';
 import { updateSpaceRefit } from '../model/layout.js';
 import { moveWall, wallMoveLabel, wallSnapTargets } from '../model/walls.js';
 import { resolveHoles, HOLE_FILLS } from '../model/boardFeatures.js';
 import { boardBox, boardMaterial, BOARD_LIMITS, boardSpotAt, createBoard, NEW_BOARD_SIZE, boardNeighbour, boardStep, nudgeBoard, fitBoardWidth, boardNicheWidth, BOARD_MOUNTS, mountInfo, MOUNT_MACHINING, normalizeMount } from '../model/boards.js';
 import { trimBox } from '../model/trims.js';
+import { decorType, centerDecoration } from '../model/decorations.js';
 import { tileTargets } from '../model/tileTargets.js';
 import { wallFinishOf, setWallFinish, wallLabel, tilesEstimate, TILE_DEFAULTS, TILE_LAYOUTS, TILE_LIMITS } from '../model/wallFinish.js';
 import { FRONT_DECORS, decorPreviewSvg } from '../model/decor.js';
@@ -322,6 +323,68 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
     const hit = handles.length ? raycaster.intersectObjects(handles, false)[0] : null;
     return hit ? { ...hit.object.userData.boardLift, point: hit.point.clone() } : null;
   }
+  // Dekoracja przeciągana nad powierzchnią: na ścianę (kinkiet, okno, obraz) — przyklejona do ściany pod kursorem
+  // i obrócona przodem do pokoju (lewa / prawa / tylna / skośna); na podłogę / mebel (lampa, kwiatek, książki, dywan) —
+  // na wierzchu powierzchni pod kursorem (podłoga, korpus, blat, półka, przeszkoda); lampa wisząca — pod sufitem.
+  // → { pos: { x, y, z, rotation? }, label } albo null (nic pod kursorem)
+  function decorSurfaceSnap(id) {
+    const project = store.get();
+    const d = (project.decorations ?? []).find((x) => x.id === id);
+    if (!d) return null;
+    const t = decorType(d.type);
+    const { space } = project;
+    const own = (o) => {
+      for (let p = o; p; p = p.parent) if (p.userData?.decorId === id) return true;
+      return false;
+    };
+    const hits = raycaster
+      .intersectObjects([viewer.furnitureGroup, viewer.spaceGroup].filter(Boolean), true)
+      .filter((h) => h.object.isMesh && h.object.material?.visible !== false && !h.object.userData.wallHandle && !h.object.userData.obstacleResize && !own(h.object));
+    const mm = (v) => Math.round(v);
+    const P = (h) => ({ x: h.point.x / MM, y: h.point.y / MM, z: h.point.z / MM + space.depth });
+    if (t.place === 'wall') {
+      const h = hits.find((x) => x.object.userData.wall && !['floor', 'ceiling', 'slope'].includes(x.object.userData.wall));
+      if (!h) return null;
+      const tag = h.object.userData.wall;
+      const p = P(h);
+      // kierunek do wnętrza (normalna ściany do pokoju) → obrót dekoracji
+      let n;
+      if (tag === 'back') n = [0, 1];
+      else if (tag === 'left') n = [1, 0];
+      else if (tag === 'right') n = [-1, 0];
+      else {
+        const e = outlineEdges(space).find((x) => x.tag === tag);
+        const out = e ? edgeOutward(e, spaceOutline(space)) : [0, -1];
+        n = [-out[0], -out[1]];
+      }
+      const rotation = mm((-Math.atan2(n[0], n[1]) * 180) / Math.PI);
+      const names = { back: 'tylnej ściany', left: 'lewej ściany', right: 'prawej ściany' };
+      return { pos: { x: mm(p.x), y: mm(Math.max(0, p.y - d.height / 2)), z: mm(p.z), rotation }, label: `do ${names[tag] ?? 'ściany'}` };
+    }
+    if (t.place === 'ceiling') {
+      const h = hits[0];
+      if (!h) return null;
+      const p = P(h);
+      return { pos: { x: mm(p.x), y: mm(space.height - d.height), z: mm(Math.min(space.depth, Math.max(0, p.z))) }, label: 'pod sufitem' };
+    }
+    // podłoga / mebel: pierwsza powierzchnia „od góry” (normalna w górę) albo podłoga
+    for (const h of hits) {
+      const tag = h.object.userData.wall;
+      const up = h.face && new THREE.Vector3().copy(h.face.normal).transformDirection(h.object.matrixWorld).y > 0.7;
+      if (tag === 'floor' || (!tag && up)) {
+        const p = P(h);
+        let label = 'na podłodze';
+        if (tag !== 'floor') {
+          let o = h.object;
+          while (o && !o.userData.cabinetId && !o.userData.trimId && !o.userData.boardId && !o.userData.obstacleId) o = o.parent;
+          label = o?.userData.cabinetId ? 'na korpusie' : o?.userData.trimId ? 'na blacie' : o?.userData.boardId ? 'na półce / blacie' : 'na powierzchni';
+        }
+        return { pos: { x: mm(p.x), y: mm(tag === 'floor' ? 0 : p.y), z: mm(p.z) }, label };
+      }
+    }
+    return null;
+  }
+
   function dragBoard(pt, e) {
     const m = drag.boardMove;
     const project = store.get();
@@ -675,12 +738,13 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
       let panelKey = null;
       let slab = null; // płyta z otworami (blat, półka) — do przesuwania otworów
       const handle = !!o.userData.handle; // trafiony uchwyt frontu
-      while (o && !o.userData.cabinetId && !o.userData.trimId && !o.userData.boardId) {
+      while (o && !o.userData.cabinetId && !o.userData.trimId && !o.userData.boardId && !o.userData.decorId) {
         panelKey ??= o.userData.panelKey ?? null;
         slab ??= o.userData.slab ?? null;
         o = o.parent;
       }
       if (o) slab ??= o.userData.slab ?? null;
+      if (o?.userData.decorId) return { decorId: o.userData.decorId, point: hit.point }; // dekoracja (tylko wygląd)
       if (o?.userData.boardId) return { boardId: o.userData.boardId, point: hit.point, slab }; // samodzielny blat / półka
       if (o?.userData.trimId) return { trimId: o.userData.trimId, point: hit.point, slab }; // blenda wspólna / blat
       if (o) return { id: o.userData.cabinetId, panelKey, point: hit.point, handle };
@@ -734,10 +798,10 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
     if (!items.length) items.push({ icon: '·', label: 'Dotyka z obu stron — nie ma dokąd rozszerzyć', run: () => {} });
     items.push({
       icon: '🔥',
-      label: 'Wygląd (kominek, telewizor)…',
+      label: o.kind === 'hood' ? 'Okap (urządzenie pod zabudową)…' : 'Wygląd (kominek, telewizor)…',
       submenu: () => ({
-        title: `Wygląd: ${o.name || 'występ ściany'}`,
-        items: WALL_DECORS.map((d) => ({
+        title: `Wygląd: ${o.name || (o.kind === 'hood' ? 'okap' : 'występ ściany')}`,
+        items: (o.kind === 'hood' ? HOOD_DECORS : WALL_DECORS).map((d) => ({
           icon: d.key === (o.decor ?? null) ? '✓' : '',
           label: d.label,
           run: () =>
@@ -1243,6 +1307,23 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
         }),
       });
     }
+    // jeden blat / blenda wspólna — pobranie formatki i rysunku
+    if (!multi && ids[0].startsWith('trim:')) {
+      const tid = ids[0].slice(5);
+      boardMoves.push({
+        icon: '💾',
+        label: 'Pobierz formatkę / rysunek…',
+        submenu: () => ({
+          title: 'Pobierz',
+          items: [
+            { icon: '💾', label: 'Formatka — Excel (.xlsx)', run: () => downloadTrimCutList(store.get(), tid, 'xlsx') },
+            { icon: '💾', label: 'Formatka — CSV (.csv)', run: () => downloadTrimCutList(store.get(), tid, 'csv') },
+            { icon: '💾', label: 'Rysunek z wymiarami — PDF', run: () => downloadTrimDrawing(store.get(), tid, 'pdf') },
+            { icon: '💾', label: 'Rysunek z wymiarami — obraz PNG', run: () => downloadTrimDrawing(store.get(), tid, 'png') },
+          ],
+        }),
+      });
+    }
     // jedna samodzielna płyta — pobranie jej formatki
     if (!multi && ids[0].startsWith('board:')) {
       const bid = ids[0].slice(6);
@@ -1593,6 +1674,22 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
       if (surface) showSurfaceMenu(surface, e.clientX, e.clientY);
       return;
     }
+    // Prawy klik na dekoracji — menu: duplikuj, usuń
+    if (hit.decorId) {
+      const id = hit.decorId;
+      ui.set({ ...ui.get(), selectedId: null, selectedIds: [], selectedFronts: [], selectedBlends: [`decor:${id}`], selectedHole: null, selectedObstacle: null });
+      const d = store.get().decorations.find((x) => x.id === id);
+      const centerItems = ['h', 'v']
+        .map((axis) => ({ axis, c: centerDecoration(store.get(), id, axis, { trimBox, boardBox }) }))
+        .filter((x) => x.c)
+        .map(({ axis, c }) => ({ icon: axis === 'h' ? '⇔' : '⇕', label: `Wyśrodkuj ${axis === 'h' ? 'poziomo' : 'pionowo'} ${c.label}`, run: () => store.set((p) => ({ ...p, decorations: p.decorations.map((x) => (x.id === id ? { ...x, ...c.pos } : x)) })) }));
+      menu.show(e.clientX, e.clientY, d?.name ?? 'Dekoracja', [
+        ...centerItems,
+        { icon: '⧉', label: 'Duplikuj', run: () => store.set((p) => ({ ...p, decorations: [...p.decorations, { ...structuredClone(d), id: crypto.randomUUID?.() ?? String(Date.now()), x: d.x + 200 }] })) },
+        { icon: '🗑', label: 'Usuń', run: () => store.set((p) => ({ ...p, decorations: p.decorations.filter((x) => x.id !== id) })) },
+      ]);
+      return;
+    }
     // Prawy klik w otwór blatu / półki (albo płytę grzewczą w nim) — menu otworu: płyta indukcyjna / gazowa, usuń
     const holeHit = (hit.trimId || hit.boardId) && holeAt(hit);
     if (holeHit) {
@@ -1758,6 +1855,22 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
         viewer.controls.enabled = false;
         el.setPointerCapture(e.pointerId);
       };
+      if (hit.decorId) {
+        // dekoracja: klik zaznacza, przeciąganie przesuwa (po podłodze, z Shift — w pionie; okno / obraz — po ścianie)
+        const d = (store.get().decorations ?? []).find((x) => x.id === hit.decorId);
+        ui.set({ ...ui.get(), selectedId: null, selectedIds: [], selectedFronts: [], selectedBlends: [`decor:${hit.decorId}`], selectedHole: null, selectedObstacle: null });
+        if (d) {
+          const onWall = decorType(d.type).place === 'wall';
+          const plane = onWall ? new THREE.Plane(new THREE.Vector3(0, 0, 1), -hit.point.z) : dragPlane(hit.point, e.shiftKey);
+          const start = raycaster.ray.intersectPlane(plane, new THREE.Vector3());
+          if (start) {
+            drag = { decorMove: { id: d.id, from: { x: d.x, y: d.y, z: d.z }, start, axes: onWall ? ['x', 'y'] : e.shiftKey ? ['y'] : ['x', 'z'] }, plane };
+            viewer.controls.enabled = false;
+            el.setPointerCapture(e.pointerId);
+          }
+        }
+        return;
+      }
       if (hit.trimId || hit.boardId) {
         // Blenda wspólna (dolna, górna), blat albo samodzielna płyta: klik zaznacza ją (z Ctrl — dodaje / usuwa
         // z zaznaczenia). Chwycenie płyty tuż przy otworze — przesuwanie otworu.
@@ -1933,6 +2046,33 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
       if (pt) dragBoard(pt, e);
       return;
     }
+    if (drag.decorMove) {
+      const m = drag.decorMove;
+      // przyciąganie do powierzchni pod kursorem (bez Alt i Shift): ściana / podłoga, mebel, blat / sufit
+      if (!e.altKey && !e.shiftKey) {
+        const snapped = decorSurfaceSnap(m.id);
+        if (snapped) {
+          store.set((p) => ({ ...p, decorations: p.decorations.map((x) => (x.id === m.id ? { ...x, ...snapped.pos } : x)) }));
+          const r = viewer.container.getBoundingClientRect();
+          snapTip.textContent = `🧲 ${snapped.label}`;
+          snapTip.style.left = `${e.clientX - r.left + 14}px`;
+          snapTip.style.top = `${e.clientY - r.top + 18}px`;
+          snapTip.hidden = false;
+          el.style.cursor = 'grabbing';
+          return;
+        }
+      }
+      snapTip.hidden = true;
+      const pt = raycaster.ray.intersectPlane(drag.plane, new THREE.Vector3());
+      if (!pt) return;
+      const dlt = pt.clone().sub(m.start).divideScalar(MM);
+      const pos = { ...m.from };
+      for (const a of m.axes) pos[a] = Math.round((m.from[a] + dlt[a]) / (e.altKey ? 1 : 10)) * (e.altKey ? 1 : 10);
+      if (m.axes.includes('y')) pos.y = Math.max(0, pos.y);
+      store.set((p) => ({ ...p, decorations: p.decorations.map((x) => (x.id === m.id ? { ...x, ...pos } : x)) }));
+      el.style.cursor = 'grabbing';
+      return;
+    }
     if (drag.obstacleResize) {
       const pt = raycaster.ray.intersectPlane(drag.plane, new THREE.Vector3());
       if (pt) dragObstacleResize(pt, e);
@@ -2039,7 +2179,8 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
   el.addEventListener('pointerup', (e) => {
     snapTip.hidden = true;
     const moved = down && Math.hypot(e.clientX - down.x, e.clientY - down.y) > CLICK_TOLERANCE_PX;
-    if (drag?.resize || drag?.boundary || drag?.obstacleResize || drag?.boardMove) {
+    if (drag?.decorMove) snapTip.hidden = true;
+    if (drag?.resize || drag?.boundary || drag?.obstacleResize || drag?.boardMove || drag?.decorMove) {
       drag = null;
       viewer.controls.enabled = true;
       el.releasePointerCapture(e.pointerId);
@@ -2079,7 +2220,10 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
       viewer.controls.enabled = true;
       el.releasePointerCapture(e.pointerId);
     } else if (down && !moved && e.button === 0) {
-      ui.set({ ...ui.get(), selectedId: null, selectedFronts: [], selectedBlends: [], selectedHole: null, selectedObstacle: null }); // klik w puste miejsce
+      // klik w ścianę / podłogę (bez przeciągania) — okienko przestrzeni; w tło poza pokojem — tylko odznacza
+      setRay(e);
+      const surface = pickSurface();
+      ui.set({ ...ui.get(), selectedId: null, selectedIds: [], selectedFronts: [], selectedBlends: [], selectedHole: null, selectedObstacle: null, ...(surface ? { spaceOpen: true, panelWin: null } : {}) });
     }
     down = null;
   });

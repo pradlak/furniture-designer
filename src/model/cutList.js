@@ -5,6 +5,17 @@ import { trimMaterial } from './materials.js';
 import { buildXlsx } from './xlsx.js';
 import { describeEdges, describeHoles } from './boardFeatures.js';
 import { boardBox, boardMaterial, mountPoints, mountInfo, describeMountWork } from './boards.js';
+import { cabinetDrawerBoxes } from './drawerBoxes.js';
+
+// Płyta na dno i plecy szuflad z systemu: płyta meblowa projektu o grubości systemu (np. 16 mm) albo pierwsza płyta
+// meblowa w tej grubości (nazwa z dopiskiem grubości).
+function drawerBoardMaterial(project, thickness) {
+  const chip = (project.materials ?? []).filter((m) => m.type === 'chipboard');
+  const same = chip.find((m) => m.thickness === thickness);
+  if (same) return same;
+  const base = chip[0] ?? { name: 'Płyta meblowa', type: 'chipboard', edgeBanding: 0 };
+  return { ...base, thickness, name: `${base.name.replace(/\s*\d+(?:[.,]\d+)?\s*(mm)?$/, '')} ${thickness} mm`, edgeBanding: 0 };
+}
 
 // Lista formatek do rozkroju: wszystkie płyty projektu (korpusy, blendy boczne, blendy dolne i górne,
 // blaty). Jednakowe formatki (ten sam materiał, wymiary, obrzeże i zapas) łączone są w jeden wiersz.
@@ -47,7 +58,7 @@ export function cutListItems(project) {
 function collectRows(project, parts, filter) {
   const rows = [];
   const solids = projectSolids(project);
-  const { cabinetIds, boards: withBoards = true, materials, boardIds } = filter; // boardIds — tylko te samodzielne płyty
+  const { cabinetIds, boards: withBoards = true, materials, boardIds, trimIds } = filter; // boardIds / trimIds — tylko te płyty / blaty
   // milling — opis frezów frontu (uchwytowy / dekoracyjny), dopisywany do kolumny cięć
   // cabIds — korpusy, których dotyczy element (do zależności w okienku „Formatki”)
   const add = (category, name, owner, material, cut, edgeSet, milling, cabIds) => {
@@ -69,7 +80,7 @@ function collectRows(project, parts, filter) {
       edgesW: cut.band ? cut.edges.w : 0,
       band: cut.band,
       allowance: round(cut.allowance ?? 0),
-      edgeNames: cut.band ? edgeSet.map((k) => EDGE_LABELS[k]).join(', ') : '',
+      edgeNames: cut.band ? edgeSet.map((k) => EDGE_LABELS[k] ?? k).join(', ') : '',
       // skośne cięcia (płyty pod skos), np. „ścięty róg 470 × 560 mm …”, i frezy frontów
       shape: [describeCuts(cut), milling].filter(Boolean).join('; '),
     });
@@ -82,11 +93,30 @@ function collectRows(project, parts, filter) {
       const work = [describeMilling(p), describeHandle(p), describeHinges(p)].filter(Boolean).join('; '); // frezy i otwory frontu
       add(p.group, p.name, c.name, p.material, panelCutSize({ ...p, edges: edgeCounts(p, p.thicknessAxis, set) }), set, work, [c.id]);
     }
+    // szuflady z systemu (np. ATM Futura): dno i plecy z płyty do docięcia (wymiary z katalogu)
+    for (const b of cabinetDrawerBoxes(c, project)) {
+      const mat = drawerBoardMaterial(project, b.system.boardThickness);
+      const label = `${b.system.brand} ${b.system.name} ${b.model.key}, prowadnice ${b.NL}`;
+      // w — wymiar wzdłuż krawędzi top/bottom, h — wzdłuż left/right; sides — oklejone strony
+      const piece = (w, h, sides) => {
+        const band = sides.length ? mat.edgeBanding || 1 : 0;
+        const nH = sides.filter((k) => k === 'top' || k === 'bottom').length; // krawędzie wzdłuż w
+        const nV = sides.length - nH; // krawędzie wzdłuż h
+        const wLong = w >= h;
+        const edges = { l: wLong ? nH : nV, w: wLong ? nV : nH }; // l — krawędzie wzdłuż długości
+        const length = Math.max(w, h), width = Math.min(w, h);
+        return { length, width, thickness: b.system.boardThickness, cutLength: length - edges.w * band, cutWidth: width - edges.l * band, band, edges, allowance: 0, cuts: [] };
+      };
+      const names = (sides, labels) => sides.map((k) => labels[k]);
+      const who = b.name.replace(/^(Front|Czoło)\s+/, ''); // „szuflady 2”, „szuflady wewnętrznej 1”
+      add('body', `Dno ${who}`, c.name, mat, piece(b.bottom.width, b.bottom.length, b.bottom.edges), names(b.bottom.edges, { top: 'tył', bottom: 'przód', left: 'lewa', right: 'prawa' }), label, [c.id]);
+      add('body', `Plecy ${who}`, c.name, mat, piece(b.back.width, b.back.height, b.back.edges), names(b.back.edges, { top: 'góra', bottom: 'dół', left: 'lewa', right: 'prawa' }), label, [c.id]);
+    }
   }
 
   for (const t of project.trims ?? []) {
     if (!parts.has(t.type === 'countertop' ? 'countertop' : 'blend')) continue;
-    if (cabinetIds && !t.cabinetIds.some((id) => cabinetIds.has(id))) continue;
+    if (trimIds ? !trimIds.has(t.id) : cabinetIds && !t.cabinetIds.some((id) => cabinetIds.has(id))) continue;
     const material = trimMaterial(t, project);
     const a = trimAllowance(t, project);
     const segments = trimSegments(t, project);
@@ -150,6 +180,7 @@ export function buildAccessories(project, cabinetIds, boardIds = null) {
   let hinges = 0;
   let slides = 0;
   const handles = new Map(); // nazwa uchwytu (z rozstawem) → ilość
+  const drawerSets = new Map(); // komplety szuflad z systemu → ilość
   for (const c of project.furniture) {
     if (cabinetIds && !cabinetIds.has(c.id)) continue;
     for (const l of cabinetLegs(c, project)) legs.set(l.height, (legs.get(l.height) ?? 0) + 1);
@@ -158,7 +189,13 @@ export function buildAccessories(project, cabinetIds, boardIds = null) {
     // zawiasy — ile wypadło na drzwiach (także przesuniętych przez szuflady wewnętrzne); prowadnice — na każdą
     // szufladę (front szuflady zewnętrznej albo czoło wewnętrznej)
     hinges += fronts.reduce((sum, p) => sum + (p.hinges?.length ?? 0), 0);
-    slides += panels.filter((p) => p.opening?.drawer).length;
+    // szuflady z systemu — komplet szuflady (prowadnice, boki, mocowania) zamiast samych prowadnic
+    const boxes = cabinetDrawerBoxes(c, project);
+    for (const b of boxes) {
+      const name = `Szuflada ${b.system.brand} ${b.system.name} ${b.model.key} ${b.model.label.split(' ').pop()}, L-${b.NL}, ${b.color.label} (komplet)`;
+      drawerSets.set(name, (drawerSets.get(name) ?? 0) + 1);
+    }
+    slides += panels.filter((p) => p.opening?.drawer).length - boxes.length;
     // uchwyty: według rodzaju i rozstawu (front z frezem uchwytowym nie ma uchwytu)
     for (const p of fronts) {
       if (!p.handle) continue;
@@ -170,6 +207,7 @@ export function buildAccessories(project, cabinetIds, boardIds = null) {
     ...[...legs.entries()].map(([height, qty]) => ({ name: `Nóżka meblowa ${height} mm`, qty })),
     ...(hinges ? [{ name: 'Zawias puszkowy (do frontów nakładanych)', qty: hinges }] : []),
     ...(slides ? [{ name: 'Prowadnice do szuflad (komplet na szufladę)', qty: slides }] : []),
+    ...[...drawerSets.entries()].map(([name, qty]) => ({ name, qty })),
     ...[...handles.entries()].map(([name, qty]) => ({ name, qty })),
     // mocowanie samodzielnych półek / blatów do ściany (tylko przy wydruku wszystkiego, nie dla wybranych korpusów)
     ...(boardIds ? mountAccessories(project, boardIds) : cabinetIds ? [] : mountAccessories(project)),

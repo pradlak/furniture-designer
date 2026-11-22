@@ -19,9 +19,14 @@ export function createToolbar(root, store, viewer, { onHelp, onNew, onFeedback, 
   root.innerHTML = `
     <div class="brand" title="Meble Samemu — darmowy projektant mebli">Meble Samemu</div>
     <div class="group">
-      <button type="button" data-action="new" title="Nowy projekt — wnęka prostokątna albo poddasze ze skosem">📄 Nowy…</button>
-      <button type="button" data-action="import" title="Wczytaj projekt z pliku (.json)">📂 Importuj…</button>
-      <button type="button" data-action="export" title="Zapisz projekt do pliku (.json) — żeby go zachować albo przenieść na inny komputer">📤 Eksportuj</button>
+      <details class="file-menu">
+        <summary title="Nowy projekt, wczytanie i zapis projektu do pliku">📁 Projekt ▾</summary>
+        <div class="file-menu-list">
+          <button type="button" data-action="new" title="Nowy projekt — wnęka prostokątna albo poddasze ze skosem">📄 Nowy…</button>
+          <button type="button" data-action="import" title="Wczytaj projekt z pliku (.json)">📂 Importuj z pliku…</button>
+          <button type="button" data-action="export" title="Zapisz projekt do pliku (.json) — żeby go zachować albo przenieść na inny komputer">📤 Eksportuj do pliku</button>
+        </div>
+      </details>
       <input type="file" accept="application/json,.json" hidden />
       <button type="button" data-action="cut-list" title="Lista płyt do rozkroju — do wyboru Excel albo CSV oraz co wyeksportować (korpusy, fronty, blendy, blaty, akcesoria)">💾 Formatki…</button>
     </div>
@@ -63,11 +68,18 @@ export function createToolbar(root, store, viewer, { onHelp, onNew, onFeedback, 
   const cutListDialog = createCutListDialog({ onExport: (options) => downloadCutList(store.get(), options) });
   const viewFlags = [...root.querySelectorAll('[data-view-flag]')];
 
+  // menu „Projekt” — klik poza nim zamyka listę
+  document.addEventListener('pointerdown', (e) => {
+    const fm = root.querySelector('.file-menu');
+    if (fm?.open && !fm.contains(e.target)) fm.open = false;
+  });
   root.addEventListener('click', (e) => {
     // przycisk mógł zostać kliknięty w ikonkę albo napis w środku — szukamy najbliższego przycisku z akcją
     const action = e.target.closest?.('[data-action]')?.dataset.action;
     const view = e.target.closest?.('[data-view]')?.dataset.view;
     if (view) viewer.setView(view);
+    // wybór w menu „Projekt” zamyka listę
+    if (e.target.closest?.('.file-menu-list [data-action]')) root.querySelector('.file-menu').open = false;
     if (action === 'new') {
       if (onNew) onNew();
       else if (confirm('Utworzyć nowy projekt? Bieżące zmiany zostaną utracone.')) store.set(createDefaultProject(), { replace: true });

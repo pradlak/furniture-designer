@@ -117,8 +117,9 @@ export function panelEdgeSet(panel, cabinet, project, solids) {
   if (panel.key.startsWith('stiff-')) return ['yMax', 'yMin'].filter((k) => edgeKeys(panel.thicknessAxis).includes(k));
   // Półka: oklejamy tylko przód (boki stykają się z bokami korpusu, tył — z plecami / jest niewidoczny).
   if (panel.key.startsWith('shelf-')) return ['zMax'];
-  // Front: widoczny ze wszystkich stron — oklejamy wszystkie cztery krawędzie.
-  if (panel.key.startsWith('front-')) return ['xMin', 'xMax', 'yMin', 'yMax'];
+  // Front (drzwi, front szuflady) i czoło szuflady wewnętrznej: widoczne ze wszystkich stron — oklejamy wszystkie
+  // cztery krawędzie.
+  if (panel.key.startsWith('front-') || panel.key.startsWith('idrawer-')) return ['xMin', 'xMax', 'yMin', 'yMax'];
   const edges = visibleEdges(panel, panel.thicknessAxis, `${cabinet.id}:${panel.key}`, solids ?? projectSolids(project));
   // Panel przy ścianie: tylna krawędź jest schowana między ścianą a blendą boczną.
   if (panel.key === 'wallPanelLeft' || panel.key === 'wallPanelRight') return edges.filter((k) => k !== 'zMin');

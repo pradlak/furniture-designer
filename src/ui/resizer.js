@@ -5,6 +5,7 @@ const MAX_SHARE = 0.7; // maksymalnie 70% szerokości okna
 // Uchwyt między lewym panelem a widokiem 3D: przeciąganie zmienia szerokość panelu,
 // dwuklik przywraca domyślną. Szerokość jest zapamiętywana w przeglądarce.
 export function initPanelResizer(handle, panel) {
+  if (!handle || !panel) return; // (bez lewego panelu)
   const clamp = (w) => Math.round(Math.min(window.innerWidth * MAX_SHARE, Math.max(MIN_WIDTH, w)));
   const apply = (w) => {
     panel.style.width = w == null ? '' : `${clamp(w)}px`;
