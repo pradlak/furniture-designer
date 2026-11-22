@@ -1876,3 +1876,84 @@ body.has-user-menu .help-group .settings-btn { display: none; }
 .dw-piece-head { display: flex; align-items: center; gap: 6px; margin: 2px 0; }
 .dw-piece-head b { flex: 1; font-size: 13px; }
 .dw-piece-back { padding: 2px 8px; font-size: 11px; color: var(--accent); border-color: var(--accent); background: transparent; }
+
+/* okienko kilku zaznaczonych korpusów — wspólna edycja */
+.multi-cab { width: 340px; }
+.multi-cab .mc-list { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0 6px; }
+.multi-cab .mc-chip { font-size: 11px; padding: 1px 7px; border-radius: 10px; background: color-mix(in srgb, var(--accent) 12%, #fff); }
+.multi-cab .mc-form { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 8px; }
+.multi-cab .mc-form .field, .multi-cab .mc-form .bi-field { margin: 0; min-width: 0; }
+.multi-cab .mc-form select { width: 100%; min-width: 0; }
+.multi-cab .mc-form .color-row { display: flex; gap: 4px; }
+.multi-cab .mc-form .color-row select { flex: 1; }
+.multi-cab .mc-small { font-size: 11px; margin: 2px 0 4px; }
+.multi-cab input::placeholder { color: #b45309; font-style: italic; }
+.fd-full { margin: 4px 0; font-size: 12px; padding: 2px 8px; }
+
+/* okienko zaznaczonego zawiasu drzwi — w miejscu okienka sekcji korpusu (jak okienko szuflady) */
+.hinge-open .item.in-inspector > details.section[open] > .section-body { display: none; }
+.hw-pick { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0 6px; }
+.hw-pick button { display: flex; flex-direction: column; align-items: center; min-width: 52px; padding: 3px 6px; font-weight: 600; line-height: 1.2; }
+.hw-pick button small { font-weight: 400; font-size: 10.5px; color: var(--muted); }
+.hw-pick button.on { background: #2563eb; border-color: #2563eb; color: #fff; }
+.hw-pick button.on small { color: #dbeafe; }
+.hw-pick button.bad { border-color: var(--danger, #dc2626); }
+.hw-from-top, .hw-mode { margin: 2px 0 4px; font-size: 11px; color: var(--muted); }
+.hw-soon { opacity: 0.6; }
+.hinge-window [data-hw-step] { min-width: 34px; }
+/* okienko zawiasu: szkic drzwi z zawiasami i puszki */
+.hw-sketch { margin: 2px 0 6px; padding: 4px; border: 1px solid var(--border); border-radius: 8px; background: #fbfdff; }
+.hw-sketch svg { display: block; font-size: 10px; }
+.hw-sketch .hs-door { fill: #f5f1e8; stroke: #6b7280; stroke-width: 1; }
+.hw-sketch .hs-door-o { fill: none; stroke: #6b7280; stroke-width: 1.2; }
+.hw-sketch .hs-cup { fill: #e5e7eb; stroke: #4b5563; stroke-width: 1.5; }
+.hw-sketch .hs-bad { fill: #fecaca; stroke: #dc2626; stroke-width: 1.5; }
+.hw-sketch .hs-pick { fill: #bfdbfe; stroke: #2563eb; stroke-width: 2; }
+.hw-sketch .hs-cup-big { fill: #e0ecff; stroke: #2563eb; stroke-width: 1.5; }
+.hw-sketch .hs-dot { fill: #2563eb; }
+.hw-sketch .hs-section { fill: #f5f1e8; stroke: #6b7280; stroke-width: 1.2; }
+.hw-sketch .hs-dim { stroke: #2563eb; stroke-width: 1; }
+.hw-sketch .hs-lead { stroke: #93c5fd; stroke-width: 1; stroke-dasharray: 3 2; }
+.hw-sketch .hs-txt { fill: #1d4ed8; font-weight: 600; }
+.hw-sketch .hs-num { fill: #374151; font-weight: 600; }
+.hw-sketch .hs-muted { fill: #6b7280; }
+.fs-parts input.fitted, input.fitted { color: #b45309; font-style: italic; }
+.issues li.warn { color: #b45309; }
+.issues li.warn::before { content: ''; }
+/* „Problemy” na górnym pasku: błędy i ostrzeżenia projektu */
+.problems-menu .pb-badge { display: inline-block; min-width: 18px; padding: 0 5px; border-radius: 9px; font-size: 11px; font-weight: 700; line-height: 17px; text-align: center; color: #fff; }
+.problems-menu .pb-badge.err { background: var(--danger, #dc2626); }
+.problems-menu .pb-badge.warn { background: #f59e0b; }
+.problems-menu summary.pb-ok { color: #15803d; }
+.problems-list { min-width: 360px; max-width: 460px; }
+.problems-list button { width: 100%; }
+.problems-list button small { white-space: normal; line-height: 1.35; }
+.problems-list .pb-error b { color: var(--danger, #dc2626); }
+.problems-list .pb-warning b { color: #b45309; }
+.problems-list .pb-none { padding: 8px; color: #15803d; }
+.problems-menu summary.pb-icon { display: inline-flex; align-items: center; justify-content: center; padding: 3px 6px; line-height: 0; }
+.problems-menu summary.pb-icon svg { display: block; }
+.problems-menu summary.pb-ok { opacity: 0.75; }
+.problems-menu summary.pb-icon { position: relative; }
+.problems-menu .pb-count { position: absolute; right: -5px; bottom: -5px; min-width: 15px; height: 15px; padding: 0 3px; border-radius: 8px; background: #fff; border: 1px solid currentColor; font-size: 10px; font-weight: 700; line-height: 13px; text-align: center; box-sizing: border-box; }
+.problems-menu summary.pb-err .pb-count { color: #dc2626; }
+.problems-menu summary.pb-warn .pb-count { color: #b45309; }
+.dw-rail { color: #1d4ed8; }
+/* szkic boku korpusu: linie montażu prowadnic szuflad */
+.bi-sketch .bi-rail, .obj-sketch .bi-rail { stroke: #2563eb; stroke-width: 1; stroke-dasharray: 4 3; fill: none; }
+.bi-sketch .bi-rail-tick, .obj-sketch .bi-rail-tick { stroke: #2563eb; stroke-width: 1.2; }
+.bi-sketch .bi-rail-txt, .obj-sketch .bi-rail-txt { fill: #1d4ed8; font-size: 8.5px; }
+.bi-sketch .bi-rail.generic, .obj-sketch .bi-rail.generic { stroke: #6b7280; }
+.bi-sketch .bi-rail-tick.generic, .obj-sketch .bi-rail-tick.generic { stroke: #6b7280; }
+.bi-sketch .bi-rail-txt.generic, .obj-sketch .bi-rail-txt.generic { fill: #4b5563; }
+/* szkic boku: prowadniki zawiasów */
+.bi-sketch .bi-plate, .obj-sketch .bi-plate { fill: #e5e7eb; stroke: #4b5563; stroke-width: 1; }
+.bi-sketch .bi-plate-hole, .obj-sketch .bi-plate-hole { fill: #fff; stroke: #4b5563; stroke-width: 0.8; }
+.bi-sketch .bi-plate-lead, .obj-sketch .bi-plate-lead { stroke: #4b5563; stroke-width: 0.8; }
+.bi-sketch .bi-plate-txt, .obj-sketch .bi-plate-txt { fill: #374151; font-size: 8.5px; }
+/* linia wysokości siedziska */
+.dim-label.seat-label { border-color: #d97706; color: #b45309; }
+.seat-line-row { display: flex; align-items: center; gap: 4px; }
+.seat-line-row input[type="number"] { width: 64px; }
+.seat-line-row small { color: var(--muted); }
+.trim-cabinets label.muted { opacity: 0.5; }

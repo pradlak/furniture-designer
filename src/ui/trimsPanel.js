@@ -25,7 +25,7 @@ import { markInspectorCard } from './inspectorCard.js';
 import { groupPanelSections } from './panelSections.js';
 import { trimSketch } from './objectSketch.js';
 import { downloadTrimCutList, downloadTrimDrawing } from './boardExport.js';
-import { setPath, setSideBlendField, cabinetReachesTop, describeCuts } from '../model/furniture.js';
+import { setPath, setSideBlendField, cabinetReachesTop, describeCuts, trimCabinets, trimSkipsWallCabinets } from '../model/furniture.js';
 import { updateCabinetKeepingRow } from '../model/layout.js';
 
 // Zakładki „Blendy” i „Blaty i półki”: elementy, które mogą obejmować kilka korpusów — blendy dolne,
@@ -256,7 +256,15 @@ export function createTrimsPanel(root, store, ui, { mode = 'blends' } = {}) {
       });
       el.classList.toggle('is-hidden', !!t.hidden);
       setEye(el.querySelector('[data-toggle-trim-hidden]'), t.hidden, 'element');
-      el.querySelectorAll('[data-trim-cabinet]').forEach((cb) => (cb.checked = t.cabinetIds.includes(cb.dataset.trimCabinet)));
+      el.querySelectorAll('[data-trim-cabinet]').forEach((cb) => {
+        cb.checked = t.cabinetIds.includes(cb.dataset.trimCabinet);
+        // szafka wisząca — blenda dolna / blat jej nie obejmują (wyłączone, z wyjaśnieniem)
+        const wallCab = trimSkipsWallCabinets(t) && project.furniture.find((c) => c.id === cb.dataset.trimCabinet)?.mount === 'wall';
+        cb.disabled = wallCab;
+        if (wallCab) cb.checked = false;
+        cb.closest('label').title = wallCab ? 'Szafka wisząca — blenda dolna i blat jej nie obejmują' : '';
+        cb.closest('label').classList.toggle('muted', wallCab);
+      });
       el.querySelectorAll('[data-cab-name]').forEach((span) => {
         span.textContent = project.furniture.find((c) => c.id === span.dataset.cabName)?.name ?? '';
       });
@@ -334,7 +342,7 @@ export function createTrimsPanel(root, store, ui, { mode = 'blends' } = {}) {
       const issues = trimIssues(t, project);
       el.classList.toggle('has-issues', issues.length > 0);
       // Podsumowanie widoczne w zwiniętej karcie: co obejmuje i ewentualne problemy.
-      const covered = project.furniture.filter((c) => t.cabinetIds.includes(c.id)).map((c) => c.name);
+      const covered = trimCabinets(t, project).map((c) => c.name);
       el.querySelector('.card-sum').textContent =
         (covered.length ? `Obejmuje: ${covered.join(', ')}` : 'Nie obejmuje żadnego korpusu') +
         (issues.length ? ` · ⚠ ${issues.length} ${issues.length === 1 ? 'problem' : issues.length < 5 ? 'problemy' : 'problemów'}` : '');

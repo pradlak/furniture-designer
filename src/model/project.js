@@ -11,9 +11,12 @@ export const PROJECT_VERSION = 5;
 const STORAGE_KEY = 'furnitureDesigner.project';
 
 // Widoczność w 3D: ściany i całe grupy elementów (blaty; blendy — wspólne i boczne; fronty).
+// Wysokość siedziska (mm): typowo 42–48 cm — linia w widoku 3D i dopasowanie wysokości korpusu (np. ławka, siedzisko).
+export const SEAT_HEIGHT = { default: 450, min: 300, max: 800 };
+
 export function createDefaultView() {
-  // openFronts — drzwi otwarte i szuflady wysunięte (tylko widok)
-  return { showWalls: true, showCountertops: true, showBlends: true, showFronts: true, openFronts: false, showDims: true };
+  // openFronts — drzwi otwarte i szuflady wysunięte (tylko widok); seatLine — pozioma linia wysokości siedziska
+  return { showWalls: true, showCountertops: true, showBlends: true, showFronts: true, openFronts: false, showDims: true, seatLine: false, seatHeight: SEAT_HEIGHT.default };
 }
 
 export function createDefaultProject() {
@@ -53,6 +56,8 @@ export function normalizeProject(raw) {
       showFronts: raw.view?.showFronts !== false,
       openFronts: raw.view?.openFronts === true,
       showDims: raw.view?.showDims !== false,
+      seatLine: raw.view?.seatLine === true,
+      seatHeight: Number.isFinite(Number(raw.view?.seatHeight)) ? Math.min(SEAT_HEIGHT.max, Math.max(SEAT_HEIGHT.min, Number(raw.view.seatHeight))) : SEAT_HEIGHT.default,
     },
   };
 

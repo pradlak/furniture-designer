@@ -22,6 +22,12 @@ export const DRAWER_SYSTEMS = [
     bottom: { widthOffset: 75, lengthOffset: 24 },
     back: { widthOffset: 87 },
     depthMargin: 3, // LT = NL + 3 (głębokość korpusu co najmniej)
+    // Prowadnice na bokach korpusu (katalog: „Wewnętrzna przestrzeń korpusu” i „Schemat wierceń”):
+    //  axis — oś otworów prowadnicy nad spodem szuflady (dla najniższej szuflady: nad wierzchem wieńca dolnego, min. 34 mm),
+    //  frontHole — pierwszy otwór od przedniej krawędzi korpusu (37 mm), prowadnica zaczyna się przy krawędzi korpusu.
+    //  Spód szuflady: front nakładany — wierzch wieńca przy froncie na dole korpusu (front + grubość wieńca),
+    //  szuflada wewnętrzna — czoło stoi na wieńcu (spód czoła − luz).
+    rail: { axis: 34, frontHole: 37 },
     lengths: [300, 350, 400, 450, 500, 550],
     colors: [
       { key: 'P1', label: 'biały P1' },

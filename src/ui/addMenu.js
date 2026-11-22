@@ -27,7 +27,9 @@ export function initAddMenu(toolbar, { extra = [] } = {}) {
         .map((b) => {
           sources.push(b);
           const label = b.textContent.replace(/^\s*\+\s*/, '').trim();
-          return `<button type="button" data-add-src="${sources.length - 1}" title="${(b.title || '').replace(/"/g, '&quot;')}">${label}</button>`;
+          // przeciągalne do widoku 3D (korpus, półka, blat) — typ danych z data-dnd przycisku źródłowego
+          const dnd = b.dataset.dnd ? ` draggable="true" data-dnd="${b.dataset.dnd}"` : '';
+          return `<button type="button" data-add-src="${sources.length - 1}"${dnd} title="${(b.title || '').replace(/"/g, '&quot;')}">${b.dataset.dnd ? '⠿ ' : ''}${label}</button>`;
         })
         .join('');
     }).join('') + extra
@@ -47,6 +49,14 @@ export function initAddMenu(toolbar, { extra = [] } = {}) {
       })
       .join('');
   });
+  // przeciąganie pozycji do widoku 3D; menu zamyka się po upuszczeniu
+  list.addEventListener('dragstart', (e) => {
+    const t = e.target.closest?.('[data-dnd]')?.dataset.dnd;
+    if (!t) return;
+    e.dataTransfer.setData(t, '1');
+    e.dataTransfer.effectAllowed = 'copy';
+  });
+  list.addEventListener('dragend', () => (menu.open = false));
   list.addEventListener('click', (e) => {
     const ex = e.target.closest('[data-add-extra]')?.dataset.addExtra;
     if (ex) {

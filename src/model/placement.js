@@ -78,6 +78,7 @@ export function snapCabinet(project, cabinetId, pos, axes, { threshold = 30, hol
       }
     } else {
       wall(0, 'lo', 'podłogi');
+      wall(space.height, 'hi', 'sufitu'); // szafki wiszące — górą do sufitu
     }
     const perp = AXES.filter((a) => a !== axis);
     for (const { box, label } of others) {

@@ -80,3 +80,20 @@ export function initSizeNotices(store) {
 
 const num = (v) => String(Math.round(v * 10) / 10).replace('.', ',');
 const sign = (d) => (d > 0 ? `+${num(d)}` : `−${num(-d)}`);
+
+// Krótki komunikat w tym samym miejscu (np. „Brak wolnego miejsca” przy dodawaniu korpusu).
+export function showNotice(title, text) {
+  let box = document.querySelector('.notices');
+  if (!box) {
+    box = document.createElement('div');
+    box.className = 'notices';
+    box.setAttribute('role', 'status');
+    document.body.appendChild(box);
+  }
+  const note = document.createElement('div');
+  note.className = 'notice';
+  note.innerHTML = `<button type="button" class="notice-close" title="Zamknij">×</button><b>${escapeHtml(title)}</b><div>${escapeHtml(text)}</div>`;
+  note.querySelector('.notice-close').addEventListener('click', () => note.remove());
+  box.appendChild(note);
+  setTimeout(() => note.remove(), SHOW_MS + 3000);
+}

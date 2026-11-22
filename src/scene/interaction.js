@@ -15,7 +15,7 @@ import {
   duplicateCabinet,
 } from '../model/placement.js';
 import { cabinetPanels, legHeight, shelfKey, setShelfY, handleOffsetsFor, fitCabinetToSpace, removeShelves, cabinetBounds, maxCabinetHeight, CABINET_LIMITS, frontParts } from '../model/furniture.js';
-import { moveFrontBoundary, movePart, coverWithDoor, uncoverPart, canUncover, setPartKind, fillFreeSpace, freeSpaceOf, fitLabel } from '../model/frontEdit.js';
+import { moveHinge, moveFrontBoundary, movePart, coverWithDoor, uncoverPart, canUncover, setPartKind, fillFreeSpace, freeSpaceOf, fitLabel, canDoorGrow, doorFullHeight } from '../model/frontEdit.js';
 import { createContextMenu } from '../ui/contextMenu.js';
 import { duplicateSelected } from '../state/duplicate.js';
 import { downloadBoardCutList, downloadBoardDrawing, downloadTrimCutList, downloadTrimDrawing } from '../ui/boardExport.js';
@@ -24,11 +24,12 @@ import { selectedCabinetIds, toggleCabinet } from '../state/selection.js';
 import { COLOR_PRESETS, cabinetMaterials, trimMaterial } from '../model/materials.js';
 import { WALL_DECORS, HOOD_DECORS, OUTLINE_PRESETS, applyOutlinePreset } from '../model/space.js';
 import { spaceOutline, outlineEdges, insertPoint, isFrontPoint, cleanOutline, selfIntersects, canRemovePoint, edgeOutward } from '../model/outline.js';
-import { updateSpaceRefit } from '../model/layout.js';
+import { updateSpaceRefit, cabinetDropSpot, addCabinetAt } from '../model/layout.js';
 import { moveWall, wallMoveLabel, wallSnapTargets } from '../model/walls.js';
 import { resolveHoles, HOLE_FILLS } from '../model/boardFeatures.js';
 import { boardBox, boardMaterial, BOARD_LIMITS, boardSpotAt, createBoard, NEW_BOARD_SIZE, boardNeighbour, boardStep, nudgeBoard, fitBoardWidth, boardNicheWidth, BOARD_MOUNTS, mountInfo, MOUNT_MACHINING, normalizeMount } from '../model/boards.js';
 import { trimBox } from '../model/trims.js';
+import { resizeCabinets } from '../model/groupResize.js';
 import { decorType, centerDecoration } from '../model/decorations.js';
 import { tileTargets } from '../model/tileTargets.js';
 import { wallFinishOf, setWallFinish, wallLabel, tilesEstimate, TILE_DEFAULTS, TILE_LAYOUTS, TILE_LIMITS } from '../model/wallFinish.js';
@@ -504,16 +505,20 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
       if (dir.lengthSq() < 1e-6) dir.set(0, 0, 1);
       plane = new THREE.Plane().setFromNormalAndCoplanarPoint(dir.normalize(), h.point);
     } else plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -h.point.y);
-    return { resize: { ...h, base: { ...cabinet }, start: h.point, held: null }, plane };
+    // kilka zaznaczonych korpusów (w tym ten) — ten sam wymiar zmienia się we wszystkich (bez lewej krawędzi —
+    // przesuwałaby korpus)
+    const ids = selectedCabinetIds(ui.get());
+    const group = ids.size > 1 && ids.has(cabinet.id) && h.face !== 'left' ? [...ids] : null;
+    return { resize: { ...h, base: { ...cabinet }, start: h.point, held: null, group, baseProject: store.get() }, plane };
   }
   // Krawędź korpusu przyciąga się (mocniej, z trzymaniem — jak ściany) do ścian, krawędzi sąsiednich mebli
   // i przeszkód, a wierzch — do sufitu / skosu i wierzchów sąsiadów. Alt — bez przyciągania (co 1 mm).
   function dragCabinetResize(pt, e) {
     const m = drag.resize;
-    const project = store.get();
+    const project = m.group ? m.baseProject : store.get(); // (grupa — cele przyciągania ze stanu sprzed przeciągania)
     const c0 = m.base;
     const others = [
-      ...project.furniture.filter((c) => c.id !== c0.id).map((c) => ({ box: cabinetBounds(c, project), label: `korpusu „${c.name}”` })),
+      ...project.furniture.filter((c) => c.id !== c0.id && !m.group?.includes(c.id)).map((c) => ({ box: cabinetBounds(c, project), label: `korpusu „${c.name}”` })),
       ...project.space.obstacles.map((o) => ({ box: o, label: `„${o.name || 'przeszkody'}”` })),
     ];
     const DIMS = { x: 'width', y: 'height', z: 'depth' };
@@ -572,12 +577,15 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
       const x = Math.min(right - min, edge);
       patch = { x, width: right - x };
     }
-    store.set((p) => ({ ...p, furniture: p.furniture.map((c) => (c.id === c0.id ? { ...c, ...patch } : c)) }));
+    if (m.group) {
+      const dim = Object.keys(patch).find((k) => k !== 'x');
+      store.set(resizeCabinets(m.baseProject, m.group, dim, patch[dim]));
+    } else store.set((p) => ({ ...p, furniture: p.furniture.map((c) => (c.id === c0.id ? { ...c, ...patch } : c)) }));
     const cab = store.get().furniture.find((c) => c.id === c0.id);
     const value = m.face === 'top' ? cab.height : m.face === 'front' ? cab.depth : cab.width;
     el.style.cursor = m.face === 'top' ? 'ns-resize' : 'ew-resize';
     const r = viewer.container.getBoundingClientRect();
-    snapTip.textContent = `${FACE_LABEL[m.face]} ${value} mm` + (label ? ` · 🧲 ${label}` : '');
+    snapTip.textContent = `${FACE_LABEL[m.face]} ${value} mm` + (m.group ? ` · ${m.group.length} korpusy` : '') + (label ? ` · 🧲 ${label}` : '');
     snapTip.style.left = `${e.clientX - r.left + 14}px`;
     snapTip.style.top = `${e.clientY - r.top + 18}px`;
     snapTip.hidden = false;
@@ -733,9 +741,14 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
     // uchwyt półki (fioletowy krążek) jest rysowany na wierzchu — ma pierwszeństwo, nawet za zamkniętymi drzwiami
     const shelfHandle = hits.find((h) => h.object.userData.shelfHandle);
     if (shelfHandle) hits = [shelfHandle];
+    // zawias drzwi (kółko na licu, rysowane na wierzchu, albo puszka) — też ma pierwszeństwo
+    // (puszka — tylko gdy nic jej nie zasłania, np. przy otwartych drzwiach; kółka widać zawsze)
+    const hingeHit = hits.find((h, i) => h.object.userData.hinge && (h.object.renderOrder >= 20 || i === 0));
+    if (hingeHit) hits = [hingeHit];
     for (const hit of hits) {
       let o = hit.object;
       let panelKey = null;
+      const hinge = o.userData.hinge ?? null;
       let slab = null; // płyta z otworami (blat, półka) — do przesuwania otworów
       const handle = !!o.userData.handle; // trafiony uchwyt frontu
       while (o && !o.userData.cabinetId && !o.userData.trimId && !o.userData.boardId && !o.userData.decorId) {
@@ -747,7 +760,7 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
       if (o?.userData.decorId) return { decorId: o.userData.decorId, point: hit.point }; // dekoracja (tylko wygląd)
       if (o?.userData.boardId) return { boardId: o.userData.boardId, point: hit.point, slab }; // samodzielny blat / półka
       if (o?.userData.trimId) return { trimId: o.userData.trimId, point: hit.point, slab }; // blenda wspólna / blat
-      if (o) return { id: o.userData.cabinetId, panelKey, point: hit.point, handle };
+      if (o) return { id: o.userData.cabinetId, panelKey, point: hit.point, handle, hinge };
     }
     return null;
   }
@@ -1379,8 +1392,13 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
     const project = store.get();
     const c = project.furniture.find((x) => x.id === id);
     if (!c) return null;
+    // kilka zaznaczonych korpusów (w tym ten) — wymiary zmieniają się we wszystkich
+    const sel = selectedCabinetIds(ui.get());
+    const group = sel.size > 1 && sel.has(id) ? [...sel] : null;
     const set = (patch) => {
-      store.set((p) => ({ ...p, furniture: p.furniture.map((x) => (x.id === id ? { ...x, ...patch } : x)) }));
+      const dim = ['width', 'height', 'depth'].find((k) => k in patch);
+      if (group && dim) store.set((p) => resizeCabinets(p, group, dim, patch[dim]));
+      else store.set((p) => ({ ...p, furniture: p.furniture.map((x) => (x.id === id ? { ...x, ...patch } : x)) }));
       return cabinetDimsMenu(id); // menu zostaje otwarte z nowymi wartościami
     };
     const { sizeMin, sizeMax } = CABINET_LIMITS;
@@ -1397,7 +1415,7 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
         }))
       : [{ info: true, icon: 'ℹ', label: `Grubość płyty ${body.thickness} mm (z materiału) — inną grubość dodasz w „Materiałach”.` }];
     return {
-      title: `Wymiary: ${c.name}`,
+      title: group ? `Wymiary: ${group.length} zaznaczone korpusy` : `Wymiary: ${c.name}`,
       items: [
         { input: true, label: 'Szerokość', unit: 'mm', value: c.width, min: sizeMin, max: sizeMax, onChange: (v) => (v == null ? same() : set({ width: clamp(v, sizeMin, sizeMax) })) },
         { input: true, label: 'Wysokość', unit: 'mm', value: c.height, min: sizeMin, max: maxH, onChange: (v) => (v == null ? same() : set({ height: clamp(v, sizeMin, maxH) })) },
@@ -1471,7 +1489,25 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
       } else {
         items.push({ icon: '▤', label: 'Zamień na szufladę z frontem', run: change((c, p) => setPartKind(c, i, 'drawer', p)) });
         if (canUncover(st, i)) items.push({ icon: '⇲', label: 'Wyjmij spod drzwi', run: change((c, p) => uncoverPart(c, i, p)) });
+        const dj = st.doors.findIndex((d) => d.covers.includes(st.parts[i]?.id));
+        if (dj < 0) items.push({ icon: '▣', label: 'Schowaj za drzwiami', run: change((c, p) => coverWithDoor(c, i, p)) });
+        else if (cab && canDoorGrow(cab, dj)) items.push({ icon: '⇕', label: 'Drzwi na całą wysokość', run: change((c, p) => doorFullHeight(c, dj, p)) });
       }
+    }
+    // jedne drzwi — na całą wysokość (przykrywają szuflady wewnętrzne i wolne miejsce pod / nad nimi)
+    if (!many && fronts[0].panel.door != null && fronts[0].panel.part == null) {
+      const cabinetId = fronts[0].id.split(':')[0];
+      const cab = project.furniture.find((c) => c.id === cabinetId);
+      const j = fronts[0].panel.door;
+      if (cab && canDoorGrow(cab, j))
+        items.push({
+          icon: '⇕',
+          label: 'Drzwi na całą wysokość (przykryj szuflady wewnętrzne)',
+          run: () => {
+            store.set((p) => ({ ...p, furniture: p.furniture.map((c) => (c.id === cabinetId ? doorFullHeight(c, j, p) : c)) }));
+            ui.set({ ...ui.get(), selectedFronts: [] });
+          },
+        });
     }
     if (openCount > 0) items.push({ icon: '⇥', label: `${drawers ? 'Wsuń' : 'Zamknij'}${all}`, run: () => setFrontsOpen(ids, false) });
     {
@@ -1610,6 +1646,135 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
     }
     snapTip.hidden = true;
   }
+  // --- nowy korpus przeciągnięty z „+ Korpus” (menu „Dodaj” / panel) — podgląd i upuszczenie na podłodze ---
+  // Korpus staje w wolnym miejscu pod kursorem; inne korpusy nie zmieniają wymiarów (model/layout.js → cabinetDropSpot).
+  const CABINET_DND = 'application/x-meble-cabinet';
+  const isCabinetDnd = (e) => [...(e.dataTransfer?.types ?? [])].includes(CABINET_DND);
+  let cabGhost = null;
+  // kursor na ścianie (tylnej / bocznej / z obrysu) — korpus wiszący na wysokości kursora; inaczej — na podłodze
+  function cabinetDropAt(e) {
+    setRay(e);
+    if (viewer.spaceGroup) {
+      const hit = raycaster.intersectObjects(viewer.spaceGroup.children, true).find((h) => h.object.isMesh && !h.object.userData.wallHandle && h.object.userData.wall);
+      const tag = hit?.object.userData.wall;
+      if (tag && tag !== 'floor' && tag !== 'ceiling' && tag !== 'slope') {
+        const { space } = store.get();
+        return { x: Math.max(0, Math.min(space.width, hit.point.x / MM)), y: hit.point.y / MM, wall: true };
+      }
+    }
+    const p = raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), new THREE.Vector3()); // podłoga
+    if (!p) return null;
+    return { x: p.x / MM };
+  }
+  // floating — korpus „w powietrzu” (tryb wstawiania po kliknięciu „+ Korpus”): uniesiony nad podłogą, z obrysem
+  const FLOAT_MM = 120;
+  function showCabinetGhost(spot, e, floating = false) {
+    const { space } = store.get();
+    if (!cabGhost) {
+      cabGhost = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({ color: getSettings().highlight, transparent: true, opacity: 0.45, depthTest: false }));
+      cabGhost.renderOrder = 20;
+      const edges = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1)), new THREE.LineBasicMaterial({ color: 0x15803d, depthTest: false, transparent: true }));
+      edges.renderOrder = 21;
+      cabGhost.add(edges);
+      viewer.scene.add(cabGhost);
+    }
+    const r = viewer.container.getBoundingClientRect();
+    snapTip.style.left = e ? `${e.clientX - r.left + 14}px` : `${r.width / 2 - 120}px`;
+    snapTip.style.top = e ? `${e.clientY - r.top + 18}px` : `${r.height - 160}px`;
+    snapTip.hidden = false;
+    const hint = floating ? ' — kliknij, żeby postawić (Esc — anuluj)' : '';
+    if (!spot) {
+      cabGhost.visible = false;
+      snapTip.textContent = `Brak wolnego miejsca tutaj${floating ? ' — przesuń kursor nad wolne miejsce na podłodze (Esc — anuluj)' : ''}`;
+      return;
+    }
+    const c = spot.cabinet;
+    const legs = c.legs?.enabled ? c.legs.height : 0;
+    const h = legs + c.height;
+    const lift = floating && c.mount !== 'wall' ? FLOAT_MM : 0; // (wiszący — na ścianie, bez unoszenia)
+    cabGhost.visible = true;
+    cabGhost.scale.set(c.width * MM, h * MM, c.depth * MM);
+    cabGhost.position.set(...toScene(c.x + c.width / 2, c.y + h / 2 + lift, c.z + c.depth / 2, space));
+    snapTip.textContent = `${c.mount === 'wall' ? `Korpus wiszący (spód ${c.y} mm nad podłogą)` : 'Korpus'} ${c.width} × ${c.height} × ${c.depth} mm · od lewej ${c.x} mm${hint}`;
+  }
+
+  // --- tryb wstawiania (ui.placingCabinet): korpus unosi się nad podłogą i idzie za kursorem; klik stawia ---
+  let placing = false;
+  function startPlacing() {
+    placing = true;
+    const p = store.get();
+    // na start — obok ostatniego korpusu (albo na środku), żeby od razu było go widać
+    const right = p.furniture.length ? Math.max(...p.furniture.map((c) => c.x + c.width)) : p.space.width / 2;
+    let spot = cabinetDropSpot(p, { x: Math.min(p.space.width - 100, right + 400) });
+    if (!spot) spot = cabinetDropSpot(p, { x: p.space.width / 2 });
+    showCabinetGhost(spot, null, true);
+    el.style.cursor = 'copy';
+  }
+  function stopPlacing() {
+    placing = false;
+    hideCabinetGhost();
+    el.style.cursor = '';
+  }
+  ui.subscribe((st) => {
+    if (st.placingCabinet && !placing) startPlacing();
+    else if (!st.placingCabinet && placing) stopPlacing();
+  });
+  const cancelPlacing = () => ui.set({ ...ui.get(), placingCabinet: false });
+  document.addEventListener('keydown', (e) => {
+    if (placing && e.key === 'Escape') cancelPlacing();
+  });
+  el.addEventListener(
+    'pointerdown',
+    (e) => {
+      if (!placing) return;
+      e.stopImmediatePropagation();
+      e.preventDefault();
+      if (e.button !== 0) return cancelPlacing();
+      const at = cabinetDropAt(e);
+      const res = at && addCabinetAt(store.get(), at);
+      if (!res) return; // brak miejsca pod kursorem — czekamy dalej
+      store.set(res.project);
+      ui.set({ ...ui.get(), placingCabinet: false, selectedId: res.cabinet.id, selectedIds: [res.cabinet.id], selectedFronts: [], selectedBlends: [], selectedHole: null, selectedObstacle: null }, { reveal: true });
+    },
+    true,
+  );
+  el.addEventListener(
+    'pointermove',
+    (e) => {
+      if (!placing) return;
+      const at = cabinetDropAt(e);
+      showCabinetGhost(at ? cabinetDropSpot(store.get(), at) : null, e, true);
+    },
+    true,
+  );
+  function hideCabinetGhost() {
+    if (cabGhost) {
+      viewer.scene.remove(cabGhost);
+      cabGhost.geometry.dispose();
+      cabGhost.material.dispose();
+      cabGhost = null;
+    }
+    snapTip.hidden = true;
+  }
+  el.addEventListener('dragover', (e) => {
+    if (!isCabinetDnd(e)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    const at = cabinetDropAt(e);
+    showCabinetGhost(at ? cabinetDropSpot(store.get(), at) : null, e);
+  });
+  el.addEventListener('dragleave', hideCabinetGhost);
+  el.addEventListener('drop', (e) => {
+    if (!isCabinetDnd(e)) return;
+    e.preventDefault();
+    hideCabinetGhost();
+    const at = cabinetDropAt(e);
+    const res = at && addCabinetAt(store.get(), at);
+    if (!res) return;
+    store.set(res.project);
+    ui.set({ ...ui.get(), selectedId: res.cabinet.id, selectedIds: [res.cabinet.id], selectedFronts: [], selectedBlends: [], selectedHole: null, selectedObstacle: null }, { reveal: true });
+  });
+
   el.addEventListener('dragover', (e) => {
     const kind = dndKind(e);
     if (!kind) return;
@@ -1757,6 +1922,30 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
     showFrontMenu(selected, e.clientX, e.clientY);
   });
 
+  // Zawias drzwi: klik zaznacza go (okienko „Zawias”; drzwi zostają zaznaczone), przeciąganie przesuwa go w pionie —
+  // po pionowej płaszczyźnie zwróconej do kamery przez zawias (działa też przy otwartych drzwiach).
+  function startHingeDrag(hit, e) {
+    const frontKeyId = `${hit.id}:${hit.hinge.key}`;
+    ui.set({ ...ui.get(), selectedId: hit.id, selectedIds: [hit.id], selectedFronts: [frontKeyId], selectedBlends: [], selectedHole: null, selectedObstacle: null, selectedHinge: { cabinetId: hit.id, key: hit.hinge.key, index: hit.hinge.index } }, { reveal: true });
+    const project = store.get();
+    const cabinet = project.furniture.find((c) => c.id === hit.id);
+    const panel = cabinet && cabinetPanels(cabinet, project).find((p) => p.key === hit.hinge.key);
+    const h = panel?.hinges?.[hit.hinge.index];
+    drag = { select: true };
+    if (h) {
+      const n = new THREE.Vector3();
+      viewer.camera.getWorldDirection(n);
+      n.y = 0;
+      if (n.lengthSq() < 1e-6) n.set(0, 0, -1);
+      n.normalize();
+      const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(n, hit.point);
+      const start = raycaster.ray.intersectPlane(plane, new THREE.Vector3());
+      if (start) drag = { hingeOf: { cabinetId: hit.id, key: hit.hinge.key, index: hit.hinge.index, fromY: h.y - panel.y }, plane, startY: start.y };
+    }
+    viewer.controls.enabled = false;
+    el.setPointerCapture(e.pointerId);
+  }
+
   // Faza przechwytywania: działa przed OrbitControls, więc możemy je wyłączyć,
   // zanim zaczną obracać widok.
   el.addEventListener(
@@ -1766,6 +1955,11 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
       if (e.button !== 0) return;
       down = { x: e.clientX, y: e.clientY };
       setRay(e);
+      // Zawias drzwi (kółko / puszka) — przed innymi uchwytami (granice szuflad, wymiary), żeby dało się go chwycić.
+      if (!(e.ctrlKey || e.metaKey)) {
+        const hingeHit = pickCabinet();
+        if (hingeHit?.hinge) return startHingeDrag(hingeHit, e);
+      }
       // Uchwyt kształtu ściany (narożnik podłogi albo koniec skośnej ściany) — przeciąganie po podłodze.
       const wallHandle = pickWallHandle();
       // uchwyt wysokości zaznaczonej płyty — przeciąganie w pionie
@@ -1834,6 +2028,9 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
       let hit = pickCabinet();
       if (!hit) return;
       if (ui.get().selectedObstacle) ui.set({ ...ui.get(), selectedObstacle: null });
+      if (hit.hinge && !(e.ctrlKey || e.metaKey)) return startHingeDrag(hit, e);
+      // klik w coś innego niż zawias — zawias przestaje być zaznaczony
+      if (ui.get().selectedHinge) ui.set({ ...ui.get(), selectedHinge: null });
       // Klik w front (szufladę, drzwi): pierwszy — zaznacza cały korpus (przeciąganie przesuwa korpus), drugi — gdy
       // korpus jest już zaznaczony albo zaznaczony jest jego front — sam front. Alt + klik — zawsze cały korpus.
       if (isFront(hit) && !(e.ctrlKey || e.metaKey)) {
@@ -1995,7 +2192,14 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
           maxY: Math.min(cabinet.height - 2 * t, ...above.map((b) => b - t)),
         };
       } else {
-        drag = { id: hit.id, plane, start, from: { x: cabinet.x, y: cabinet.y, z: cabinet.z }, vertical: e.shiftKey };
+        // szafka wisząca: przesuwa się po ścianie (lewo-prawo, góra-dół) — płaszczyzna równoległa do tylnej ściany
+        // przez punkt chwytu; z Shift — tylko w pionie, jak inne
+        const onWall = cabinet.mount === 'wall' && !e.shiftKey;
+        const wallPlane = onWall ? new THREE.Plane(new THREE.Vector3(0, 0, 1), -hit.point.z) : null;
+        const wallStart = wallPlane ? raycaster.ray.intersectPlane(wallPlane, new THREE.Vector3()) : null;
+        drag = onWall && wallStart
+          ? { id: hit.id, plane: wallPlane, start: wallStart, from: { x: cabinet.x, y: cabinet.y, z: cabinet.z }, vertical: false, onWall: true }
+          : { id: hit.id, plane, start, from: { x: cabinet.x, y: cabinet.y, z: cabinet.z }, vertical: e.shiftKey };
       }
       if (drill) drag.drill = drill;
       viewer.controls.enabled = false;
@@ -2006,6 +2210,7 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
 
   el.addEventListener('pointermove', (e) => {
     setRay(e);
+    if (placing) return; // (tryb wstawiania korpusu — wyżej)
     if (!drag) {
       if (pickBoardLift()) {
         el.style.cursor = 'ns-resize';
@@ -2037,7 +2242,7 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
       }
       const hover = pickCabinet();
       el.style.cursor =
-        hover?.handle || holeAt(hover) ? 'move' : isShelf(hover) ? 'ns-resize' : isFront(hover) || hover?.trimId ? 'pointer' : hover ? 'grab' : '';
+        hover?.hinge ? 'ns-resize' : hover?.handle || holeAt(hover) ? 'move' : isShelf(hover) ? 'ns-resize' : isFront(hover) || hover?.trimId ? 'pointer' : hover ? 'grab' : '';
       return;
     }
     if (drag.select) return; // Ctrl + klik na froncie — tylko zaznaczanie
@@ -2111,6 +2316,16 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
       if (pt) dragHole(pt);
       return;
     }
+    if (drag.hingeOf) {
+      el.style.cursor = 'ns-resize';
+      if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) <= CLICK_TOLERANCE_PX) return; // (sam klik — bez przesuwania)
+      const pt = raycaster.ray.intersectPlane(drag.plane, new THREE.Vector3());
+      if (!pt) return;
+      const { cabinetId, key, index, fromY } = drag.hingeOf;
+      const y = fromY + (pt.y - drag.startY) / MM;
+      store.set((prj) => ({ ...prj, furniture: prj.furniture.map((c) => (c.id === cabinetId ? moveHinge(c, key, index, y, prj) : c)) }));
+      return;
+    }
     if (drag.handleOf) {
       el.style.cursor = 'move';
       const pt = raycaster.ray.intersectPlane(drag.plane, new THREE.Vector3());
@@ -2148,7 +2363,7 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
     }
 
     const project = store.get();
-    const axes = drag.vertical ? ['y'] : ['x', 'z'];
+    const axes = drag.vertical ? ['y'] : drag.onWall ? ['x', 'y'] : ['x', 'z'];
     let pos = { ...drag.from };
     for (const a of axes) pos[a] = Math.round(drag.from[a] + d[a]);
     if (!e.altKey) {

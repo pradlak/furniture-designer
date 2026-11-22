@@ -1,4 +1,4 @@
-import { CABINET_LIMITS, cabinetBounds, createCabinet, maxCabinetHeight, newId } from './furniture.js';
+import { CABINET_LIMITS, cabinetBounds, createCabinet, maxCabinetHeight, newId, DEFAULT_BACK_SETBACK } from './furniture.js';
 import { rowOf, TRIM_TYPES } from './trims.js';
 import { wallSegments, segmentAt, anchorHoods } from './space.js';
 import { freeWidth, straightenSlantedSides, backLimit, frontLimit } from './outline.js';
@@ -263,6 +263,146 @@ export function addCabinetToLayout(project, { segment = null } = {}) {
 
   // Korpusy byłyby za wąskie — zwykły korpus w lewym narożniku (użytkownik ustawi go sam).
   return { project: { ...project, furniture: [...project.furniture, base] }, cabinet: base };
+}
+
+// --- nowy korpus przeciągnięty do widoku 3D („+ Korpus” → upuszczenie na podłodze) ---
+// Korpus staje w wolnym miejscu pod kursorem (at.x — środek, mm od lewej ściany) i NIE zmienia innych korpusów:
+// szerokość domyślna (albo cała luka, gdy jest węższa), dosunięty do ściany / sąsiada, gdy jest blisko.
+// Wygląda jak najbliższy korpus (wysokość, głębokość, nóżki, materiały); stojąc tuż przy sąsiedzie — wchodzi
+// w jego blendy wspólne (blat, blenda dolna / górna). → { cabinet, gap: [od, do], touching } albo null (brak miejsca).
+const DROP_MIN = 150; // najwęższa luka, w której staje nowy korpus
+const DROP_SNAP = 200; // dosunięcie do ściany / sąsiada, gdy bliżej niż tyle (lub dokładnie tyle)
+// at.wall — kursor na ścianie: korpus WISZĄCY (at.y — wysokość kursora = środek szafki; wyrównanie do innych
+// szafek wiszących w pobliżu), wygląda jak najbliższa szafka wisząca (albo domyślna: 720 × 320 mm).
+const WALL_CAB = { height: 720, depth: 320 };
+const WALL_Y_SNAP = 120;
+export function cabinetDropSpot(project, at) {
+  const { space } = project;
+  const base = createCabinet(project);
+  const dist = (c) => {
+    const b = cabinetBounds(c, project);
+    return at.x < b.x ? b.x - at.x : at.x > b.x + b.width ? at.x - b.x - b.width : 0;
+  };
+  const wall = !!at.wall;
+  // wzór: najbliższy korpus tego samego rodzaju (wiszący / stojący)
+  const sameKind = project.furniture.filter((c) => (c.mount === 'wall') === wall);
+  const near = sameKind.length ? sameKind.reduce((a, c) => (dist(c) < dist(a) ? c : a)) : null;
+  if (wall && !near) {
+    // pierwsza szafka wisząca: domyślne wymiary, bez nóżek, plecy cofnięte; środek na wysokości kursora
+    const h = Math.min(WALL_CAB.height, space.height);
+    const y = Math.round(Math.max(0, Math.min(space.height - h, (at.y ?? 1760) - h / 2)));
+    return placeIn(project, at, { ...base, mount: 'wall', backSetback: DEFAULT_BACK_SETBACK, legs: { ...base.legs, enabled: false }, height: h, depth: Math.min(WALL_CAB.depth, base.depth), y }, null);
+  }
+  const template = near
+    ? {
+        ...base,
+        y: near.y,
+        z: near.z,
+        height: near.height,
+        depth: near.depth,
+        backGap: near.backGap,
+        legs: { ...near.legs },
+        materialId: near.materialId,
+        blendMaterialId: near.blendMaterialId,
+        backType: near.backType,
+        bottomJoint: near.bottomJoint,
+        topJoint: near.topJoint,
+        topType: near.topType,
+        railWidth: near.railWidth,
+      }
+    : base;
+  if (wall) {
+    // wiszący: wysokość z kursora (środek szafki), wyrównanie do szafek wiszących w pobliżu
+    template.mount = 'wall';
+    template.backSetback = near.backSetback ?? DEFAULT_BACK_SETBACK;
+    template.legs = { ...template.legs, enabled: false };
+    let y = (at.y ?? near.y + near.height / 2) - template.height / 2;
+    const ys = sameKind.map((c) => c.y);
+    const snap = ys.reduce((b, v) => (Math.abs(v - y) < Math.abs(b - y) ? v : b), Infinity);
+    if (Math.abs(snap - y) <= WALL_Y_SNAP) y = snap;
+    template.y = Math.round(Math.max(0, Math.min(space.height - template.height, y)));
+  }
+  return placeIn(project, at, template, near);
+}
+
+// Ustawia wzór korpusu w wolnej luce pod kursorem (at.x) — wspólne dla stojących i wiszących.
+function placeIn(project, at, template, near) {
+  const { space } = project;
+  const base = template;
+  // zajęte odcinki na wysokości nowego korpusu (inne meble z blendami, przeszkody we wnęce wyznacza segmentAt)
+  const y0 = template.y;
+  const y1 = template.y + (template.legs?.enabled ? template.legs.height : 0) + template.height;
+  const [segA, segB] = segmentAt(space, at.x, [y0, y1]);
+  const busy = project.furniture
+    .map((c) => cabinetBounds(c, project))
+    .filter((b) => b.y < y1 - EPS && b.y + b.height > y0 + EPS && b.x < segB - EPS && b.x + b.width > segA + EPS)
+    .map((b) => [Math.max(segA, b.x), Math.min(segB, b.x + b.width)])
+    .sort((p, q) => p[0] - q[0]);
+  // wolne luki we wnęce
+  const gaps = [];
+  let cur = segA;
+  for (const [a, b] of busy) {
+    if (a - cur > EPS) gaps.push([cur, a]);
+    cur = Math.max(cur, b);
+  }
+  if (segB - cur > EPS) gaps.push([cur, segB]);
+  const usable = gaps.filter(([a, b]) => b - a >= DROP_MIN);
+  if (!usable.length) return null;
+  // luka pod kursorem albo najbliższa
+  const gd = ([a, b]) => (at.x < a ? a - at.x : at.x > b ? at.x - b : 0);
+  const gap = usable.reduce((best, g) => (gd(g) < gd(best) ? g : best));
+  const [gl, gr] = gap;
+  let w = Math.min(base.width, gr - gl);
+  if (gr - gl - w < DROP_MIN) w = gr - gl; // zostałaby za wąska szczelina — korpus wypełnia lukę
+  let x = Math.min(gr - w, Math.max(gl, at.x - w / 2));
+  if (x - gl <= DROP_SNAP) x = gl;
+  else if (gr - (x + w) <= DROP_SNAP) x = gr - w;
+  x = Math.round(x);
+  w = Math.round(Math.min(w, gr - x));
+  const placed = { ...template, x, width: w };
+  const next = { ...project, furniture: [...project.furniture, placed] };
+  // wiszący — wysokość ze wzoru (tylko zmniejszona, gdy się nie mieści); stojący — jak najbliższy albo domyślna
+  const cabinet =
+    template.mount === 'wall'
+      ? adjustHeight(placed, next, false)
+      : near
+        ? adjustHeight(placed, next, isFittedHeight(near, project))
+        : { ...placed, height: fittedHeight(placed, next) };
+  // sąsiad, przy którym korpus stoi (do blend wspólnych)
+  const touching =
+    project.furniture.find((c) => {
+      const b = cabinetBounds(c, project);
+      return b.y < y1 - EPS && b.y + b.height > y0 + EPS && (Math.abs(b.x + b.width - x) < 1 || Math.abs(b.x - (x + w)) < 1);
+    }) ?? null;
+  return { cabinet, gap, touching };
+}
+
+// Dodaje korpus w miejscu z cabinetDropSpot. → { project, cabinet } albo null.
+export function addCabinetAt(project, at) {
+  const spot = cabinetDropSpot(project, at);
+  if (!spot) return null;
+  const { cabinet, touching } = spot;
+  const trims = touching ? project.trims.map((t) => (t.cabinetIds.includes(touching.id) ? { ...t, cabinetIds: [...t.cabinetIds, cabinet.id] } : t)) : project.trims;
+  return { project: { ...project, furniture: [...project.furniture, cabinet], trims }, cabinet };
+}
+
+// Dodanie kliknięciem „+ Korpus” bez wskazania miejsca: tak jak addCabinetToLayout, ale BEZ dzielenia rzędu
+// (gotowe korpusy nie zmieniają wymiarów). → { project, cabinet } albo null, gdy nie ma wolnego miejsca.
+export function addCabinetNoResize(project, opts = {}) {
+  if (!project.furniture.length) return addCabinetToLayout(project, opts);
+  const res = addCabinetToLayout(project, opts);
+  // addCabinetToLayout podzielił rząd (zmienił inne korpusy) albo postawił korpus w narożniku — nie bierzemy tego
+  const changed = project.furniture.some((c) => {
+    const n = res.project.furniture.find((x) => x.id === c.id);
+    return !n || n.width !== c.width || n.x !== c.x || n.height !== c.height;
+  });
+  if (changed) return null;
+  const b = cabinetBounds(res.cabinet, res.project);
+  const overlaps = project.furniture.some((c) => {
+    const o = cabinetBounds(c, project);
+    return o.x < b.x + b.width - EPS && b.x < o.x + o.width - EPS && o.y < b.y + b.height - EPS && b.y < o.y + o.height - EPS && o.z < b.z + b.depth - EPS && b.z < o.z + o.depth - EPS;
+  });
+  return overlaps ? null : res;
 }
 
 // Zmiana korpusu, po której korpus z wysokością automatyczną dopasowuje się na nowo do miejsca

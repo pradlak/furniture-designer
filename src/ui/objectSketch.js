@@ -1,9 +1,10 @@
-import { cabinetPanels, cabinetLegs, legHeight, panelCutSize } from '../model/furniture.js';
+import { cabinetPanels, cabinetLegs, legHeight, panelCutSize, hingeType } from '../model/furniture.js';
 import { outline2d } from '../model/solid.js';
 import { projectSolids, panelEdgeSet, edgeCounts, EDGE_LABELS } from '../model/edges.js';
 import { trimBox } from '../model/trims.js';
 import { trimMaterial } from '../model/materials.js';
 import { resolveHoles, HOLE_FILLS } from '../model/boardFeatures.js';
+import { cabinetDrawerRails } from '../model/drawerBoxes.js';
 
 // Szkice z wymiarami (SVG) w okienku obiektu po prawej — jak szkic półki (ui/boardInspector.js):
 //  - korpus: widok z przodu (fronty: szuflady, drzwi; nóżki) i z boku (głębokość, nóżki),
@@ -243,6 +244,49 @@ export function panelSketch(cabinet, panelKey, project) {
     const [a, b] = toLocal(h);
     c.out.push(`<circle cx="${X(a)}" cy="${Y(b)}" r="${Math.max(1.5, 2.5 * s)}" class="bi-hole"/>`);
   }
+  // boki korpusu: linie montażu prowadnic szuflad z systemu (oś otworów; kreska — pierwszy otwór od przodu),
+  // przy linii — wysokość od dolnej krawędzi boku
+  const rails = [];
+  const plates = []; // prowadniki zawiasów drzwi na tym boku
+  const isSide = (p.key === 'left' || p.key === 'right') && view.ua === 'z';
+  // wysokości zawiasów po tej stronie (do omijania napisów)
+  const hingeYs = isSide
+    ? cabinetPanels(cabinet, project)
+        .filter((x) => x.valid && x.opening?.hinge === p.key && x.hinges?.length)
+        .flatMap((x) => x.hinges.map((h) => h.y - v0))
+    : [];
+  if (isSide) {
+    for (const b of cabinetDrawerRails(cabinet, project)) {
+      const r = b.rail;
+      const yy = r.y - v0;
+      if (yy < 0 || yy > V) continue;
+      const aF = Math.min(U, r.zFront - u0);
+      const aB = Math.max(0, aF - r.length);
+      const g = b.generic ? ' generic' : '';
+      c.line(X(aB), Y(yy), X(aF), Y(yy), `bi-rail${g}`);
+      const aH = aF - r.frontHole;
+      c.line(X(aH), Y(yy) - 4, X(aH), Y(yy) + 4, `bi-rail-tick${g}`);
+      // napis nad linią, a gdy blisko jest napis zawiasu — pod linią
+      const near = hingeYs.some((hy) => Math.abs(Y(hy) - Y(yy)) < 11);
+      c.text(X(aB) + 2, near ? Y(yy) + 9 : Y(yy) - 2.5, fmt(yy), `bi-rail-txt${g}`, 'start');
+      rails.push({ y: yy, name: b.name, generic: b.generic, spacer: b.inner && !!cabinet.fronts?.innerSpacers, hole: r.frontHole });
+    }
+    // zawiasy drzwi z zawiasami po tej stronie: prowadnik na boku (środek 37 mm od przedniej krawędzi boku,
+    // dwa wkręty co 32 mm), na wysokości zawiasu — wysokość od dołu boku
+    const sideFront = p.z + p.depth;
+    for (const d of cabinetPanels(cabinet, project).filter((x) => x.valid && x.opening?.hinge === p.key && x.hinges?.length)) {
+      for (const h of d.hinges) {
+        const yy = h.y - v0;
+        if (yy < 0 || yy > V) continue;
+        const a = sideFront - 37 - u0;
+        c.rect(X(a) - 21 * s, Y(yy) - 25 * s, 42 * s, 50 * s, 'bi-plate');
+        for (const dy of [-16, 16]) c.out.push(`<circle cx="${X(a)}" cy="${Y(yy + dy)}" r="${Math.max(1.2, 2 * s)}" class="bi-plate-hole"/>`);
+        c.line(X(a) - 21 * s - 3, Y(yy), X(a) - 21 * s - 12, Y(yy), 'bi-plate-lead');
+        c.text(X(a) - 21 * s - 14, Y(yy) + 3, fmt(yy), 'bi-plate-txt', 'end');
+        plates.push(yy);
+      }
+    }
+  }
   // wymiary
   c.dimH(X(0), X(U), Y(view.flipV ? V : 0) + 14, fmt(U));
   c.dimV(X(U) + 12, Y(view.flipV ? 0 : V), Y(view.flipV ? V : 0), fmt(V));
@@ -270,8 +314,27 @@ export function panelSketch(cabinet, panelKey, project) {
   const by = Y(view.flipV ? V : 0) + 62;
   c.text(pad.l, by, `${escapeText(p.name)} · gr. ${fmt(T)} mm · ${escapeText(p.material?.name ?? '')}`, 'bi-small', 'start');
   c.text(pad.l, by + 12, `do cięcia: ${fmt(cut.cutLength ?? cut.length)} × ${fmt(cut.cutWidth ?? cut.width)} mm${edges.length ? ` · obrzeże: ${edges.map((k) => EDGE_LABELS[k]).join(', ')}` : ' · bez obrzeża'}`, 'bi-small', 'start');
-  if (p.hinges?.length) c.text(pad.l, by + 24, `${p.hinges.length} × otwór pod zawias Ø35 (od wewnątrz)`, 'bi-small', 'start');
-  return svg(VW, VH + (p.hinges?.length ? 12 : 0), c.out.join(''), `Szkic płyty: ${escapeText(p.name)}`);
+  if (p.hinges?.length) c.text(pad.l, by + 24, `${p.hinges.length} × otwór pod zawias Ø${hingeType(p.hingeType).cup} (od wewnątrz) — ${hingeType(p.hingeType).label.toLowerCase()}`, 'bi-small', 'start');
+  let ry = by + 24 + (p.hinges?.length ? 12 : 0);
+  if (rails.length) {
+    const list = rails.sort((a, b) => a.y - b.y).map((r) => fmt(r.y) + (r.generic ? '*' : '')).join(', ');
+    c.text(pad.l, ry, '- - - prowadnice szuflad (oś otworów) od dołu boku:', 'bi-small bi-rail-txt', 'start');
+    c.text(pad.l, ry + 12, `${list} mm`, 'bi-small bi-rail-txt', 'start');
+    c.text(pad.l, ry + 24, `1. otwór ${rails[0].hole} mm od przodu${rails.some((r) => r.spacer) ? ' · szuflady wewn. na dystansach' : ''}`, 'bi-small', 'start');
+    ry += 36;
+    if (rails.some((r) => r.generic)) {
+      c.text(pad.l, ry, '* szuflada bez systemu — położenie orientacyjne', 'bi-small', 'start');
+      ry += 12;
+    }
+  }
+  if (plates.length) {
+    c.text(pad.l, ry, '▭ prowadniki zawiasów (środek) od dołu boku:', 'bi-small bi-plate-txt', 'start');
+    c.text(pad.l, ry + 12, `${plates.sort((a, b) => a - b).map(fmt).join(', ')} mm`, 'bi-small bi-plate-txt', 'start');
+    c.text(pad.l, ry + 24, 'środek 37 mm od przodu, wkręty co 32 mm', 'bi-small', 'start');
+    ry += 36;
+  }
+  const extra = ry - (by + 24 + (p.hinges?.length ? 12 : 0));
+  return svg(VW, VH + (p.hinges?.length ? 12 : 0) + extra, c.out.join(''), `Szkic płyty: ${escapeText(p.name)}`);
 }
 const isFrontKeyLocal = (k) => k.startsWith('front-') || k.startsWith('idrawer-');
 const escapeText = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');

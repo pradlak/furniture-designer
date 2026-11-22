@@ -75,8 +75,8 @@ export function createBoardsPanel(root, store, ui) {
         i otworami (gniazdko, przepust na kable, zlew, płyta grzewcza).</p>
       <div class="items">${boards.map((b) => card(b, project)).join('')}</div>
       <div class="add-row">
-        <button type="button" data-board-add="worktop" draggable="true" title="Kliknij — blat w wolnym miejscu; albo przeciągnij do widoku 3D i upuść tam, gdzie ma być">+ Blat samodzielny</button>
-        <button type="button" data-board-add="shelf" draggable="true" title="Kliknij — półka w wolnym miejscu; albo przeciągnij do widoku 3D i upuść tam, gdzie ma być">+ Półka</button>
+        <button type="button" data-board-add="worktop" draggable="true" data-dnd="application/x-meble-board-worktop" title="Kliknij — blat w wolnym miejscu; albo przeciągnij do widoku 3D i upuść tam, gdzie ma być">+ Blat samodzielny</button>
+        <button type="button" data-board-add="shelf" draggable="true" data-dnd="application/x-meble-board-shelf" title="Kliknij — półka w wolnym miejscu; albo przeciągnij do widoku 3D i upuść tam, gdzie ma być">+ Półka</button>
       </div>`;
     renderedKey = structureKey(project);
     cardCollapse.applyAll();

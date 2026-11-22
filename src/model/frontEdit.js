@@ -9,6 +9,9 @@ import {
   FRONT_PART_MIN,
   FIRST_DRAWER_HEIGHT,
   DEFAULT_FRONT_GAP_V,
+  hingeType,
+  HINGE_EDGE_MIN,
+  HINGE_LIMITS,
 } from './furniture.js';
 
 // Edycja układu frontów (wnętrze: szuflady i wolne przestrzenie; drzwi przykrywające wybrane części) — z panelu
@@ -34,10 +37,23 @@ const heightOf = (ranges, i) => (ranges[i] ? ranges[i][1] - ranges[i][0] : 0);
 export function addParts(cabinet, type, n, height, project) {
   const st = stateOf(cabinet);
   const count = Math.max(1, Math.min(PART_LIMITS_ADD, Math.round(n)));
-  for (let k = 0; k < count; k++) st.parts.unshift({ id: newId(), type, height: height ?? null });
+  const added = [];
+  for (let k = 0; k < count; k++) {
+    const p = { id: newId(), type, height: height ?? null };
+    st.parts.unshift(p);
+    added.push(p.id);
+  }
+  if (type === 'innerDrawer') joinDoorAbove(st, added);
   return setFrontParts(cabinet, st, project);
 }
 const PART_LIMITS_ADD = 12;
+// Szuflady wewnętrzne dodane na dole: gdy część tuż nad nimi jest za drzwiami — dołączają do tych drzwi (drzwi
+// sięgają wtedy do dołu korpusu; szuflada wewnętrzna bez drzwi nie ma sensu).
+function joinDoorAbove(st, ids) {
+  const above = st.parts[ids.length];
+  const j = above ? doorOf(st, above.id) : -1;
+  if (j >= 0) st.doors[j].covers.push(...ids);
+}
 
 // Rodzaj części z listy w panelu: 'drawer' (szuflada z frontem), 'innerDrawer' (szuflada wewnętrzna — czoło w korpusie,
 // bez frontu; drzwi dodaje się osobno i wybiera, co przykrywają), 'space' (wolna przestrzeń). Szuflada z frontem
@@ -69,7 +85,9 @@ export function addPart(cabinet, type, project) {
         st.parts.forEach((p) => p.type !== 'space' && (p.height = null));
       }
     }
-    st.parts.unshift({ id: newId(), type, height });
+    const p = { id: newId(), type, height };
+    st.parts.unshift(p);
+    if (type === 'innerDrawer') joinDoorAbove(st, [p.id]);
   } else st.parts.push({ id: newId(), type, height: null });
   return setFrontParts(cabinet, st, project);
 }
@@ -99,21 +117,57 @@ export function movePart(cabinet, from, to, project) {
 
 // --- panel: drzwi ---
 
-// Nowe drzwi: przykrywają wolne przestrzenie nieprzykryte drzwiami (ciągły zakres od góry), a gdy ich nie ma —
-// nową wolną przestrzeń na górze.
+// Nowe drzwi: przykrywają najwyższą wolną przestrzeń nieprzykrytą drzwiami razem ze wszystkimi sąsiednimi (w górę
+// i w dół) nieprzykrytymi wolnymi przestrzeniami i szufladami wewnętrznymi — do szuflady z frontem, innych drzwi
+// albo końca korpusu (żeby nad / pod drzwiami nie zostawała szpara, a szuflady wewnętrzne nie zostawały bez drzwi).
+// Gdy wolnych przestrzeni nie ma — nową wolną przestrzeń na górze.
 export function addDoor(cabinet, type, project) {
   const st = stateOf(cabinet);
   const free = (i) => st.parts[i] && doorOf(st, st.parts[i].id) < 0;
+  const coverable = (i) => free(i) && st.parts[i].type !== 'drawer';
   let i = st.parts.length - 1;
   while (i >= 0 && !(free(i) && st.parts[i].type === 'space')) i--;
   const covers = [];
-  while (i >= 0 && free(i) && st.parts[i].type === 'space') covers.unshift(st.parts[i--].id);
+  if (i >= 0) {
+    let lo = i;
+    let hi = i;
+    while (coverable(lo - 1)) lo--;
+    while (coverable(hi + 1)) hi++;
+    covers.push(...st.parts.slice(lo, hi + 1).map((p) => p.id));
+  }
   if (!covers.length) {
     const id = newId();
     st.parts.push({ id, type: 'space', height: null });
     covers.push(id);
   }
   st.doors.push({ id: newId(), type, hingeSide: 'left', covers });
+  return setFrontParts(cabinet, st, project);
+}
+
+// Drzwi j na całą wysokość: przykrywają też sąsiednie części w dół i w górę (do innych drzwi albo do końca korpusu);
+// szuflady z frontem, które znajdą się za drzwiami, stają się wewnętrzne.
+const fullSpan = (st, j) => {
+  const span = st.doors[j] && doorSpan(st.doors[j], st.parts);
+  if (!span) return null;
+  let [lo, hi] = span;
+  while (lo > 0 && doorOf(st, st.parts[lo - 1].id) < 0) lo--;
+  while (hi < st.parts.length - 1 && doorOf(st, st.parts[hi + 1].id) < 0) hi++;
+  return { span, lo, hi };
+};
+export function canDoorGrow(cabinet, j) {
+  const f = fullSpan(stateOf(cabinet), j);
+  return !!f && (f.lo < f.span[0] || f.hi > f.span[1]);
+}
+export function doorFullHeight(cabinet, j, project) {
+  const st = stateOf(cabinet);
+  const f = fullSpan(st, j);
+  if (!f) return cabinet;
+  const d = st.doors[j];
+  for (let i = f.lo; i <= f.hi; i++) {
+    const p = st.parts[i];
+    if (!d.covers.includes(p.id)) d.covers.push(p.id);
+    if (p.type === 'drawer') p.type = 'innerDrawer';
+  }
   return setFrontParts(cabinet, st, project);
 }
 
@@ -172,6 +226,9 @@ export function setDoorHeight(cabinet, j, H, project) {
     st.parts[k].height = Math.max(FRONT_PART_MIN, Math.round(H - others - (hi - lo) * gvOf(cabinet)));
     // pozostałe przykryte części zostają, jak są (zamrożone na obecnych wysokościach)
     for (let i = lo; i <= hi; i++) if (i !== k && st.parts[i].height == null) st.parts[i].height = Math.round(heightOf(ranges, i));
+    // drzwi z najwyższą częścią sięgają do góry korpusu — żeby były niższe, nad nimi zostaje nowa wolna przestrzeń
+    // (automatyczna, nieprzykryta), która zabiera resztę wysokości
+    if (hi === st.parts.length - 1 && st.parts.every((p) => p.height != null)) st.parts.push({ id: newId(), type: 'space', height: null });
   }
   return setFrontParts(cabinet, st, project);
 }
@@ -181,14 +238,20 @@ export function coverWithDoor(cabinet, index, project) {
   const st = stateOf(cabinet);
   const p = st.parts[index];
   if (!p || doorOf(st, p.id) >= 0) return cabinet;
-  const near = [index + 1, index - 1].map((i) => st.parts[i] && doorOf(st, st.parts[i].id)).find((j) => j != null && j >= 0);
-  if (near != null) st.doors[near].covers.push(p.id);
+  // razem z nią — sąsiednie nieprzykryte szuflady wewnętrzne (pod i nad) i wolne przestrzenie nad nią
+  // (szuflady wewnętrzne nie zostają bez drzwi; szuflady z frontem — granica)
+  const free = (i) => st.parts[i] && doorOf(st, st.parts[i].id) < 0;
+  let lo = index;
+  let hi = index;
+  while (free(lo - 1) && st.parts[lo - 1].type === 'innerDrawer') lo--;
+  while (free(hi + 1) && st.parts[hi + 1].type !== 'drawer') hi++;
+  const range = st.parts.slice(lo, hi + 1).map((x) => x.id);
+  const near = [hi + 1, lo - 1].map((i) => st.parts[i] && doorOf(st, st.parts[i].id)).find((j) => j != null && j >= 0);
+  if (near != null) st.doors[near].covers.push(...range);
   else {
-    // nowe drzwi: szuflada i nieprzykryte wolne przestrzenie nad nią; gdy ich nie ma — nowa wolna przestrzeń (na resztę
-    // wysokości) nad szufladą, żeby drzwi były wyższe od szuflady (miejsce na zawiasy)
-    const covers = [p.id];
-    let k = index + 1;
-    while (st.parts[k] && st.parts[k].type === 'space' && doorOf(st, st.parts[k].id) < 0) covers.push(st.parts[k++].id);
+    // nowe drzwi; gdy przykryłyby tylko tę jedną szufladę — nowa wolna przestrzeń (na resztę wysokości) nad nią,
+    // żeby drzwi były wyższe od szuflady (miejsce na zawiasy)
+    const covers = range;
     if (covers.length === 1) {
       const space = { id: newId(), type: 'space', height: null };
       st.parts.splice(index + 1, 0, space);
@@ -438,3 +501,72 @@ export const freeSpaceOf = (cabinet, index, project) => {
 };
 // tekst opcji: „Dopasuj wysokość do miejsca (+294 mm)” / „(−120 mm)”
 export const fitLabel = (gain) => `Dopasuj wysokość do miejsca (${gain > 0 ? '+' : '−'}${Math.abs(gain)} mm)`;
+
+// --- zawiasy drzwi (okienko „Zawias”, przeciąganie w 3D) ---
+// Zawiasy liczone są na płycie frontu drzwi (panel.hinges, panel.door — indeks drzwi, panel.wing — skrzydło).
+// Ustawienia: fronts.doors[j].hinges = { type, pos: { [skrzydło]: [mm od dołu skrzydła] } }.
+
+const hingePanel = (cabinet, key, project) => cabinetPanels(cabinet, project).find((p) => p.key === key && p.hinges?.length && p.door != null);
+// obecne położenia zawiasów skrzydła (mm od dołu)
+export const hingeYs = (panel) => panel.hinges.map((h) => Math.round((h.y - panel.y) * 10) / 10);
+const clampHinge = (panel, v) => {
+  const lo = Math.min(HINGE_EDGE_MIN, panel.height / 2);
+  return Math.round(Math.min(panel.height - lo, Math.max(lo, v)));
+};
+function withDoorHinges(cabinet, panel, project, fn) {
+  const st = stateOf(cabinet);
+  const d = st.doors[panel.door];
+  if (!d) return cabinet;
+  const hs = { type: d.hinges?.type ?? hingeType().key, ...(d.hinges?.pos ? { pos: { ...d.hinges.pos } } : {}) };
+  fn(hs, d);
+  if (hs.pos && !Object.keys(hs.pos).length) delete hs.pos;
+  d.hinges = hs;
+  return setFrontParts(cabinet, st, project);
+}
+
+// Rodzaj zawiasów (dla całych drzwi — obu skrzydeł).
+export function setHingeType(cabinet, key, type, project) {
+  const panel = hingePanel(cabinet, key, project);
+  if (!panel) return cabinet;
+  return withDoorHinges(cabinet, panel, project, (hs) => (hs.type = hingeType(type).key));
+}
+
+// Zawias index skrzydła na wysokość y (mm od dołu drzwi); pozostałe zawiasy zostają na obecnych miejscach.
+export function moveHinge(cabinet, key, index, y, project) {
+  const panel = hingePanel(cabinet, key, project);
+  if (!panel || !panel.hinges[index]) return cabinet;
+  const ys = hingeYs(panel);
+  ys[index] = clampHinge(panel, y);
+  return withDoorHinges(cabinet, panel, project, (hs) => (hs.pos = { ...hs.pos, [panel.wing]: ys }));
+}
+
+// Nowy zawias — w środku najdłuższego odstępu między zawiasami (albo między zawiasem a krawędzią drzwi).
+// → { cabinet, index } (index — nowego zawiasu, po posortowaniu od dołu)
+export function addHinge(cabinet, key, project) {
+  const panel = hingePanel(cabinet, key, project);
+  if (!panel || panel.hinges.length >= HINGE_LIMITS.max) return { cabinet, index: null };
+  const ys = hingeYs(panel).sort((a, b) => a - b);
+  const pts = [Math.min(HINGE_EDGE_MIN, panel.height / 2), ...ys, panel.height - Math.min(HINGE_EDGE_MIN, panel.height / 2)];
+  let best = 0;
+  for (let i = 1; i < pts.length - 1; i++) if (pts[i + 1] - pts[i] > pts[best + 1] - pts[best]) best = i;
+  const y = clampHinge(panel, (pts[best] + pts[best + 1]) / 2);
+  const next = [...ys, y].sort((a, b) => a - b);
+  const c = withDoorHinges(cabinet, panel, project, (hs) => (hs.pos = { ...hs.pos, [panel.wing]: next }));
+  return { cabinet: c, index: next.indexOf(y) };
+}
+
+export function removeHinge(cabinet, key, index, project) {
+  const panel = hingePanel(cabinet, key, project);
+  if (!panel || panel.hinges.length <= HINGE_LIMITS.min || !panel.hinges[index]) return cabinet;
+  const ys = hingeYs(panel).filter((_, i) => i !== index);
+  return withDoorHinges(cabinet, panel, project, (hs) => (hs.pos = { ...hs.pos, [panel.wing]: ys }));
+}
+
+// Zawiasy skrzydła z powrotem automatyczne (liczba z wysokości drzwi, standardowe położenia).
+export function resetHinges(cabinet, key, project) {
+  const panel = hingePanel(cabinet, key, project);
+  if (!panel) return cabinet;
+  return withDoorHinges(cabinet, panel, project, (hs) => {
+    if (hs.pos) delete hs.pos[panel.wing];
+  });
+}

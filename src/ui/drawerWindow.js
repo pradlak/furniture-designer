@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { escapeHtml, readNumberInput, setIfNotFocused } from './dom.js';
 import { cabinetPanels, frontParts, FRONT_PART_MIN } from '../model/furniture.js';
-import { setPartKind, setPartField, removePart, movePart, coverWithDoor, uncoverPart, canUncover, fillFreeSpace, freeSpaceOf, fitLabel, partKindOf } from '../model/frontEdit.js';
+import { setPartKind, setPartField, removePart, movePart, coverWithDoor, uncoverPart, canUncover, canDoorGrow, doorFullHeight, fillFreeSpace, freeSpaceOf, fitLabel, partKindOf } from '../model/frontEdit.js';
 import { COLOR_PRESETS } from '../model/materials.js';
 import { FRONT_DECORS } from '../model/decor.js';
 import { panelSketch, pieceSketch } from './objectSketch.js';
@@ -16,6 +16,8 @@ import { drawerBoxFor } from '../model/drawerBoxes.js';
 // Pokazuje się, gdy zaznaczona jest dokładnie jedna szuflada. Kolejne ustawienia szuflad — dopisywać tutaj.
 
 const KIND_LABELS = { drawer: 'Szuflada z frontem', innerDrawer: 'Szuflada wewnętrzna (za drzwiami / bez frontu)', space: 'Wolna przestrzeń' };
+
+const cabinetSpacers = (cabinet, inner) => inner && !!cabinet.fronts?.innerSpacers;
 
 export function createDrawerWindow(store, ui) {
   const win = document.createElement('aside');
@@ -41,6 +43,7 @@ export function createDrawerWindow(store, ui) {
       <button type="button" data-dw-move="down" title="Przenieś niżej">↓ Niżej</button>
       <button type="button" data-dw-cover title="Schowaj za drzwiami (szuflada wewnętrzna)">▣ Za drzwi</button>
       <button type="button" data-dw-uncover title="Wyjmij spod drzwi (własny front)">⇲ Spod drzwi</button>
+      <button type="button" data-dw-door-full title="Drzwi przed tą szufladą przykryją też części pod i nad nimi (szuflady wewnętrzne, wolne miejsce)">⇕ Drzwi na całą wysokość</button>
     </div>
     <div class="bi-sec">System szuflady <small>(boki metalowe, dno i plecy do docięcia)</small></div>
     <label class="bi-field wide"><span>System</span><select data-dw="system"><option value="">— bez systemu (ogólne prowadnice)</option>${DRAWER_SYSTEMS.map((s) => `<option value="${s.key}">${escapeHtml(systemLabel(s))}</option>`).join('')}</select></label>
@@ -243,8 +246,10 @@ export function createDrawerWindow(store, ui) {
     fit.title = gain ? fitLabel(gain) : 'Szuflada wypełnia już swoje miejsce';
     win.querySelector('[data-dw-move="up"]').disabled = index >= st.parts.length - 1;
     win.querySelector('[data-dw-move="down"]').disabled = index <= 0;
-    win.querySelector('[data-dw-cover]').hidden = inner;
-    win.querySelector('[data-dw-uncover]').hidden = !inner || !canUncover(st, index);
+    const doorJ = st.doors.findIndex((d) => d.covers.includes(part?.id));
+    win.querySelector('[data-dw-cover]').hidden = doorJ >= 0; // (szuflada wewnętrzna bez drzwi — też)
+    win.querySelector('[data-dw-uncover]').hidden = doorJ < 0 || !canUncover(st, index);
+    win.querySelector('[data-dw-door-full]').hidden = doorJ < 0 || !canDoorGrow(cabinet, doorJ);
     // system szuflady: listy modeli / długości / kolorów i wyliczone dno, plecy
     const sel = part?.system ?? null;
     const sys = sel && drawerSystem(sel.key);
@@ -268,6 +273,7 @@ export function createDrawerWindow(store, ui) {
         ? `<div><b>Dno:</b> ${box.bottom.width} × ${box.bottom.length} × ${box.bottom.thickness} mm <small>(LW − ${sys.bottom.widthOffset} × NL − ${sys.bottom.lengthOffset})</small></div>
            <div><b>Plecy:</b> ${box.back.width} × ${box.back.height} × ${box.back.thickness} mm <small>(LW − ${sys.back.widthOffset})</small></div>
            <div><b>Boki:</b> metalowe H${box.sideH}, prowadnice ${box.NL} mm · szer. wewn. korpusu LW ${Math.round(box.LW)} mm</div>
+           ${box.rail ? `<div class="dw-rail"><b>Prowadnice (lewa i prawa):</b> oś otworów ${box.rail.fromTop} mm nad wieńcem dolnym (${box.rail.fromBottom} mm od spodu korpusu), pierwszy otwór ${box.rail.frontHole} mm od przedniej krawędzi${cabinetSpacers(cabinet, inner) ? ', na dystansach' : ''} — przerywana linia na bokach w widoku 3D</div>` : ''}
            ${box.warnings.map((w) => `<div class="dw-warn">⚠ ${escapeHtml(w)}</div>`).join('')}`
         : '';
     }
@@ -387,6 +393,13 @@ export function createDrawerWindow(store, ui) {
     }
     if (t.closest('[data-dw-cover]')) {
       update((c, p, cur) => coverWithDoor(c, cur.index, p));
+      return clearFronts();
+    }
+    if (t.closest('[data-dw-door-full]')) {
+      update((c, p, cur) => {
+        const j = frontParts(c.fronts).doors.findIndex((d) => d.covers.includes(cur.part?.id ?? frontParts(c.fronts).parts[cur.index]?.id));
+        return j >= 0 ? doorFullHeight(c, j, p) : c;
+      });
       return clearFronts();
     }
     if (t.closest('[data-dw-uncover]')) {

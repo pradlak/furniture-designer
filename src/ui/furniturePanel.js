@@ -1,10 +1,15 @@
+import { SEAT_HEIGHT } from '../model/project.js';
+import { showNotice } from './sizeNotices.js';
 import {
   BACK_TYPES,
+  MOUNT_TYPES,
+  setCabinetMount,
   CABINET_LIMITS,
   legHeight,
   fitCabinetToSpace,
   cabinetPanels,
   cabinetIssues,
+  cabinetProblems,
   panelCutSize,
   resizePanelLinked,
   JOINT_TYPES,
@@ -66,16 +71,16 @@ import {
 const sameSize = (a, b) => ['height', 'depth'].every((k) => Math.abs(a[k] - b[k]) < 0.5);
 const sameSizeCabinets = (cabinet, project) => project.furniture.filter((c) => c.id !== cabinet.id && sameSize(c, cabinet));
 import { duplicateCabinet, slideCabinet, slideCabinets } from '../model/placement.js';
-import { addCabinetToLayout, cabinetAlcoves, updateCabinetRefit, updateCabinetCeilingGap, setLegs } from '../model/layout.js';
+import { addCabinetNoResize, cabinetAlcoves, updateCabinetRefit, updateCabinetCeilingGap, setLegs } from '../model/layout.js';
 import { createAlcoveDialog } from './alcoveDialog.js';
 import { cabinetMapSvg } from './cabinetMap.js';
 import { ICON_COLLAPSE, ICON_EXPAND } from './collapsible.js';
 import { duplicateSelected } from '../state/duplicate.js';
 import { markInspectorCard } from './inspectorCard.js';
 import { cabinetSketch, panelSketch } from './objectSketch.js';
-import { addPart, addParts, setPartField, setPartKind, partKindOf, removePart, movePart, fillFreeSpace, freeAround, fitLabel, addDoor, setDoorField, setDoorHeight, removeDoor, toggleDoorCover, doorCoverOptions } from '../model/frontEdit.js';
+import { addPart, addParts, setPartField, setPartKind, partKindOf, removePart, movePart, fillFreeSpace, freeAround, fitLabel, addDoor, doorFullHeight, canDoorGrow, setDoorField, setDoorHeight, removeDoor, toggleDoorCover, doorCoverOptions } from '../model/frontEdit.js';
 import { attachDragReorder, moveInList, DRAG_HANDLE } from './dragReorder.js';
-import { cabinetMaterials } from '../model/materials.js';
+import { cabinetMaterials, trimMaterial } from '../model/materials.js';
 import { setEye, materialSelect, colorPicker, readColorInput, syncColorPicker } from './widgets.js';
 import { sideBlendSummary } from './sideBlends.js';
 import { edgeKeys, EDGE_LABELS, projectSolids, panelEdgeSet, isManualEdgeSet, edgeCounts } from '../model/edges.js';
@@ -184,6 +189,7 @@ function frontDoorsHtml(st) {
           <button type="button" class="icon danger" data-fdoor-remove title="Usuń drzwi (szuflady za nimi dostaną własne fronty)">✕</button>
         </div>
         ${d.type === 'door' ? '<label class="fs-row"><span>Zawiasy</span><select data-fdoor-f="hingeSide"><option value="left">po lewej</option><option value="right">po prawej</option></select></label>' : ''}
+        <button type="button" class="fd-full" data-fdoor-full title="Drzwi przykrywają też części pod i nad nimi (szuflady wewnętrzne, wolne miejsce) — aż do innych drzwi albo do końca korpusu">⇕ Na całą wysokość</button>
         <div class="fd-covers"><span>Przykrywa:</span>
           ${st.parts
             .map((_, i) => i)
@@ -315,7 +321,7 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
         ${project.furniture.map((c) => renderCabinet(c, project)).join('') || '<p class="empty">Brak mebli.</p>'}
       </div>
       <div class="add-row">
-        <button type="button" data-action="add-cabinet">+ Korpus</button>
+        <button type="button" data-action="add-cabinet" draggable="true" data-dnd="application/x-meble-cabinet" title="Kliknij — nowy korpus pojawi się w widoku 3D i pójdzie za kursorem; kliknij na podłodze, żeby go postawić (Esc — anuluj). Można też przeciągnąć i upuścić.">+ Korpus</button>
       </div>
 
       <datalist id="leg-heights">${LEG_HEIGHTS.map((h) => `<option value="${h}"></option>`).join('')}</datalist>
@@ -376,6 +382,10 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
         <span class="hint">Wypełnij całą wnękę jednym korpusem:</span>
         <button type="button" data-action="fit">Dopasuj do wnęki</button>
       </div>
+      <div class="item-row">
+        <span class="hint">Siedzisko / ławka — góra na wysokości siedziska:</span>
+        <button type="button" data-action="seat" title="Wysokość korpusu tak, żeby jego góra (z nóżkami i blatem na nim) była na wysokości siedziska z ustawień widoku (Pokaż → Linia siedziska)">🪑 Do siedziska</button>
+      </div>
       <div class="slide-row" title="Przesuwa korpus aż do ściany, innego mebla lub przeszkody. Kilka korpusów zaznaczonych Ctrl + klik przesuwa się razem.">
         <span>Dosuń:</span>
         <button type="button" data-slide="-x" title="W lewo">←</button>
@@ -394,6 +404,16 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
         ${colorPicker('Kolor korpusu', 'colors.body')}
         ${materialSelect('Materiał blend', 'blendMaterialId', project)}
         ${colorPicker('Kolor blend', 'colors.blend')}
+        <label class="field small" title="Wiszący — bez nóżek, na zawieszkach i szynie montażowej; plecy cofnięte (miejsce na szynę)">
+          <span>Montaż</span>
+          <select data-f="mount">
+            ${MOUNT_TYPES.map((m) => `<option value="${m.key}">${m.label}</option>`).join('')}
+          </select>
+        </label>
+        <label class="field small back-setback" title="O ile plecy są cofnięte od tylnej krawędzi boków — miejsce na szynę montażową (typowo 16–20 mm)">
+          <span>Cofnięcie pleców <small>mm</small></span>
+          <input type="number" step="1" min="0" max="100" data-f="backSetback" />
+        </label>
         <label class="field small">
           <span>Plecy</span>
           <select data-f="backType">
@@ -770,6 +790,15 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
       el.classList.toggle('is-hidden', !!c.hidden);
       setEye(el.querySelector('[data-toggle-hidden="cabinet"]'), c.hidden, 'korpus');
       el.querySelector('.rail-width').hidden = c.topType !== 'rails';
+      el.querySelector('.back-setback').hidden = c.mount !== 'wall';
+      // szafka wisząca: plecy wsunięte między boki i cofnięte (miejsce na szynę) — napisy w liście „Plecy”
+      const sb = c.backSetback ?? 18;
+      const backLabels = c.mount === 'wall'
+        ? { hdf: `HDF (wsunięte, cofnięte o ${sb} mm)`, board: `Z płyty (wsunięte, cofnięte o ${sb} mm)` }
+        : Object.fromEntries(BACK_TYPES.map((b) => [b.key, b.label]));
+      el.querySelectorAll('select[data-f="backType"] option').forEach((o) => {
+        if (backLabels[o.value] && o.textContent !== backLabels[o.value]) o.textContent = backLabels[o.value];
+      });
       // Góra pod skos — tylko gdy przestrzeń ma skos z tyłu lub z przodu.
       const zSlope = project.space.slopes.some((s) => s.side === 'back' || s.side === 'front');
       el.querySelector('.slope-top').hidden = !zSlope;
@@ -901,9 +930,14 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
           const item = partsEl.querySelector(`[data-fpart="${i}"]`);
           if (!item) return;
           set(item, '[data-fpart-f="type"]', partKindOf(st, p));
-          const hIn = set(item, '[data-fpart-f="height"]', p.height ?? '');
+          // wolna przestrzeń zmniejszona, bo części się nie mieszczą — pokazana rzeczywista wysokość
+          const actual = ranges[i] ? ranges[i][1] - ranges[i][0] : null;
+          const fitted = p.type === 'space' && p.height != null && actual != null && actual < p.height - 0.5;
+          const hIn = set(item, '[data-fpart-f="height"]', fitted ? r(actual) : p.height ?? '');
           hIn.placeholder = ranges[i] ? `${r(ranges[i][1] - ranges[i][0])} (auto)` : 'auto';
           hIn.classList.toggle('overridden', p.height != null);
+          hIn.classList.toggle('fitted', fitted);
+          hIn.title = fitted ? `Dopasowana do korpusu (wpisano ${p.height} mm) — wolne przestrzenie zmniejszają się same, gdy części się nie mieszczą` : '';
           // szuflada z wolnym miejscem obok — przycisk „wypełnij”
           const fill = item.querySelector('[data-fpart-fill]');
           const gain = freeAround(st, ranges, layAll.frontArea, c.fronts?.gapV ?? DEFAULT_FRONT_GAP_V, i, layAll.frontOverflow).gain;
@@ -915,8 +949,11 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
           if (!item) return;
           set(item, '[data-fdoor-f="type"]', d.type);
           set(item, '[data-fdoor-f="hingeSide"]', d.hingeSide);
+          const fullBtn = item.querySelector('[data-fdoor-full]');
+          if (fullBtn) fullBtn.hidden = !canDoorGrow(c, j);
           const span = doorSpan(d, st.parts);
-          const doorH = span && ranges[span[0]] ? r(ranges[span[1]][1] - ranges[span[0]][0]) : null;
+          const dr = layAll.doorRanges?.[j];
+          const doorH = dr ? r(dr[1] - dr[0]) : span && ranges[span[0]] ? r(ranges[span[1]][1] - ranges[span[0]][0]) : null;
           // wysokość wpisana, gdy część, która ją ustala (najwyższa przykryta wolna przestrzeń / najwyższa część), ma wysokość
           let k = span ? span[1] : -1;
           while (span && k >= span[0] && st.parts[k].type !== 'space') k--;
@@ -1061,15 +1098,16 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
           ? `Przesunięta na ${round1(actual)} mm — na ${round1(wanted)} mm nachodziłaby na półkę.`
           : '';
       });
-      const issues = cabinetIssues(c, project);
+      const { errors: issues, warnings } = cabinetProblems(c, project);
       el.classList.toggle('has-issues', issues.length > 0);
       // Podsumowanie widoczne w zwiniętej karcie.
       el.querySelector('.card-sum').textContent =
         `szer. ${c.width} × wys. ${c.height} × gł. ${c.depth} mm` +
-        (issues.length ? ` · ⚠ ${issues.length} ${issues.length === 1 ? 'problem' : issues.length < 5 ? 'problemy' : 'problemów'}` : '');
-      el.querySelector('.issues').innerHTML = issues.length
-        ? issues.map((i) => `<li>${escapeHtml(i)}</li>`).join('')
-        : '<li class="ok">Mieści się w przestrzeni.</li>';
+        (issues.length ? ` · ⚠ ${issues.length} ${issues.length === 1 ? 'problem' : issues.length < 5 ? 'problemy' : 'problemów'}` : '') +
+        (warnings.length ? ` · ⓘ ${warnings.length} ${warnings.length === 1 ? 'ostrzeżenie' : warnings.length < 5 ? 'ostrzeżenia' : 'ostrzeżeń'}` : '');
+      el.querySelector('.issues').innerHTML =
+        (issues.length ? issues.map((i) => `<li>${escapeHtml(i)}</li>`).join('') : '<li class="ok">Mieści się w przestrzeni.</li>') +
+        warnings.map((w) => `<li class="warn">ⓘ ${escapeHtml(w)}</li>`).join('');
 
       const panels = cabinetPanels(c, project);
       solids ??= projectSolids(project);
@@ -1173,6 +1211,14 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
   // Zmiana kolejności kart: przeciąganie za uchwyt ⠿ (ui/dragReorder.js).
   attachDragReorder(root, 'cabinet', (moved, target, after) => updateFurniture((list) => moveInList(list, moved, target, after)));
 
+  // przeciąganie „+ Korpus” do widoku 3D (upuszczenie — scene/interaction.js)
+  root.addEventListener('dragstart', (e) => {
+    const t = e.target.closest?.('[data-dnd]')?.dataset.dnd;
+    if (!t) return;
+    e.dataTransfer.setData(t, '1');
+    e.dataTransfer.effectAllowed = 'copy';
+  });
+
   // Klik w korpus na mapce: zaznacza go (jak klik w 3D) i pokazuje jego kartę; Ctrl + klik — kilka korpusów.
   root.addEventListener('click', (e) => {
     {
@@ -1186,12 +1232,13 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
         updateCabinet(bulkCab.dataset.id, (c, p) => addParts(c, type, n, h, p));
         return;
       }
-      const btn = e.target.closest('[data-fpart-add], [data-fpart-remove], [data-fpart-fill], [data-fdoor-add], [data-fdoor-remove]');
+      const btn = e.target.closest('[data-fpart-add], [data-fpart-remove], [data-fpart-fill], [data-fdoor-add], [data-fdoor-remove], [data-fdoor-full]');
       const cabId = btn?.closest('[data-kind="cabinet"]')?.dataset.id;
       if (btn && cabId) {
         updateCabinet(cabId, (c, p) => {
           if (btn.dataset.fpartAdd) return addPart(c, btn.dataset.fpartAdd, p);
           if (btn.dataset.fdoorAdd) return addDoor(c, btn.dataset.fdoorAdd, p);
+          if (btn.dataset.fdoorFull !== undefined) return doorFullHeight(c, Number(btn.closest('[data-fdoor]').dataset.fdoor), p);
           if (btn.dataset.fpartFill !== undefined) return fillFreeSpace(c, Number(btn.closest('[data-fpart]').dataset.fpart), p);
           if (btn.dataset.fpartRemove !== undefined) return removePart(c, Number(btn.closest('[data-fpart]').dataset.fpart), p);
           return removeDoor(c, Number(btn.closest('[data-fdoor]').dataset.fdoor), p);
@@ -1223,7 +1270,7 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
       else ui.set({ ...st, selectedId: cabId, selectedIds: [cabId], selectedFronts: [], selectedBlends: [], selectedHole: null, selectedObstacle: null }, { reveal: true });
       return;
     }
-    const row = !e.target.closest('input, select, button, label, [data-fpart-drag]') && e.target.closest('.fp-item[data-fpart], .fd-item[data-fdoor]');
+    const row = e.target.closest('input, select, button, label, [data-fpart-drag]') ? null : e.target.closest('.fp-item[data-fpart], .fd-item[data-fdoor]');
     const rowCab = row?.closest('[data-kind="cabinet"]')?.dataset.id;
     if (row && rowCab) {
       const prj = store.get();
@@ -1456,6 +1503,11 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
     if (field === 'ceilingGap') {
       // Luz do sufitu — korpus zmniejsza się tylko wtedy, gdy z nowym luzem by się nie zmieścił.
       store.set((p) => updateCabinetCeilingGap(p, id, (c) => setPath(c, field, value)));
+      return;
+    }
+    if (field === 'mount') {
+      // wiszący: bez nóżek, zawieszony nad podłogą (Y od podłogi = spód szafki); stojący: z powrotem na podłodze
+      updateCabinet(id, (c) => setCabinetMount(c, value));
       return;
     }
     if (field === 'legs.enabled') {
@@ -1788,11 +1840,22 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
     } else if (action === 'add-cabinet') {
       // Pierwszy na całą szerokość, kolejne wypełniają wolne miejsce albo dzielą rząd (model/layout.js).
       // Kilka wnęk (występ ściany, np. kominek) — najpierw pytamy, do której.
+      // gotowe korpusy NIE zmieniają wymiarów: gdy nie ma wolnego miejsca — podpowiedź (przeciągnij na miejsce)
       const add = (segment) => {
-        const { project, cabinet } = addCabinetToLayout(store.get(), { segment });
-        store.set(project);
-        ui.set({ ...ui.get(), selectedId: cabinet.id }, { reveal: true });
+        const res = addCabinetNoResize(store.get(), { segment });
+        if (!res) {
+          showNotice('Brak wolnego miejsca na nowy korpus', 'Gotowe korpusy nie zmieniają wymiarów. Przeciągnij „+ Korpus” (z menu „Dodaj”) na wolne miejsce w widoku 3D albo najpierw zmniejsz któryś korpus.');
+          return;
+        }
+        store.set(res.project);
+        ui.set({ ...ui.get(), selectedId: res.cabinet.id }, { reveal: true });
       };
+      // są już korpusy — nowy „w powietrzu” idzie za kursorem w widoku 3D, klik stawia go w wolnym miejscu
+      // (scene/interaction.js → tryb wstawiania); pierwszy korpus — jak dotąd, na całą wnękę
+      if (store.get().furniture.length) {
+        ui.set({ ...ui.get(), placingCabinet: true, selectedId: null, selectedIds: [], selectedFronts: [], selectedBlends: [] });
+        return;
+      }
       const alcoves = cabinetAlcoves(store.get());
       if (alcoves.length > 1) alcoveDialog.ask(store.get().space, alcoves).then((segment) => segment && add(segment));
       else add(null);
@@ -1805,6 +1868,16 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
       else updateCabinet(id, (c, p) => slideCabinet(p, c.id, slide));
     } else if (action === 'fit' && id) {
       updateCabinet(id, (c, p) => fitCabinetToSpace(c, p));
+    } else if (action === 'seat' && id) {
+      // góra korpusu (od podłogi: położenie Y + nóżki + korpus + blat na nim) = wysokość siedziska; linia w widoku się włącza
+      const seat = store.get().view?.seatHeight ?? SEAT_HEIGHT.default;
+      updateCabinet(id, (c, p) => {
+        const top = (p.trims ?? []).find((t) => t.type === 'countertop' && t.cabinetIds.includes(c.id));
+        const ct = top ? trimMaterial(top, p).thickness : 0;
+        const height = Math.round(seat - (c.y ?? 0) - legHeight(c) - ct);
+        return { ...c, height: Math.max(CABINET_LIMITS.sizeMin, height) };
+      });
+      if (!store.get().view?.seatLine) store.set((p) => ({ ...p, view: { ...p.view, seatLine: true } }));
     } else if (resetPart && id) {
       updateCabinet(id, (c) => {
         const { [resetPart]: _removed, ...rest } = c.panelOverrides ?? {};
@@ -1895,6 +1968,9 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
     // jeden zaznaczony korpus — jego karta jako okienko po prawej (rozwinięta)
     // (który korpus był w okienku — zapamiętane, nie z DOM: przebudowa karty, np. po dodaniu szuflady, nie zamyka sekcji)
     const wasInInspector = inspectorCabinet;
+    // sekcja otwarta w okienku poprzedniego korpusu (np. „Korpus”) — po kliknięciu w inny korpus otwiera się ta sama
+    const prevCard = wasInInspector && wasInInspector !== selectedId ? root.querySelector(`[data-kind="cabinet"][data-id="${wasInInspector}"]`) : null;
+    const prevSection = prevCard?.querySelector(':scope > details.section[open][data-section]')?.dataset.section ?? null;
     const card = markInspectorCard(root, '[data-kind="cabinet"]', ids.size === 1 ? selectedId : null);
     inspectorCabinet = card ? selectedId : null;
     if (card) {
@@ -1903,13 +1979,29 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
     }
     if (card && wasInInspector !== selectedId) {
       card.querySelectorAll(':scope > details.section[open]').forEach((d) => {
+        if (d.dataset.section === prevSection) return;
         d.open = false;
         sectionState.set(`${selectedId}:${d.dataset.section}`, false);
       });
+      const same = prevSection && card.querySelector(`:scope > details.section[data-section="${prevSection}"]`);
+      if (same && !same.open) {
+        same.open = true;
+        sectionState.set(`${selectedId}:${prevSection}`, true);
+      }
+      // rozwinięte / zwinięte podsekcje — jak w poprzednim korpusie
+      if (same) {
+        prevCard.querySelectorAll(`:scope > details.section[data-section="${prevSection}"] details[data-section]`).forEach((d) => {
+          const t = same.querySelector(`details[data-section="${d.dataset.section}"]`);
+          if (t && t.open !== d.open) {
+            t.open = d.open;
+            sectionState.set(`${selectedId}:${d.dataset.section}`, d.open);
+          }
+        });
+      }
     }
     if (card && collapsed.has(selectedId)) setCollapsed([selectedId], false);
     if (meta.reveal && selectedId && !card) tabs.activate('furniture-panel');
-    const changed = accordion(ids);
+    const changed = accordion(ids, card ? prevSection : null);
     if ((changed || meta.reveal) && selectedId && !card) {
       if (collapsed.has(selectedId)) setCollapsed([selectedId], false); // pokazujemy zaznaczony korpus
       scrollUnderMap(selectedId);
@@ -1938,7 +2030,8 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
   // (karta głównego zaznaczonego przewija się potem pod mapkę — scrollUnderMap). Odznaczenie niczego nie zwija.
   // Zwraca true, gdy zaznaczenie się zmieniło.
   let lastSelection = '';
-  function accordion(ids) {
+  // keepSection — sekcja, która zostaje otwarta (ta sama, co w okienku poprzedniego korpusu)
+  function accordion(ids, keepSection = null) {
     const key = [...ids].sort().join('|');
     if (!ids.size || key === lastSelection) return false;
     lastSelection = key;
@@ -1951,6 +2044,7 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
     // Podsekcje wewnątrz sekcji („sub:…”, np. Front / Uchwyt) zostają, jak były.
     for (const id of ids) {
       root.querySelectorAll(`[data-kind="cabinet"][data-id="${id}"] details.section[data-section]`).forEach((d) => {
+        if (keepSection && d.dataset.section === keepSection) return;
         sectionState.set(`${id}:${d.dataset.section}`, false);
         d.open = false;
       });

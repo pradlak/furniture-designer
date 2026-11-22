@@ -20,6 +20,17 @@ export const LEG_LIMITS = { min: 10, max: 500 };
 // Plecy HDF nakładane są mniejsze od korpusu o tyle z każdej strony (mm).
 export const HDF_BACK_INSET = 5;
 
+// Montaż korpusu: 'floor' — stoi na podłodze (albo na nóżkach), 'wall' — wiszący na ścianie: bez nóżek, zawieszony
+// na zawieszkach regulowanych (w górnych narożnikach, od środka) na szynie montażowej przykręconej do ściany;
+// plecy cofnięte o backSetback mm od tylnej krawędzi boków (miejsce na szynę — zawieszka chowa się za plecami).
+export const MOUNT_TYPES = [
+  { key: 'floor', label: 'Stojący (na podłodze / nóżkach)' },
+  { key: 'wall', label: 'Wiszący na ścianie' },
+];
+export const DEFAULT_BACK_SETBACK = 18; // mm — typowo 16–20 mm (szyna montażowa ok. 13–15 mm + luz)
+export const DEFAULT_HANG_HEIGHT = 1400; // mm — spód szafki wiszącej nad podłogą (kuchnia: blat 900 + ok. 500)
+export const isWallMounted = (cabinet) => cabinet?.mount === 'wall';
+
 export const BACK_TYPES = [
   { key: 'hdf', label: 'HDF (nakładane)' },
   { key: 'board', label: 'Z płyty (wpuszczane)' },
@@ -411,7 +422,10 @@ function normalizeParts(raw) {
     const covers = parts.slice(span[0], span[1] + 1).map((p) => p.id).filter((id) => !used.has(id));
     if (!covers.length) continue;
     covers.forEach((id) => used.add(id));
-    doors.push({ id: typeof d?.id === 'string' && d.id ? d.id : newId(), type: d?.type === 'doubleDoor' ? 'doubleDoor' : 'door', hingeSide: d?.hingeSide === 'right' ? 'right' : 'left', covers });
+    const door = { id: typeof d?.id === 'string' && d.id ? d.id : newId(), type: d?.type === 'doubleDoor' ? 'doubleDoor' : 'door', hingeSide: d?.hingeSide === 'right' ? 'right' : 'left', covers };
+    const hinges = normalizeDoorHinges(d?.hinges);
+    if (hinges) door.hinges = hinges;
+    doors.push(door);
   }
   return { parts, doors };
 }
@@ -478,21 +492,31 @@ export function setFrontParts(cabinet, state, project) {
 // Gdy wpisane wysokości się nie mieszczą, części są zmniejszone proporcjonalnie, żeby nie wychodziły poza korpus;
 // o ile za dużo — ranges.overflow (mm, do ostrzeżenia).
 // extra[i] — dodatkowe miejsce nad częścią i (np. odstęp na palce nad szufladą wewnętrzną) — nie wlicza się do jej wysokości
+// Wolne przestrzenie z wpisaną wysokością dopasowują się same: gdy części się nie mieszczą, najpierw (proporcjonalnie)
+// zmniejszają się wolne przestrzenie, a dopiero gdy to nie wystarczy — szuflady. ranges.fittedSpaces — były zmniejszone.
 export function partRanges(parts, y0, y1, gv, extra = []) {
   const extraSum = parts.reduce((a, _, i) => a + (i < parts.length - 1 ? extra[i] ?? 0 : 0), 0);
   const avail = Math.max(0, y1 - y0 - (parts.length - 1) * gv - extraSum);
-  const fixed = parts.filter((p) => p.height != null).reduce((a, p) => a + p.height, 0);
+  const isSpace = (p) => p.type === 'space';
+  const fixedSpaces = parts.filter((p) => p.height != null && isSpace(p)).reduce((a, p) => a + p.height, 0);
+  const fixedOther = parts.filter((p) => p.height != null && !isSpace(p)).reduce((a, p) => a + p.height, 0);
+  const fixed = fixedSpaces + fixedOther;
   const autos = parts.filter((p) => p.height == null).length;
-  const scale = fixed > avail && fixed > 0 ? avail / fixed : 1;
-  const autoH = autos ? Math.max(0, (avail - fixed * scale) / autos) : 0;
+  // za dużo: najpierw przestrzenie (do zera), potem reszta proporcjonalnie
+  const excess = Math.max(0, fixed - avail);
+  const spaceScale = fixedSpaces > 0 ? Math.max(0, (fixedSpaces - excess) / fixedSpaces) : 1;
+  const otherScale = fixedOther > avail && fixedOther > 0 ? avail / fixedOther : 1;
+  const used = fixedSpaces * spaceScale + fixedOther * otherScale;
+  const autoH = autos ? Math.max(0, (avail - used) / autos) : 0;
   let cur = y0;
   const ranges = parts.map((p, i) => {
-    const h = p.height != null ? p.height * scale : autoH;
+    const h = p.height != null ? p.height * (isSpace(p) ? spaceScale : otherScale) : autoH;
     const r = [cur, cur + h];
     cur += h + gv + (extra[i] ?? 0);
     return r;
   });
-  ranges.overflow = Math.max(0, fixed - avail);
+  ranges.overflow = Math.max(0, fixedOther - avail); // (przestrzenie się dopasowują — nie są błędem)
+  ranges.fittedSpaces = spaceScale < 1;
   return ranges;
 }
 
@@ -526,6 +550,35 @@ export function setFrontType(cabinet, type, project) {
   return setFrontParts(cabinet, { parts: [{ id, type: 'space', height: null }], doors: [{ type, hingeSide: 'left', covers: [id] }] }, project);
 }
 
+
+// Rodzaje zawiasów puszkowych (do wyboru w okienku „Zawias”). cup — średnica puszki (mm), angle — kąt otwarcia.
+// Później: marka / producent / model (door.hinges.brand, .model).
+export const HINGE_TYPES = [
+  { key: 'overlay', label: 'Zawias nakładany (110°)', cup: 35, angle: 110, accessory: 'Zawias puszkowy Ø35 nakładany 110°' },
+  { key: 'zero155', label: 'Zawias z zerowym uskokiem (155°)', cup: 35, angle: 155, accessory: 'Zawias puszkowy Ø35 z zerowym uskokiem 155°' },
+];
+export const DEFAULT_HINGE_TYPE = 'overlay';
+export const hingeType = (key) => HINGE_TYPES.find((t) => t.key === key) ?? HINGE_TYPES[0];
+// najmniejsza odległość środka zawiasu od górnej / dolnej krawędzi drzwi przy ręcznym ustawianiu (mm)
+export const HINGE_EDGE_MIN = 50;
+export const HINGE_LIMITS = { min: 1, max: 8 };
+
+// Ustawienia zawiasów drzwi (fronts.doors[j].hinges): { type, pos: { door | left | right: [mm od dołu skrzydła] } } —
+// pos[skrzydło] brak — zawiasy automatyczne (liczba z wysokości drzwi, standardowe położenia).
+function normalizeDoorHinges(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const out = { type: hingeType(raw.type).key };
+  const pos = {};
+  for (const w of ['door', 'left', 'right']) {
+    const ys = raw.pos?.[w];
+    if (Array.isArray(ys)) {
+      const clean = ys.map(Number).filter(Number.isFinite).slice(0, HINGE_LIMITS.max);
+      if (clean.length >= HINGE_LIMITS.min) pos[w] = clean;
+    }
+  }
+  if (Object.keys(pos).length) out.pos = pos;
+  return out;
+}
 
 // Liczba zawiasów puszkowych na drzwi o danej wysokości (typowe zalecenia producentów).
 export const hingesFor = (height) => (height <= 900 ? 2 : height <= 1600 ? 3 : height <= 2000 ? 4 : 5);
@@ -561,10 +614,16 @@ export function hingePlacement(panel, bands = []) {
   return { holes: moved, moved: true, conflict: false };
 }
 
-export function hingeHoles(panel) {
+// custom — położenia ustawione ręcznie (mm od dołu skrzydła; null — automatyczne), w granicach drzwi
+export function hingeHoles(panel, custom = null) {
   const side = panel.opening?.hinge;
   if (!side) return [];
   const { x, y, width: w, height: h } = panel;
+  if (custom?.length) {
+    const cx = side === 'left' ? x + HINGE_CUP.edgeDistance : x + w - HINGE_CUP.edgeDistance;
+    const lo = Math.min(HINGE_EDGE_MIN, h / 2);
+    return custom.map((v) => ({ x: cx, y: y + Math.min(h - lo, Math.max(lo, v)) }));
+  }
   const n = hingesFor(h);
   const { edgeDistance: e, endDistance: d } = HINGE_CUP;
   const span = Math.max(0, h - 2 * d);
@@ -578,9 +637,11 @@ export function describeHinges(panel) {
   if (!panel.hinges?.length) return '';
   const r = (v) => Math.round(v * 10) / 10;
   const ys = panel.hinges.map((p) => r(p.y - panel.y)).join(', ');
-  const { diameter, depth } = HINGE_CUP;
+  const { depth } = HINGE_CUP;
+  const ht = hingeType(panel.hingeType);
+  const diameter = ht.cup;
   const side = panel.opening?.hinge === 'right' ? 'prawej' : 'lewej';
-  return `otwory pod zawiasy (od tyłu): ${panel.hinges.length} × Ø${diameter} mm, gł. ${depth} mm, przy ${side} krawędzi (od przodu), odległość od krawędzi standardowa — wysokości od dołu: ${ys} mm`;
+  return `otwory pod zawiasy (od tyłu, ${ht.label.toLowerCase()}): ${panel.hinges.length} × Ø${diameter} mm, gł. ${depth} mm, przy ${side} krawędzi (od przodu), odległość od krawędzi standardowa — wysokości od dołu: ${ys} mm`;
 }
 
 // Półki: position 'even' — równo rozłożone (domyślnie), 'at' — na wysokości y (od dołu korpusu);
@@ -953,13 +1014,16 @@ export function createCabinet(project, overrides = {}) {
   };
 }
 
-export const legHeight = (cabinet) => (cabinet.legs?.enabled ? cabinet.legs.height : 0);
+export const legHeight = (cabinet) => (cabinet.legs?.enabled && cabinet.mount !== 'wall' ? cabinet.legs.height : 0); // (wiszący — bez nóżek)
 
 // --- blendy wspólne (blenda dolna, blenda górna) — patrz model/trims.js ---
 // Tu tylko to, czego potrzebuje sam korpus, żeby się do nich dopasować.
 
+// Blenda dolna i blat nie dotyczą szafek wiszących (nie ma pod nimi cokołu, a na nich blatu) — są pomijane,
+// nawet gdy zostały zaznaczone (np. dołączone razem z rzędem).
+export const trimSkipsWallCabinets = (trim) => trim.type === 'plinth' || trim.type === 'countertop';
 export const trimCabinets = (trim, project) =>
-  project.furniture.filter((c) => trim.cabinetIds.includes(c.id));
+  project.furniture.filter((c) => trim.cabinetIds.includes(c.id) && !(trimSkipsWallCabinets(trim) && c.mount === 'wall'));
 
 // Linia frontu blendy: najbardziej wysunięty front objętych korpusów.
 export const trimFront = (trim, project) =>
@@ -1044,9 +1108,24 @@ function sideGap(cabinet, side, project) {
 // projektu) — DEFAULT_FILLER_WIDTH jako szerokość ręczna, żeby korpusy w pełnym rzędzie mogły zrobić
 // jej miejsce (patrz model/layout.js).
 export function setSideBlendField(cabinet, path, value, project = null) {
-  const next = setPath(cabinet, path, value);
+  let next = setPath(cabinet, path, value);
   const [, side, field] = path.split('.');
   const wasFiller = cabinet.sideBlends?.[side]?.type === 'filler';
+  // Pierwsza blenda boczna korpusu, a materiał blend jest domyślny (bez wybranego koloru blend) — blendy dostają
+  // materiał i kolor frontów (gdy korpus ma fronty) albo korpusu; inaczej byłyby w kolorze domyślnego MDF.
+  const anyBlend = (c) => ['left', 'right'].some((sd) => (c.sideBlends?.[sd]?.type ?? 'none') !== 'none');
+  if (field === 'type' && value !== 'none' && !anyBlend(cabinet)) {
+    const defaultMdf = project?.materials?.find((m) => m.type === 'mdf')?.id ?? null;
+    const autoMaterial = !cabinet.blendMaterialId || cabinet.blendMaterialId === defaultMdf;
+    if (autoMaterial && !cabinet.colors?.blend) {
+      const fronts = hasAnyFronts(cabinet.fronts);
+      next = {
+        ...next,
+        blendMaterialId: fronts ? cabinet.frontMaterialId ?? cabinet.materialId : cabinet.materialId,
+        colors: { ...next.colors, blend: (fronts ? cabinet.colors?.front : null) ?? cabinet.colors?.body ?? null },
+      };
+    }
+  }
   if (field === 'type' && value === 'filler' && !wasFiller) {
     const gap = project ? sideGap(cabinet, side, project) : null;
     return setPath(next, `sideBlends.${side}.width`, gap != null && gap > 0.5 ? null : DEFAULT_FILLER_WIDTH);
@@ -1066,7 +1145,7 @@ export function fillerAllowance(cabinet, side) {
 //  plinthHeight — wysokość blendy dolnej (cokół boczny ma taką samą).
 export function cabinetContext(cabinet, project) {
   const trims = project?.trims ?? [];
-  const plinth = trims.find((t) => t.type === 'plinth' && t.cabinetIds.includes(cabinet.id));
+  const plinth = cabinet.mount === 'wall' ? null : trims.find((t) => t.type === 'plinth' && t.cabinetIds.includes(cabinet.id)); // (szafka wisząca — bez cokołu)
   const L = legHeight(cabinet);
   // Grubość warstwy frontu: fronty korpusu, jeśli są; inaczej blenda górna, jeśli obejmuje korpus;
   // inaczej zakładamy front z materiału blend korpusu.
@@ -1217,7 +1296,19 @@ export function cabinetPanels(cabinet, project) {
   let zInner; // przednia powierzchnia pleców — tu stoją poprzeczki usztywniające
   const [bx, bw] = span(bottomOverlay);
   const [tx, tw] = span(topOverlay);
-  if (backType === 'board') {
+  if (isWallMounted(cabinet) && backType !== 'none') {
+    // korpus wiszący: plecy (HDF albo płyta) cofnięte o backSetback, między bokami i wieńcami;
+    // boki i wieńce na pełną głębokość — za plecami zostaje miejsce na szynę montażową i zawieszki
+    const sb = cabinet.backSetback ?? DEFAULT_BACK_SETBACK;
+    const tK = backType === 'board' ? thick('back') : thick('back', mats.hdf.thickness);
+    zInner = sb + tK;
+    base.left = [0, sideY0, 0, tL, sideH, D];
+    base.right = [W - tR, sideY0, 0, tR, sideH, D];
+    base.bottom = [bx, 0, 0, bw, tB, D];
+    base.top = [tx, H - tT, 0, tw, tT, D];
+    zTop = [0, D];
+    base.back = [tL, tB, sb, W - tL - tR, H - tB - tT, tK];
+  } else if (backType === 'board') {
     const tK = thick('back');
     zInner = tK;
     base.left = [0, sideY0, 0, tL, sideH, D];
@@ -1392,6 +1483,7 @@ export function cabinetPanels(cabinet, project) {
   let partRangesOut = [];
   let frontOverflowOut = 0; // o ile wpisane wysokości części wnętrza przekraczają wysokość frontów (mm)
   let frontAreaOut = null; // [od, do] — obszar frontów (od dołu korpusu)
+  let doorRangesOut = []; // [od, do] drzwi (indeks jak fp.doors; od dołu korpusu)
   if (hasAnyFronts(fr)) {
     const g = fr.gap ?? DEFAULT_FRONT_GAP; // boczna (lewa + prawa)
     const gv = fr.gapV ?? DEFAULT_FRONT_GAP_V; // pionowa (góra + dół)
@@ -1441,10 +1533,13 @@ export function cabinetPanels(cabinet, project) {
     frontAreaOut = [y0 - L, y1 - L];
     const slots = frontSlots(fp);
     const doorOrder = [...new Set(slots.fronts.filter((s) => s.door != null).map((s) => s.door))];
+    // drzwi przykrywające najniższą / najwyższą część sięgają do krawędzi obszaru frontów (gdy wpisane wysokości
+    // części nie wypełniają całego korpusu — bez szpary pod / nad drzwiami)
     const doorRange = (j) => {
       const [lo, hi] = doorSpan(fp.doors[j], fp.parts);
-      return [ranges[lo][0], ranges[hi][1]];
+      return [lo === 0 ? y0 : ranges[lo][0], hi === fp.parts.length - 1 ? y1 : ranges[hi][1]];
     };
+    doorRangesOut = fp.doors.map((_, j) => doorRange(j).map((v) => v - L));
     const doorName = (j, part) => {
       const d = fp.doors[j];
       const m = doorOrder.length > 1 ? ` ${doorOrder.indexOf(j) + 1}` : '';
@@ -1456,11 +1551,11 @@ export function cabinetPanels(cabinet, project) {
       if (slot.door != null) {
         const d = fp.doors[slot.door];
         const [sy0, sy1] = doorRange(slot.door);
-        if (slot.part === 'door') add(doorName(slot.door), x0, sy0, x1 - x0, sy1 - sy0, d.hingeSide === 'right' ? 'doorRightHinge' : 'doorLeftHinge', { door: slot.door });
+        if (slot.part === 'door') add(doorName(slot.door), x0, sy0, x1 - x0, sy1 - sy0, d.hingeSide === 'right' ? 'doorRightHinge' : 'doorLeftHinge', { door: slot.door, wing: 'door' });
         else {
           const w = (x1 - x0 - g) / 2;
           // drzwi podwójne otwierają się na środku: lewe mają zawiasy po lewej, prawe — po prawej
-          add(doorName(slot.door, slot.part), slot.part === 'left' ? x0 : x0 + w + g, sy0, w, sy1 - sy0, slot.part === 'left' ? 'doorLeftHinge' : 'doorRightHinge', { door: slot.door });
+          add(doorName(slot.door, slot.part), slot.part === 'left' ? x0 : x0 + w + g, sy0, w, sy1 - sy0, slot.part === 'left' ? 'doorLeftHinge' : 'doorRightHinge', { door: slot.door, wing: slot.part });
         }
       } else {
         const [py0, py1] = ranges[slot.index];
@@ -1497,7 +1592,7 @@ export function cabinetPanels(cabinet, project) {
   const clipOffset = (key) => {
     if (key === 'top' || key === 'bottom' || key.startsWith('stiff-') || key.startsWith('shelf-')) return inner;
     if (key === 'left' || key === 'right') return topOverlay ? inner : slant.outer;
-    if (key === 'back') return backType === 'board' ? inner : slant.outer;
+    if (key === 'back') return backType === 'board' || isWallMounted(cabinet) ? inner : slant.outer;
     return slant.outer;
   };
   const AXIS_VEC = { x: [1, 0, 0], y: [0, 1, 0], z: [0, 0, 1] };
@@ -1507,7 +1602,7 @@ export function cabinetPanels(cabinet, project) {
     if (key === wc.side || key.startsWith('shelf-') || key.startsWith('stiff-')) return wc.inner;
     if (key === 'bottom') return bottomOverlay ? wc.outer : wc.inner;
     if (key === 'top' || key === 'topSlope' || key === 'railFront' || key === 'railBack') return topOverlay ? wc.outer : wc.inner;
-    if (key === 'back') return backType === 'board' ? wc.inner : wc.outer;
+    if (key === 'back') return backType === 'board' || isWallMounted(cabinet) ? wc.inner : wc.outer;
     return wc.outer;
   };
   // Skosy przestrzeni (z luzem) — docinają blendy idące do sufitu: [normal, offset].
@@ -1562,6 +1657,7 @@ export function cabinetPanels(cabinet, project) {
       // otwieranie frontu w widoku: { hinge: 'left' | 'right' } albo { drawer: true }
       opening: def.opening ?? null,
       door: def.door ?? null, // drzwi (indeks) — fronty drzwi i czoła szuflad za nimi
+      wing: def.wing ?? null, // skrzydło drzwi: 'door' (pojedyncze), 'left' / 'right' (podwójne)
       part: def.part ?? null, // część wnętrza (indeks) — szuflady
     };
     panel.valid = panel.width > 0 && panel.height > 0 && panel.depth > 0;
@@ -1628,7 +1724,11 @@ export function cabinetPanels(cabinet, project) {
     if (panel.opening?.hinge && panel.valid) {
       // zawiasy zawsze w standardowych miejscach, na całej wysokości drzwi (przesunięte w jedno miejsce drzwi by opadały);
       // zawias na wysokości szuflady wewnętrznej (bez dystansów pod prowadnice) — ostrzeżenie
-      panel.hinges = hingeHoles(panel);
+      const hs = fp.doors[def.door]?.hinges;
+      const custom = hs?.pos?.[def.wing] ?? null;
+      panel.hinges = hingeHoles(panel, custom);
+      panel.hingeType = hs?.type ?? DEFAULT_HINGE_TYPE;
+      panel.hingeCustom = !!custom; // położenia ustawione ręcznie
       const bands = fr.innerSpacers ? [] : hingeBands.filter((b) => b.door === def.door).map((b) => b.range);
       panel.hingeClash = panel.hinges.filter((h) => bands.some(([a, b]) => h.y > a && h.y < b)).map((h) => Math.round(h.y - panel.y));
     }
@@ -1637,6 +1737,7 @@ export function cabinetPanels(cabinet, project) {
   panels.partRanges = partRangesOut; // zakresy części wnętrza (od dołu korpusu) — do panelu i uchwytów w 3D
   panels.frontOverflow = frontOverflowOut;
   panels.frontArea = frontAreaOut;
+  panels.doorRanges = doorRangesOut; // zakresy drzwi (od dołu korpusu) — do panelu
   return panels;
 }
 
@@ -1865,10 +1966,66 @@ export function cabinetBounds(cabinet, project) {
   };
 }
 
-// Lista problemów z korpusem (pusta = wszystko w porządku).
-export function cabinetIssues(cabinet, project) {
+// Na jaki kąt otworzą się drzwi (panel frontu z opening.hinge) przy ścianach przestrzeni i przeszkodach.
+// Skrzydło obraca się wokół krawędzi z zawiasami — przy licu drzwi (wirtualna oś zawiasu puszkowego: krawędź drzwi
+// od strony zawiasów nie wchodzi w ścianę / sąsiedni front; jak w widoku 3D) do kąta zawiasu
+// (hingeType: 110° / 155°); kolizja — gdy któryś punkt skrzydła (narożniki i punkty na krawędziach) wejdzie w ścianę
+// boczną (x < 0 albo x > szerokość, do głębokości przestrzeni — dalej przód jest otwarty) albo w przeszkodę
+// (występ ściany, kominek) na wysokości drzwi.
+// → { angle (kąt zawiasu), max (osiągalny kąt, ° — co 1°), blocked (co blokuje: 'ściana lewa' | 'ściana prawa' | nazwa) }
+export function doorOpenLimit(panel, project) {
+  const angle = hingeType(panel.hingeType).angle;
+  const side = panel.opening?.hinge;
+  const res = { angle, max: angle, blocked: null };
+  if (!side) return res;
+  const { space } = project;
+  const W = panel.width;
+  const t = panel.depth;
+  const xp = side === 'left' ? panel.x : panel.x + panel.width;
+  const zp = panel.z;
+  const sgn = side === 'left' ? 1 : -1; // kierunek od zawiasów do wolnej krawędzi (zamknięte drzwi)
+  const y0 = panel.y;
+  const y1 = panel.y + panel.height;
+  const obstacles = (space.obstacles ?? []).filter((o) => o.y < y1 && o.y + o.height > y0);
+  // przeszkoda w zasięgu skrzydła? (szybkie odrzucenie)
+  const reach = Math.hypot(W, t) + 1;
+  const wallL = xp - reach < 0;
+  const wallR = xp + reach > space.width;
+  const near = obstacles.filter((o) => o.x < xp + reach && o.x + o.width > xp - reach && o.z < zp + reach && o.z + o.depth > zp - reach);
+  if (!wallL && !wallR && !near.length) return res;
+  // punkty skrzydła w układzie drzwi: u — od zawiasów w stronę wolnej krawędzi, v — od tyłu drzwi do lica
+  const pts = [];
+  const N = 12;
+  for (let i = 0; i <= N; i++) pts.push([(W * i) / N, 0], [(W * i) / N, t]);
+  pts.push([0, t / 2], [W, t / 2]);
+  const hit = (a) => {
+    const c = Math.cos(a);
+    const sn = Math.sin(a);
+    for (const [u, v] of pts) {
+      const x = xp + sgn * (u * c - (v - t) * sn);
+      const z = zp + t + u * sn + (v - t) * c;
+      const eps = 0.5;
+      if (z < space.depth - eps && z > eps) {
+        if (x < -eps) return 'ściana lewa';
+        if (x > space.width + eps) return 'ściana prawa';
+      }
+      for (const o of near) if (x > o.x + eps && x < o.x + o.width - eps && z > o.z + eps && z < o.z + o.depth - eps) return o.name || 'przeszkoda';
+    }
+    return null;
+  };
+  for (let deg = 1; deg <= angle; deg++) {
+    const b = hit((deg * Math.PI) / 180);
+    if (b) return { angle, max: deg - 1, blocked: b };
+  }
+  return res;
+}
+
+// Problemy z korpusem: błędy (korpus czerwony w 3D i na mapce) i ostrzeżenia (tylko na liście — np. zalecenia).
+// → { errors: [tekst], warnings: [tekst] }
+export function cabinetProblems(cabinet, project) {
   const { space, furniture } = project;
   const issues = [];
+  const warnings = [];
   const panels = cabinetPanels(cabinet, project);
 
   // Blenda boczna automatyczna bez miejsca (korpus stoi przy ścianie / sąsiedzie) — osobny komunikat.
@@ -1901,8 +2058,21 @@ export function cabinetIssues(cabinet, project) {
   const wide = valid.filter((p) => p.opening?.hinge && p.width > DOOR_MAX_WIDTH);
   if (wide.length) {
     const single = wide.some((p) => st.doors[p.door]?.type === 'door');
-    issues.push(
+    warnings.push(
       `Drzwi szersze niż zalecane ok. ${DOOR_MAX_WIDTH} mm (${wide.map((p) => `${p.name}: ${Math.round(p.width)} mm`).join('; ')}) — ${single ? 'użyj drzwi podwójnych' : 'rozważ podział na dwa korpusy'}.`,
+    );
+  }
+  // drzwi, które nie otworzą się na pełny kąt zawiasu (ściana, przeszkoda)
+  for (const p of valid.filter((x) => x.opening?.hinge)) {
+    const lim = doorOpenLimit(p, project);
+    if (lim.max >= lim.angle) continue;
+    const ht = hingeType(p.hingeType);
+    const hint =
+      lim.angle > 110 && lim.max >= 110
+        ? 'wybierz zawias 110° (okienko „Zawias”), dodaj blendę boczną albo odsuń korpus od ściany'
+        : 'dodaj blendę boczną (odsunie drzwi od ściany), odsuń korpus albo zmień stronę zawiasów';
+    warnings.push(
+      `${p.name}: drzwi otworzą się tylko na ok. ${lim.max}° zamiast ${lim.angle}° (${ht.label.toLowerCase()}) — przeszkadza ${lim.blocked}${lim.max < 90 ? ', nie otworzą się nawet do 90°' : ''}. Rozwiązanie: ${hint}.`,
     );
   }
   if (panels.frontOverflow > 0.5) {
@@ -1931,8 +2101,11 @@ export function cabinetIssues(cabinet, project) {
     .map((c) => c.name || 'mebel');
   if (hitCabinets.length) issues.push(`Nachodzi na: ${hitCabinets.join(', ')}.`);
 
-  return issues;
+  return { errors: issues, warnings };
 }
+// Błędy korpusu (pusta lista = wszystko w porządku) i same ostrzeżenia.
+export const cabinetIssues = (cabinet, project) => cabinetProblems(cabinet, project).errors;
+export const cabinetWarnings = (cabinet, project) => cabinetProblems(cabinet, project).warnings;
 
 export function boxCorners(b) {
   const pts = [];
@@ -2027,6 +2200,8 @@ export function normalizeCabinet(raw = {}) {
     height: num(raw.height, 2000, sizeMin, sizeMax),
     depth: num(raw.depth, 560, sizeMin, sizeMax),
     backType: BACK_TYPES.some((b) => b.key === raw.backType) ? raw.backType : 'hdf',
+    mount: raw.mount === 'wall' ? 'wall' : 'floor', // patrz MOUNT_TYPES
+    backSetback: num(raw.backSetback, DEFAULT_BACK_SETBACK, 0, 100),
     bottomJoint: raw.bottomJoint === 'overlay' ? 'overlay' : 'inset',
     topJoint: raw.topJoint === 'overlay' ? 'overlay' : 'inset',
     topType: raw.topType === 'rails' ? 'rails' : 'full',
@@ -2117,4 +2292,13 @@ export function normalizeCabinet(raw = {}) {
 
 export function newId() {
   return globalThis.crypto?.randomUUID?.() ?? `id-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+// Przełączenie montażu: wiszący — bez nóżek, zawieszony na wysokości DEFAULT_HANG_HEIGHT (gdy stał na podłodze),
+// stojący — z powrotem na podłodze.
+export function setCabinetMount(cabinet, mount) {
+  if (mount === 'wall') {
+    return { ...cabinet, mount: 'wall', legs: { ...cabinet.legs, enabled: false }, y: cabinet.y > 0 ? cabinet.y : DEFAULT_HANG_HEIGHT };
+  }
+  return { ...cabinet, mount: 'floor', y: 0 };
 }

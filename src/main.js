@@ -35,10 +35,13 @@ import { initInspectorBox } from './ui/inspectorCard.js';
 import { initPanelCollapse } from './ui/panelCollapse.js';
 import { initAddMenu } from './ui/addMenu.js';
 import { initWindowsMenu } from './ui/windowsMenu.js';
+import { initProblemsMenu } from './ui/problemsMenu.js';
 import { initMapWindow } from './ui/mapWindow.js';
 import { initMiniCabinet } from './scene/miniCabinet.js';
 import { createDecorInspector } from './ui/decorInspector.js';
 import { createDrawerWindow } from './ui/drawerWindow.js';
+import { createMultiCabinetWindow } from './ui/multiCabinetWindow.js';
+import { createHingeWindow } from './ui/hingeWindow.js';
 import { createDecoration } from './model/decorations.js';
 import { createDecorAddWindow } from './ui/decorAddWindow.js';
 import { initSketchZoom } from './ui/sketchZoom.js';
@@ -66,6 +69,8 @@ initMapWindow(document.getElementById('viewport')); // mapka zabudowy — okienk
 initMiniCabinet(store, ui); // mini-podgląd 3D zaznaczonego korpusu pod mapką — klik zaznacza płytę
 createDecorInspector(document.getElementById('viewport'), store, ui); // okienko dekoracji (lampa, kwiatek, okno…)
 createDrawerWindow(store, ui); // okienko jednej zaznaczonej szuflady (mini-podgląd 3D, ustawienia)
+createMultiCabinetWindow(document.getElementById('viewport'), store, ui); // kilka zaznaczonych korpusów — wspólna edycja
+createHingeWindow(store, ui); // okienko zaznaczonego zawiasu drzwi (rodzaj, wysokość)
 // okienko „Dekoracje”: wybór i dodawanie (nowa — w sensownym miejscu, od razu zaznaczona — jej ustawienia po prawej)
 const decorAdd = createDecorAddWindow(document.getElementById('decor-add-panel'), {
   onAdd: (type) => {
@@ -196,7 +201,8 @@ initAddMenu(document.getElementById('toolbar'), {
   // dekoracje — osobne okienko po prawej (kategoria, wyszukiwarka, dekoracja, podgląd 3D)
   extra: [{ title: '', items: [{ label: '🎨 Dekoracje (tylko wygląd)…', run: () => openPanelWin('decor') }] }],
 }); // „+ Dodaj ▾” — korpus, półka, blat, blendy, przeszkody, dekoracje
-initWindowsMenu(document.getElementById('toolbar'), store, ui, { openSpace: (open) => openSpace(open) }); // „🏠 Przestrzeń”, „🗄️ Korpusy ▾”
+initWindowsMenu(document.getElementById('toolbar'), store, ui, { openSpace: (open) => openSpace(open) });
+initProblemsMenu(document.getElementById('toolbar'), store, ui); // „Problemy” — wszystkie błędy i ostrzeżenia // „🏠 Przestrzeń”, „🗄️ Korpusy ▾”
 
 // --- Konto (logowanie przez Google) i projekty w chmurze ---
 // Zmiana projektu z innego urządzenia: pytamy, którą wersję zostawić.
@@ -294,6 +300,11 @@ initPanelResizer(document.getElementById('panel-resizer'), document.querySelecto
 const selectedFronts = () => new Set([...(ui.get().selectedFronts ?? []), ...(ui.get().selectedBlends ?? [])]);
 // Otwarcie frontów: pojedynczy front przełączony przeciągnięciem (ui.frontOpen), a domyślnie —
 // według przełącznika „otwarte” na pasku.
+// zaznaczony zawias — tylko póki zaznaczone są jego drzwi (inne zaznaczenie go „gasi”)
+const activeHinge = () => {
+  const h = ui.get().selectedHinge;
+  return h && (ui.get().selectedFronts ?? []).includes(`${h.cabinetId}:${h.key}`) ? h : null;
+};
 const isFrontOpen = (id) => ui.get().frontOpen?.[id] ?? store.get().view?.openFronts === true;
 const redraw = (refit = false) =>
   viewer.setProject(store.get(), {
@@ -303,6 +314,7 @@ const redraw = (refit = false) =>
     isFrontOpen,
     selectedHole: ui.get().selectedHole ?? null,
     selectedObstacle: ui.get().selectedObstacle ?? null,
+    selectedHinge: activeHinge(),
     // uchwyty kształtu ścian w 3D — gdy otwarte jest okienko „Przestrzeń”
     wallHandles: !!ui.get().spaceOpen && !ui.get().selectedObstacle,
   });

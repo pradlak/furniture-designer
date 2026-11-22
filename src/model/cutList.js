@@ -1,4 +1,4 @@
-import { cabinetPanels, cabinetLegs, panelCutSize, describeCuts, describeMilling, describeHandle, describeHinges, hingesFor } from './furniture.js';
+import { cabinetPanels, cabinetLegs, panelCutSize, describeCuts, describeMilling, describeHandle, describeHinges, hingesFor, hingeType } from './furniture.js';
 import { projectSolids, panelEdgeSet, trimEdgeSet, edgeCounts, TRIM_THICKNESS_AXIS, EDGE_LABELS } from './edges.js';
 import { trimSegments, trimAllowance, TRIM_TYPES } from './trims.js';
 import { trimMaterial } from './materials.js';
@@ -177,18 +177,28 @@ function mountAccessories(project, boardIds = null) {
 // cabinetIds (Set) — tylko akcesoria tych korpusów; brak — wszystkich.
 export function buildAccessories(project, cabinetIds, boardIds = null) {
   const legs = new Map();
-  let hinges = 0;
+  const hinges = new Map(); // rodzaj zawiasu → ilość
   let slides = 0;
   const handles = new Map(); // nazwa uchwytu (z rozstawem) → ilość
   const drawerSets = new Map(); // komplety szuflad z systemu → ilość
+  let hangerPairs = 0; // korpusy wiszące: para zawieszek regulowanych (L+P) na korpus
+  const rails = []; // szyny montażowe — długość = szerokość korpusu
   for (const c of project.furniture) {
     if (cabinetIds && !cabinetIds.has(c.id)) continue;
     for (const l of cabinetLegs(c, project)) legs.set(l.height, (legs.get(l.height) ?? 0) + 1);
+    if (c.mount === 'wall') {
+      hangerPairs += 1;
+      rails.push(Math.round(c.width));
+    }
     const panels = cabinetPanels(c, project).filter((p) => p.valid);
     const fronts = panels.filter((p) => p.key.startsWith('front-'));
     // zawiasy — ile wypadło na drzwiach (także przesuniętych przez szuflady wewnętrzne); prowadnice — na każdą
     // szufladę (front szuflady zewnętrznej albo czoło wewnętrznej)
-    hinges += fronts.reduce((sum, p) => sum + (p.hinges?.length ?? 0), 0);
+    for (const p of fronts) {
+      if (!p.hinges?.length) continue;
+      const name = hingeType(p.hingeType).accessory;
+      hinges.set(name, (hinges.get(name) ?? 0) + p.hinges.length);
+    }
     // szuflady z systemu — komplet szuflady (prowadnice, boki, mocowania) zamiast samych prowadnic
     const boxes = cabinetDrawerBoxes(c, project);
     for (const b of boxes) {
@@ -205,7 +215,10 @@ export function buildAccessories(project, cabinetIds, boardIds = null) {
   }
   return [
     ...[...legs.entries()].map(([height, qty]) => ({ name: `Nóżka meblowa ${height} mm`, qty })),
-    ...(hinges ? [{ name: 'Zawias puszkowy (do frontów nakładanych)', qty: hinges }] : []),
+    ...[...hinges.entries()].map(([name, qty]) => ({ name, qty })),
+    ...(hangerPairs ? [{ name: 'Zawieszka meblowa regulowana do szafek wiszących (para L+P)', qty: hangerPairs }] : []),
+    ...(rails.length ? [{ name: `Szyna montażowa do zawieszek (stalowa) — łącznie ${rails.reduce((a, b) => a + b, 0)} mm (${rails.join(' + ')} mm; można jedną na cały rząd)`, qty: rails.length }] : []),
+    ...(hangerPairs ? [{ name: 'Kołki rozporowe + wkręty do szyny montażowej (co ok. 30 cm)', qty: Math.max(2, Math.ceil(rails.reduce((a, b) => a + b, 0) / 300) + 1) }] : []),
     ...(slides ? [{ name: 'Prowadnice do szuflad (komplet na szufladę)', qty: slides }] : []),
     ...[...drawerSets.entries()].map(([name, qty]) => ({ name, qty })),
     ...[...handles.entries()].map(([name, qty]) => ({ name, qty })),

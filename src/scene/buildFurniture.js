@@ -13,6 +13,7 @@ import { buildSlab, needsSlab } from './slab.js';
 import { resolveHoles } from '../model/boardFeatures.js';
 import { boardBox, boardMaterial as boardPlateMaterial, boardIssues, mountPoints } from '../model/boards.js';
 import { getSettings } from '../state/settings.js';
+import { cabinetDrawerRails } from '../model/drawerBoxes.js';
 import { decorTexture, scaleBoxUVs } from './textures.js';
 
 // Materiały ścian prostopadłościanu płyty (kolejność ścian BoxGeometry: +x, −x, +y, −y, +z, −z):
@@ -108,7 +109,8 @@ function frontPivotGroup(p, cabinet, parent, space, open) {
   const front = { id: `${cabinet.id}:${p.key}`, hinge: p.opening.hinge ?? null, pull: cabinet.depth * DRAWER_PULL, open };
   if (front.hinge) {
     const hingeX = front.hinge === 'left' ? p.x : p.x + p.width;
-    const axis = new THREE.Vector3(...toScene(hingeX, 0, p.z, space));
+    // oś obrotu przy licu drzwi (wirtualna oś zawiasu puszkowego) — jak w doorOpenLimit
+    const axis = new THREE.Vector3(...toScene(hingeX, 0, p.z + p.depth, space));
     pivot.position.copy(axis);
     inner.position.copy(axis).negate();
   }
@@ -153,6 +155,89 @@ function addDrawerBox(target, p, cabinet, panels, space) {
   }
 }
 
+// Korpus wiszący (tylko wygląd): stalowa szyna montażowa na ścianie za korpusem (w miejscu z cofnięcia pleców)
+// i dwie zawieszki regulowane w górnych narożnikach (od środka, przed plecami) — zahaczone o szynę.
+const hangerMat = new THREE.MeshLambertMaterial({ color: 0x9ca3af, emissive: new THREE.Color(0x9ca3af).multiplyScalar(0.2) });
+function addHangers(group, cabinet, panels, space) {
+  const byKey = (k) => panels.find((p) => p.key === k);
+  const left = byKey('left');
+  const right = byKey('right');
+  const top = byKey('top') ?? byKey('railBack');
+  const back = byKey('back');
+  if (!left || !right) return;
+  const yTop = top ? top.y : left.y + left.height; // spód wieńca górnego
+  const zBack = left.z; // tylna krawędź boków (przy ścianie)
+  const gap = back ? back.z - zBack : cabinet.backSetback ?? 18; // miejsce za plecami
+  const box = (x, y, z, w, h, d) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w * MM, h * MM, d * MM), hangerMat);
+    m.position.set(...toScene(x + w / 2, y + h / 2, z + d / 2, space));
+    group.add(m);
+  };
+  // szyna: 60 mm wysokości, w szczelinie za plecami, na całą szerokość korpusu
+  const railD = Math.max(3, Math.min(13, gap - 2));
+  box(left.x, yTop - 70, zBack, right.x + right.width - left.x, 60, railD);
+  // zawieszki: przy bokach, pod wieńcem górnym, przed plecami (haki przechodzą przez plecy do szyny)
+  const zFront = back ? back.z + back.depth : zBack + gap;
+  for (const x of [left.x + left.width, right.x - 22]) {
+    box(x, yTop - 75, zFront, 22, 70, 45);
+    box(x + 4, yTop - 60, zBack + railD, 14, 22, zFront - zBack - railD); // hak przez plecy
+  }
+}
+
+// Linie montażu prowadnic szuflad z systemu (np. ATM Futura) — delikatne przerywane linie na wewnętrznych licach
+// lewego i prawego boku korpusu, na wysokości osi otworów prowadnicy, na długość prowadnicy (od przedniej krawędzi);
+// kreska — pierwszy otwór (frontHole od krawędzi). Szuflada z okienka (pickedIndex) — wyraźniej, na niebiesko.
+const railMat = new THREE.LineDashedMaterial({ color: 0x6b7280, dashSize: 0.012, gapSize: 0.008, depthTest: false, transparent: true, opacity: 0.7 });
+const railPickMat = new THREE.LineDashedMaterial({ color: 0x2563eb, dashSize: 0.016, gapSize: 0.008, depthTest: false, transparent: true, opacity: 1 });
+function addRailLines(group, cabinet, project, pickedIndex) {
+  const space = project.space;
+  for (const b of cabinetDrawerRails(cabinet, project)) {
+    const r = b.rail;
+    if (!r) continue;
+    const mat = b.index === pickedIndex ? railPickMat : railMat;
+    for (const x of [r.xLeft + 0.5, r.xRight - 0.5]) {
+      const pts = [new THREE.Vector3(...toScene(x, r.y, r.zFront, space)), new THREE.Vector3(...toScene(x, r.y, r.zFront - r.length, space))];
+      const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), mat);
+      line.computeLineDistances();
+      line.renderOrder = 15;
+      group.add(line);
+      // pierwszy otwór — krótka pionowa kreska
+      const hz = r.zFront - r.frontHole;
+      const tick = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(...toScene(x, r.y - 8, hz, space)), new THREE.Vector3(...toScene(x, r.y + 8, hz, space))]), mat);
+      tick.computeLineDistances();
+      tick.renderOrder = 15;
+      group.add(tick);
+    }
+  }
+}
+
+// Linia wysokości siedziska (widok → „Linia siedziska”): przerywana pozioma linia na ścianie tylnej i bocznych
+// na wysokości project.view.seatHeight od podłogi, z podpisem przy ścianie tylnej.
+const seatMat = new THREE.LineDashedMaterial({ color: 0xd97706, dashSize: 0.04, gapSize: 0.025, transparent: true, opacity: 0.95 });
+function addSeatLine(group, project) {
+  const { space } = project;
+  const y = project.view.seatHeight ?? 450;
+  const off = 2; // mm od ściany (żeby linia nie zlewała się ze ścianą)
+  const segs = [
+    [[off, y, off], [space.width - off, y, off]], // tylna
+    [[off, y, off], [off, y, space.depth], ], // lewa
+    [[space.width - off, y, off], [space.width - off, y, space.depth]], // prawa
+  ];
+  for (const [a, b] of segs) {
+    const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(...toScene(...a, space)), new THREE.Vector3(...toScene(...b, space))]), seatMat);
+    line.computeLineDistances();
+    line.renderOrder = 5;
+    group.add(line);
+  }
+  const el = document.createElement('div');
+  el.className = 'dim-label seat-label';
+  el.textContent = `siedzisko ${Math.round(y)} mm`;
+  el.title = 'Wysokość siedziska od podłogi (zmiana: Pokaż → Linia siedziska)';
+  const label = new CSS2DObject(el);
+  label.position.set(...toScene(Math.min(space.width - 120, 160), y + 25, off, space));
+  group.add(label);
+}
+
 // Stan otwarcia frontu: 0 — zamknięty, 1 — otwarty (z łagodnym rozpędzaniem i hamowaniem).
 export function applyFrontOpening(pivot, amount) {
   const f = pivot.userData.front;
@@ -168,6 +253,85 @@ export function applyFrontOpening(pivot, amount) {
 // Uchwyt na froncie: listwa na dwóch wspornikach (w otworach) albo gałka. Odstaje od lica o HANDLE_STANDOFF.
 const HANDLE_COLOR = 0x9ca3af;
 const HANDLE_STANDOFF = 28; // mm — odstęp listwy od frontu
+// Zawiasy puszkowe drzwi (tylko wygląd): puszka Ø35 z noskiem na tylnej stronie drzwi (w grupie drzwi — obraca się
+// z nimi), prowadnik na boku korpusu i ramię od prowadnika do puszki (w korpusie). Zawias kolidujący z szufladą wewnętrzną (panel.hingeClash) —
+// na czerwono. markers — zaznaczony korpus / drzwi: kółka widoczne przez drzwi (szare, kolizja — czerwone).
+const HINGE_OK = 0x9ca3af;
+const HINGE_BAD = 0xdc2626;
+const hingeMat = new THREE.MeshLambertMaterial({ color: HINGE_OK, emissive: new THREE.Color(HINGE_OK).multiplyScalar(0.3) });
+const hingeBadMat = new THREE.MeshLambertMaterial({ color: HINGE_BAD, emissive: new THREE.Color(HINGE_BAD).multiplyScalar(0.4) });
+// zawias bez problemu — neutralny szary (pomarańczowy = ostrzeżenie, czerwony = błąd, niebieski = zaznaczony)
+const HINGE_MARK = 0x4b5563;
+const markOkMat = new THREE.MeshBasicMaterial({ color: HINGE_MARK, depthTest: false, transparent: true, opacity: 0.95, side: THREE.DoubleSide });
+const markBadMat = new THREE.MeshBasicMaterial({ color: HINGE_BAD, depthTest: false, transparent: true, opacity: 0.95, side: THREE.DoubleSide });
+const markFillMat = new THREE.MeshBasicMaterial({ color: HINGE_MARK, depthTest: false, transparent: true, opacity: 0.25, side: THREE.DoubleSide });
+const markFillBadMat = new THREE.MeshBasicMaterial({ color: HINGE_BAD, depthTest: false, transparent: true, opacity: 0.3, side: THREE.DoubleSide });
+// zawias zaznaczony (okienko „Zawias”) — niebieski
+const HINGE_PICK = 0x2563eb;
+const markPickMat = new THREE.MeshBasicMaterial({ color: HINGE_PICK, depthTest: false, transparent: true, opacity: 1, side: THREE.DoubleSide });
+const markFillPickMat = new THREE.MeshBasicMaterial({ color: HINGE_PICK, depthTest: false, transparent: true, opacity: 0.45, side: THREE.DoubleSide });
+const CUP_GEOMETRY = new THREE.CylinderGeometry(17.5 * MM, 17.5 * MM, 4 * MM, 24);
+const RING_GEOMETRY = new THREE.RingGeometry(17.5 * MM, 24 * MM, 32);
+const DISC_GEOMETRY = new THREE.CircleGeometry(17.5 * MM, 32);
+// pickedIndex — indeks zaznaczonego zawiasu tego frontu (null — żaden). Kółka i puszki mają userData.hinge
+// ({ key, index }) — klik zaznacza zawias, przeciąganie przesuwa go w pionie.
+function addHinges(door, body, p, panels, space, markers, pickedIndex = null) {
+  const side = p.opening?.hinge;
+  if (!side || !p.hinges?.length || p.solid) return;
+  const sidePanel = panels.find((x) => x.key === side);
+  const innerX = sidePanel ? (side === 'left' ? sidePanel.x + sidePanel.width : sidePanel.x) : side === 'left' ? p.x + 18 : p.x + p.width - 18;
+  const sideFront = sidePanel ? sidePanel.z + sidePanel.depth : p.z;
+  const clash = new Set(p.hingeClash ?? []);
+  const dir = side === 'left' ? 1 : -1; // od boku do wnętrza
+  const mk = (geometry, material, x, y, z, rotX, owner, key) => {
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.set(...toScene(x, y, z, space));
+    if (rotX) mesh.rotation.x = Math.PI / 2;
+    mesh.userData.noDispose = geometry === CUP_GEOMETRY || geometry === RING_GEOMETRY || geometry === DISC_GEOMETRY;
+    if (key) mesh.userData.panelKey = key;
+    owner.add(mesh);
+    return mesh;
+  };
+  p.hinges.forEach((h, index) => {
+    const bad = clash.has(Math.round(h.y - p.y));
+    const picked = index === pickedIndex;
+    const mat = bad ? hingeBadMat : hingeMat;
+    const tag = { key: p.key, index };
+    // NA DRZWIACH (obracają się z nimi): kołnierz puszki Ø35 na tylnej stronie drzwi, skrzydełka z wkrętami
+    // i „nosek” — miejsce, w którym ramię wchodzi do puszki
+    mk(CUP_GEOMETRY, mat, h.x, h.y, p.z - 2, true, door, p.key).userData.hinge = tag;
+    mk(new THREE.BoxGeometry(14 * MM, 52 * MM, 3 * MM), mat, h.x - dir * 4, h.y, p.z - 1.5, false, door, p.key).userData.hinge = tag; // skrzydełka
+    const noseZ = p.z - 7;
+    mk(new THREE.BoxGeometry(16 * MM, 20 * MM, 10 * MM), mat, h.x, h.y, noseZ, false, door, p.key).userData.hinge = tag;
+    // NA KORPUSIE: prowadnik na boku (środek 37 mm od przedniej krawędzi boku, wkręty co 32 mm)
+    const plateZ = sideFront - 37;
+    const PLATE = { t: 10, h: 50, d: 20 };
+    mk(new THREE.BoxGeometry(PLATE.t * MM, PLATE.h * MM, PLATE.d * MM), mat, innerX + dir * (PLATE.t / 2), h.y, plateZ, false, body).userData.hinge = tag;
+    // ramię: przykręcone na prowadniku (od jego tyłu), biegnie do przodu, do noska puszki na drzwiach —
+    // przy zamkniętych drzwiach elementy łączą się w jeden zawias; przy otwieraniu ramię zostaje na korpusie
+    const ARM = { t: 10, w: 18 };
+    const ax = innerX + dir * (PLATE.t + ARM.t / 2);
+    const az = plateZ - PLATE.d / 2;
+    const bx = h.x;
+    const bz = noseZ - 3;
+    const len = Math.hypot(bx - ax, bz - az);
+    if (len > 1) {
+      const arm = mk(new THREE.BoxGeometry(ARM.t * MM, ARM.w * MM, len * MM), mat, (ax + bx) / 2, h.y, (az + bz) / 2, false, body);
+      arm.rotation.y = Math.atan2(bx - ax, bz - az);
+      arm.userData.hinge = tag;
+    }
+    if (markers || picked) {
+      // kółko na licu drzwi, widoczne przez wszystko
+      const face = p.z + p.depth + 0.5;
+      const ring = mk(RING_GEOMETRY, picked ? markPickMat : bad ? markBadMat : markOkMat, h.x, h.y, face, false, door, p.key);
+      const disc = mk(DISC_GEOMETRY, picked ? markFillPickMat : bad ? markFillBadMat : markFillMat, h.x, h.y, face, false, door, p.key);
+      ring.renderOrder = disc.renderOrder = picked ? 21 : 20;
+      ring.userData.hinge = disc.userData.hinge = { key: p.key, index };
+      if (picked) ring.scale.setScalar(1.3);
+    }
+  });
+}
+
 const handleMat = new THREE.MeshLambertMaterial({ color: HANDLE_COLOR, emissive: new THREE.Color(HANDLE_COLOR).multiplyScalar(0.25) });
 function addHandle(group, p, space) {
   const hd = p.handle;
@@ -477,7 +641,8 @@ function buildBoardMount(board, box, project, boardMat) {
   return g;
 }
 
-export function buildFurniture(project, selectedIds = new Set(), selectedFronts = new Set(), isFrontOpen = () => project.view?.openFronts === true, selectedHole = null, selectedObstacle = null) {
+// selectedHinge — zaznaczony zawias { cabinetId, key, index } (okienko „Zawias”)
+export function buildFurniture(project, selectedIds = new Set(), selectedFronts = new Set(), isFrontOpen = () => project.view?.openFronts === true, selectedHole = null, selectedObstacle = null, selectedHinge = null) {
   // zaznaczony otwór płyty ({ kind: "trim" | "board", id, index }) — wyróżniony sam otwór
   const holeOf = (kind, id) => (selectedHole?.kind === kind && selectedHole.id === id ? selectedHole.index : null);
   const group = new THREE.Group();
@@ -564,6 +729,7 @@ export function buildFurniture(project, selectedIds = new Set(), selectedFronts 
       addMilling(target, p, materialFor, project.space);
       addHandle(target, p, project.space);
       if (p.opening?.drawer) addDrawerBox(target, p, cabinet, cabPanels, project.space);
+      if (p.hinges?.length) addHinges(target, cabinetGroup, p, cabPanels, project.space, selectedIds.has(cabinet.id) || selectedFronts.has(`${cabinet.id}:${p.key}`), selectedHinge?.cabinetId === cabinet.id && selectedHinge.key === p.key ? selectedHinge.index : null);
       addAllowance(target, p, p.allowanceMin, p.allowanceMax, project.space);
       if (p.material.edgeBanding) {
         const keys = panelEdgeSet(p, cabinet, project, solids);
@@ -580,9 +746,15 @@ export function buildFurniture(project, selectedIds = new Set(), selectedFronts 
       addFrontBoundaryHandles(group, cabinet, project, myFronts, isFrontOpen);
       // ikonka otwierania: jeden zaznaczony front — nad nim (tylko ten front); jeden zaznaczony korpus — nad korpusem (wszystkie)
       if (myFronts.length === 1) addOpenFrontsButton(group, cabinet, project, isFrontOpen, myFronts[0]);
+      // okienko szuflady (zaznaczona jedna szuflada) — linie montażu prowadnic na bokach korpusu
+      if (myFronts.length === 1) {
+        const picked = cabinetPanels(cabinet, project).find((x) => x.key === myFronts[0]);
+        if (picked?.opening?.drawer) addRailLines(group, cabinet, project, picked.part);
+      }
       else if (selectedIds.size === 1 && !partOwners.has(cabinet.id)) addOpenFrontsButton(group, cabinet, project, isFrontOpen);
     }
 
+    if (cabinet.mount === 'wall') addHangers(cabinetGroup, cabinet, cabPanels, project.space);
     const legs = cabinetLegs(cabinet, project);
     if (legs.length) {
       const legMat = new THREE.MeshLambertMaterial({ color: LEG_COLOR });
@@ -682,6 +854,7 @@ export function buildFurniture(project, selectedIds = new Set(), selectedFronts 
 
   // dekoracje (tylko wygląd) — zaznaczone: „decor:id” w zbiorze zaznaczonych elementów
   group.add(buildDecorations(project, selectedFronts));
+  if (project.view?.seatLine) addSeatLine(group, project);
 
   // Wymiary w 3D:
   //  - zaznaczone elementy (fronty, blendy, nóżki) — wymiary każdego,
@@ -695,12 +868,12 @@ export function buildFurniture(project, selectedIds = new Set(), selectedFronts 
     if (parts.length) group.add(buildPartDimensions(parts, project.space));
     // jedna zaznaczona samodzielna płyta — odległości w pionie: od blatu / korpusu pod nią, od podłogi, do sufitu
     // co jest pod / przed prostopadłościanem (nachodzi w X): blaty, inne płyty, korpusy — do odległości w pionie
-    const belowOf = (box, skipBoard = null) => {
+    const belowOf = (box, skipBoard = null, skipCabinet = null) => {
       const overlapsX = (b) => b.x < box.x + box.width && b.x + b.width > box.x;
       return [
         ...(project.trims ?? []).filter((t) => t.type === 'countertop' && !t.hidden).map((t) => trimBox(t, project)).filter((b) => b && overlapsX(b)).map((b) => ({ top: b.y + b.height, front: b.z + b.depth, label: 'blatu' })),
         ...(project.boards ?? []).filter((b) => b.id !== skipBoard && !b.hidden).map((b) => ({ b, box: boardBox(b, project) })).filter(({ box: b }) => overlapsX(b)).map(({ b, box: bb }) => ({ top: bb.y + bb.height, front: bb.z + bb.depth, label: b.kind === 'worktop' ? 'blatu' : 'półki' })),
-        ...project.furniture.filter((c) => !c.hidden).map((c) => cabinetBounds(c, project)).filter(overlapsX).map((b) => ({ top: b.y + b.height, front: b.z + b.depth, label: 'korpusu' })),
+        ...project.furniture.filter((c) => !c.hidden && c.id !== skipCabinet).map((c) => cabinetBounds(c, project)).filter(overlapsX).map((b) => ({ top: b.y + b.height, front: b.z + b.depth, label: 'korpusu' })),
       ];
     };
     const boardIds = [...selectedFronts].filter((id) => id.startsWith('board:'));
@@ -719,6 +892,11 @@ export function buildFurniture(project, selectedIds = new Set(), selectedFronts 
       group.add(buildClearanceDimensions(box, project.space, belowOf(box)));
     }
     if (cabinets.length) group.add(buildCabinetDimensions(cabinets, project.space));
+    // jedna zaznaczona szafka wisząca — jak okap: odległości w pionie (od blatu / korpusu pod nią, od podłogi, do sufitu)
+    if (cabinets.length === 1 && cabinets[0].mount === 'wall') {
+      const box = cabinetBounds(cabinets[0], project);
+      group.add(buildClearanceDimensions(box, project.space, belowOf(box, null, cabinets[0].id)));
+    }
     if (parts.length && cabinets.length) {
       const boxes = [...parts.map((p) => p.box), ...cabinets.map(cabinetBox)];
       group.add(buildTotalDimensions(boxes, project.space));

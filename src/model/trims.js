@@ -270,7 +270,8 @@ export function trimIssues(trim, project) {
 
   if (trim.type === 'plinth') {
     const h = plinthHeight(trim, project);
-    if (cabs.some((c) => !legHeight(c))) issues.push('Nie wszystkie objęte korpusy mają nóżki — blenda zachodzi na korpus.');
+    const noLegs = cabs.filter((c) => !legHeight(c)).map((c) => c.name);
+    if (noLegs.length) issues.push(`Korpusy bez nóżek: ${noLegs.join(', ')} — blenda zachodzi na korpus. Włącz nóżki albo odznacz te korpusy.`);
     else if (differ(legHeight)) issues.push('Objęte korpusy mają różną wysokość nóżek.');
     else if (h > Math.min(...cabs.map(legHeight))) issues.push('Blenda jest wyższa niż nóżki — nie zmieści się pod korpusem.');
     if (h <= 0) issues.push('Wysokość blendy musi być większa od zera.');

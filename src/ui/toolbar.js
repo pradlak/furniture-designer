@@ -47,6 +47,10 @@ export function createToolbar(root, store, viewer, { onHelp, onNew, onFeedback, 
       <label class="check"><input type="checkbox" data-view-flag="showBlends" /> Blendy</label>
       <label class="check" title="Ukryj fronty, żeby zajrzeć do wnętrza korpusów (np. przesunąć półkę)"><input type="checkbox" data-view-flag="showFronts" /> Fronty</label>
       <label class="check" title="Otwórz drzwi i wysuń szuflady — żeby zobaczyć, co jest w środku (tylko widok)"><input type="checkbox" data-view-flag="openFronts" data-default-off /> Fronty otwarte</label>
+      <div class="seat-line-row" title="Pozioma linia na ścianach na wysokości siedziska (od podłogi) — typowo 420–480 mm">
+        <label class="check"><input type="checkbox" data-view-flag="seatLine" data-default-off data-no-count /> Linia siedziska</label>
+        <input type="number" min="300" max="800" step="10" data-seat-height aria-label="Wysokość siedziska" /><small>mm</small>
+      </div>
       </div>
     </details>
     <div class="group account-group" hidden></div>
@@ -108,6 +112,13 @@ export function createToolbar(root, store, viewer, { onHelp, onNew, onFeedback, 
     });
   }
 
+  // wysokość siedziska (linia w widoku i przycisk w karcie korpusu); wpisanie wysokości włącza linię
+  root.querySelector('[data-seat-height]').addEventListener('change', (e) => {
+    const v = Number(e.target.value);
+    if (!Number.isFinite(v) || v < 300 || v > 800) return;
+    store.set((p) => ({ ...p, view: { ...p.view, seatHeight: Math.round(v), seatLine: true } }));
+  });
+
   fileInput.addEventListener('change', async () => {
     const file = fileInput.files?.[0];
     fileInput.value = '';
@@ -132,6 +143,8 @@ export function createToolbar(root, store, viewer, { onHelp, onNew, onFeedback, 
     }
     // na przycisku „Pokaż”: ile elementów widać (bez „Fronty otwarte”, który nie ukrywa niczego)
     const shown = viewFlags.filter((b) => b.dataset.defaultOff === undefined);
+    const seatIn = root.querySelector('[data-seat-height]');
+    if (document.activeElement !== seatIn) seatIn.value = project.view.seatHeight ?? 450;
     showCount.textContent = `(${shown.filter((b) => b.checked).length}/${shown.length})`;
     undoBtn.disabled = !store.canUndo();
     redoBtn.disabled = !store.canRedo();
