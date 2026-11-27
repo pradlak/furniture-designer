@@ -1,4 +1,5 @@
 import { escapeHtml } from './dom.js';
+import { t } from '../i18n.js';
 import { settingsFieldsHtml, bindSettingsFields } from './settingsDialog.js';
 import { GOOGLE_ICON } from './projectsDialog.js';
 
@@ -19,16 +20,16 @@ export function createUserMenu(root, account, { onProjects, onMaterials, onLogou
         <span class="avatar avatar-lg"></span>
         <div class="user-menu-who"><b class="user-name"></b><small class="user-email"></small></div>
       </div>
-      <a class="google-login user-menu-login" href="${account.loginUrl}" rel="nofollow">${GOOGLE_ICON}<span>Zaloguj przez Google</span></a>
-      <button type="button" class="user-menu-item" data-um="projects">☁ Moje projekty</button>
-      <button type="button" class="user-menu-item" data-um="materials">🎨 Moje materiały</button>
-      <p class="user-menu-note">Po zalogowaniu zapiszesz projekty i materiały na koncie i otworzysz je na każdym urządzeniu.</p>
+      <a class="google-login user-menu-login" href="${account.loginUrl}" rel="nofollow">${GOOGLE_ICON}<span>${t('Zaloguj przez Google')}</span></a>
+      <button type="button" class="user-menu-item" data-um="projects">${t('☁ Moje projekty')}</button>
+      <button type="button" class="user-menu-item" data-um="materials">${t('🎨 Moje materiały')}</button>
+      <p class="user-menu-note">${t('Po zalogowaniu zapiszesz projekty i materiały na koncie i otworzysz je na każdym urządzeniu.')}</p>
       <div class="user-menu-settings">
-        <div class="user-menu-title">Ustawienia <small class="settings-where"></small></div>
+        <div class="user-menu-title">${t('Ustawienia')} <small class="settings-where"></small></div>
         ${settingsFieldsHtml({ compact: true })}
-        <button type="button" class="link-button" data-settings="reset">Przywróć domyślne</button>
+        <button type="button" class="link-button" data-settings="reset">${t('Przywróć domyślne')}</button>
       </div>
-      <button type="button" class="user-menu-item" data-um="logout">↩ Wyloguj</button>
+      <button type="button" class="user-menu-item" data-um="logout">${t('↩ Wyloguj')}</button>
     </div>`;
   const btn = root.querySelector('.avatar-btn');
   const menu = root.querySelector('.user-menu');
@@ -90,17 +91,17 @@ export function createUserMenu(root, account, { onProjects, onMaterials, onLogou
     root.classList.toggle('guest', !u);
     setAvatar(btn, u);
     setAvatar(menu.querySelector('.avatar-lg'), u);
-    btn.title = u ? `${u.name || u.email} — konto i ustawienia` : 'Zaloguj się · ustawienia';
-    menu.querySelector('.user-name').textContent = u ? u.name || u.email : 'Nie jesteś zalogowany';
-    menu.querySelector('.user-email').textContent = u ? (u.name ? u.email : '') : 'Logowanie przez konto Google';
+    btn.title = u ? t('{name} — konto i ustawienia', { name: u.name || u.email }) : t('Zaloguj się · ustawienia');
+    menu.querySelector('.user-name').textContent = u ? u.name || u.email : t('Nie jesteś zalogowany');
+    menu.querySelector('.user-email').textContent = u ? (u.name ? u.email : '') : t('Logowanie przez konto Google');
     menu.querySelector('.user-menu-login').hidden = !!u;
     menu.querySelector('.user-menu-note').hidden = !!u;
     menu.querySelector('[data-um="logout"]').hidden = !u;
     for (const b of menu.querySelectorAll('[data-um="projects"], [data-um="materials"]')) {
       b.disabled = !u;
-      b.title = u ? '' : 'Dostępne po zalogowaniu';
+      b.title = u ? '' : t('Dostępne po zalogowaniu');
     }
-    menu.querySelector('.settings-where').textContent = u ? '(zapamiętane na koncie)' : '(zapamiętane w tej przeglądarce)';
+    menu.querySelector('.settings-where').textContent = u ? t('(zapamiętane na koncie)') : t('(zapamiętane w tej przeglądarce)');
   }
   account.onChange(sync);
   sync(account.get());

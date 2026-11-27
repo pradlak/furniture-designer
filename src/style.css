@@ -19,9 +19,16 @@ html, body {
   background: var(--bg);
 }
 
+/* Kolejność w kodzie: najpierw opis z H1 (.seo-home — dla wyszukiwarek), potem aplikacja; na ekranie aplikacja
+   jest na górze (order: -1), a opis pod nią. */
 body {
-  display: block;
+  display: flex;
+  flex-direction: column;
 }
+body > * { flex-shrink: 0; }
+.app { order: -1; }
+/* tytuły okienek programu — wyglądają jak nagłówki, ale nie są <h2> (porządek nagłówków strony dla wyszukiwarek) */
+.ui-h2 { display: block; font-size: 1.5em; font-weight: 700; margin: 0.83em 0; line-height: 1.2; }
 /* aplikacja (pasek narzędzi + panel + widok 3D) — dokładnie na wysokość okna; pod nią opis programu (.seo-home) */
 .app {
   height: 100vh;
@@ -75,7 +82,7 @@ button.danger:hover { border-color: var(--danger); color: var(--danger); }
   background: var(--panel);
   border-right: 1px solid var(--border);
 }
-.panel h2 { margin: 0 0 12px; font-size: 18px; }
+.panel h2, .panel .ui-h2 { margin: 0 0 12px; font-size: 18px; }
 .panel h3 { margin: 20px 0 8px; font-size: 14px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
 
 .viewport {
@@ -658,7 +665,7 @@ body.resizing .viewport { pointer-events: none; }
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.25);
   line-height: 1.5;
 }
-.welcome h2 { margin: 0 0 8px; font-size: 20px; }
+.welcome .ui-h2 { margin: 0 0 8px; font-size: 20px; }
 .welcome ol { padding-left: 20px; margin: 12px 0; }
 .welcome li { margin: 6px 0; }
 .welcome-note { font-size: 13px; color: var(--muted); }
@@ -1505,6 +1512,11 @@ body.has-user-menu .help-group .settings-btn { display: none; }
 .seo-home h3 { font-size: 16px; margin: 0 0 6px; }
 .seo-lead { font-size: 17px; max-width: 760px; }
 .seo-home figure { margin: 20px 0; }
+.seo-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin: 12px 0 8px; padding: 0; list-style: none; }
+.seo-gallery li { margin: 0; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: #fff; }
+.seo-gallery a { display: block; text-decoration: none; font-weight: 600; }
+.seo-gallery img { display: block; width: 100%; height: auto; aspect-ratio: 5 / 3; object-fit: cover; background: #d5dae1; }
+.seo-gallery span { display: block; padding: 8px 12px 10px; }
 .seo-home figure img { width: 100%; height: auto; border-radius: 10px; border: 1px solid var(--border); }
 .seo-home figcaption { font-size: 14px; color: var(--muted); margin-top: 6px; }
 .seo-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
@@ -1566,7 +1578,7 @@ body.has-user-menu .help-group .settings-btn { display: none; }
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
 }
 .space-head { display: flex; align-items: center; gap: 6px; }
-.space-head h2 { flex: 1; margin: 0 0 8px; }
+.space-head .ui-h2 { flex: 1; margin: 0 0 8px; }
 .space-head .insp-close { display: inline-block; }
 .tabs .tabs-space.active { color: #fff; background: var(--accent); border-color: var(--accent); }
 .panel.collapsed .tabs .tabs-space { width: 44px; height: 40px; padding: 0 !important; display: grid; place-items: center; border-radius: 10px; }
@@ -1660,7 +1672,7 @@ body.has-user-menu .help-group .settings-btn { display: none; }
 .win-shell-head { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 6px; margin: 0 -12px 8px; padding: 9px 12px; background: #fff; border-bottom: 1px solid var(--border); }
 .win-shell-head b { flex: 1; font-size: 15px; }
 .win-shell-head .insp-close { display: inline-block; }
-.win-shell #materials-panel > h2:first-child, .win-shell #notes-panel > h2:first-child { display: none; } /* tytuł jest w nagłówku okienka */
+.win-shell #materials-panel > .ui-h2:first-child, .win-shell #notes-panel > .ui-h2:first-child { display: none; } /* tytuł jest w nagłówku okienka */
 
 /* okienko przestrzeni: otwarta grupa (Ściany, Kolory, Skosy, Kształt, Przeszkody…) — jako okienko obok, z lewej */
 #space-panel .section-close { display: none; }
@@ -1957,3 +1969,7 @@ body.has-user-menu .help-group .settings-btn { display: none; }
 .seat-line-row input[type="number"] { width: 64px; }
 .seat-line-row small { color: var(--muted); }
 .trim-cabinets label.muted { opacity: 0.5; }
+
+/* wersja angielska (/en/): napisy dodawane przez CSS */
+html[lang="en"] #space-panel.open > details.panel-sec[open] > .panel-sec-body::before { content: attr(data-title) " — space"; }
+html[lang="en"] .part.free .part-name::after { content: " (independent)"; }

@@ -3,6 +3,7 @@ import { toScene } from './units.js';
 import { createDimension } from './dimensions.js';
 import { legHeight } from '../model/furniture.js';
 import { formatLength } from '../state/settings.js';
+import { t } from '../i18n.js';
 
 // Wymiary zaznaczonych korpusów w widoku 3D (jeden korpus albo grupa zaznaczona z Ctrl):
 //  - przy lewej krawędzi frontów, wysunięte przed korpusy: nóżki, korpus i (dalej) razem;
@@ -35,25 +36,25 @@ export function buildCabinetDimensions(cabinets, space) {
   if (uniform) {
     const H = list[0].height;
     if (L > 0) {
-      add(p(x0, y0, front), p(x0, y0 + L, front), off(0, 0, NEAR), `nóżki ${fmt(L)}`);
-      add(p(x0, y0 + L, front), p(x0, top, front), off(0, 0, NEAR), `korpus ${fmt(H)}`);
-      add(p(x0, y0, front), p(x0, top, front), off(0, 0, FAR), `razem ${fmt(L + H)}`);
+      add(p(x0, y0, front), p(x0, y0 + L, front), off(0, 0, NEAR), t('nóżki {v}', { v: fmt(L) }));
+      add(p(x0, y0 + L, front), p(x0, top, front), off(0, 0, NEAR), t('korpus {v}', { v: fmt(H) }));
+      add(p(x0, y0, front), p(x0, top, front), off(0, 0, FAR), t('razem {v}', { v: fmt(L + H) }));
     } else {
-      add(p(x0, y0, front), p(x0, top, front), off(0, 0, NEAR), `korpus ${fmt(H)}`);
+      add(p(x0, y0, front), p(x0, top, front), off(0, 0, NEAR), t('korpus {v}', { v: fmt(H) }));
     }
   } else {
     // różne nóżki / wysokości — tylko wysokość całej zabudowy (od najniższego dołu do najwyższej góry)
-    add(p(x0, y0, front), p(x0, top, front), off(0, 0, NEAR), `razem ${fmt(top - y0)}`);
+    add(p(x0, y0, front), p(x0, top, front), off(0, 0, NEAR), t('razem {v}', { v: fmt(top - y0) }));
   }
 
   // Szerokości — nad górną krawędzią frontów: każdego korpusu, a przy grupie dalej łączna.
   for (const c of list) {
-    add(p(c.x, top, front), p(c.x + c.width, top, front), off(0, NEAR, 0), `${list.length > 1 ? '' : 'szer. '}${fmt(c.width)}`);
+    add(p(c.x, top, front), p(c.x + c.width, top, front), off(0, NEAR, 0), `${list.length > 1 ? '' : `${t('szer.')} `}${fmt(c.width)}`);
   }
-  if (list.length > 1) add(p(x0, top, front), p(x1, top, front), off(0, FAR, 0), `szer. razem ${fmt(x1 - x0)}`);
+  if (list.length > 1) add(p(x0, top, front), p(x1, top, front), off(0, FAR, 0), t('szer. razem {v}', { v: fmt(x1 - x0) }));
 
   // Głębokość — nad prawą górną krawędzią.
-  add(p(x1, top, back), p(x1, top, front), off(0, NEAR, 0), `gł. ${fmt(front - back)}`);
+  add(p(x1, top, back), p(x1, top, front), off(0, NEAR, 0), `${t('gł.')} ${fmt(front - back)}`);
   return group;
 }
 
@@ -77,9 +78,9 @@ export function buildPartDimensions(parts, space) {
     const y0 = Math.min(...list.map((p) => p.box.y));
     const top = Math.max(...list.map((p) => p.box.y + p.box.height));
     for (const { box } of list) add(p(x0, box.y, front), p(x0, box.y + box.height, front), off(0, 0, NEAR), fmt(box.height));
-    add(p(x0, y0, front), p(x0, top, front), off(0, 0, FAR), `razem ${fmt(top - y0)}`);
+    add(p(x0, y0, front), p(x0, top, front), off(0, 0, FAR), t('razem {v}', { v: fmt(top - y0) }));
     const widths = new Set(list.map((q) => Math.round(q.box.width)));
-    if (widths.size === 1) add(p(x0, top, front), p(x1, top, front), off(0, NEAR, 0), `szer. ${fmt(x1 - x0)}`);
+    if (widths.size === 1) add(p(x0, top, front), p(x1, top, front), off(0, NEAR, 0), `${t('szer.')} ${fmt(x1 - x0)}`);
     else for (const { box } of list) add(p(box.x, box.y + box.height, front), p(box.x + box.width, box.y + box.height, front), off(0, NEAR / 2, 0), fmt(box.width));
     return group;
   }
@@ -89,14 +90,14 @@ export function buildPartDimensions(parts, space) {
     const front = z + D;
     const top = y + H;
     const prefix = named ? `${name}: ` : '';
-    add(p(x, y, front), p(x, top, front), off(0, 0, NEAR), `${prefix}${slab ? "gr." : "wys."} ${fmt(H)}`); // (płyta pozioma — grubość)
+    add(p(x, y, front), p(x, top, front), off(0, 0, NEAR), `${prefix}${slab ? t('gr.') : t('wys.')} ${fmt(H)}`); // (płyta pozioma — grubość)
     if (round) {
       // element okrągły (nóżka) — sama średnica, pod spodem przed elementem
       add(p(x, y, front), p(x + W, y, front), off(0, 0, NEAR / 2), `${prefix}Ø ${fmt(W)}`);
       continue;
     }
-    add(p(x, top, front), p(x + W, top, front), off(0, NEAR, 0), `${prefix}szer. ${fmt(W)}`);
-    add(p(x + W, top, z), p(x + W, top, front), off(0, NEAR, 0), `${prefix}gł. ${fmt(D)}`);
+    add(p(x, top, front), p(x + W, top, front), off(0, NEAR, 0), `${prefix}${t('szer.')} ${fmt(W)}`);
+    add(p(x + W, top, z), p(x + W, top, front), off(0, NEAR, 0), `${prefix}${t('gł.')} ${fmt(D)}`);
   }
   return group;
 }
@@ -116,9 +117,9 @@ export function buildTotalDimensions(boxes, space) {
   const p = (px, py, pz) => new THREE.Vector3(...toScene(px, py, pz, space));
   const off = (dx, dy, dz) => p(dx, dy, dz).sub(p(0, 0, 0));
   const add = (a, b, o, text) => group.add(createDimension(a, b, o, text, 'accent'));
-  add(p(x0, y0, z1), p(x0, y1, z1), off(0, 0, TOTAL), `razem wys. ${fmt(y1 - y0)}`);
-  add(p(x0, y1, z1), p(x1, y1, z1), off(0, TOTAL, 0), `razem szer. ${fmt(x1 - x0)}`);
-  add(p(x1, y1, z0), p(x1, y1, z1), off(0, TOTAL, 0), `razem gł. ${fmt(z1 - z0)}`);
+  add(p(x0, y0, z1), p(x0, y1, z1), off(0, 0, TOTAL), t('razem wys. {v}', { v: fmt(y1 - y0) }));
+  add(p(x0, y1, z1), p(x1, y1, z1), off(0, TOTAL, 0), t('razem szer. {v}', { v: fmt(x1 - x0) }));
+  add(p(x1, y1, z0), p(x1, y1, z1), off(0, TOTAL, 0), t('razem gł. {v}', { v: fmt(z1 - z0) }));
   return group;
 }
 
@@ -127,7 +128,8 @@ const fmt = (v) => formatLength(v);
 
 // Odległości w pionie zaznaczonej płyty (półki, blatu samodzielnego): od podłogi, do sufitu i — gdy pod nią jest
 // blat (na szafkach albo samodzielny) albo wierzch korpusu — od niego. Linie przy prawym końcu płyty, wysunięte
-// przed nią. box — płyta (mm), below — [{ top, label }] (wierzchy rzeczy pod płytą, nachodzących na nią w X).
+// przed nią. box — płyta (mm), below — [{ top, label }] (wierzchy rzeczy pod płytą, nachodzących na nią w X;
+// label — gotowy napis, np. „od blatu”).
 export function buildClearanceDimensions(box, space, below = []) {
   const group = new THREE.Group();
   const p = (px, py, pz) => new THREE.Vector3(...toScene(px, py, pz, space));
@@ -140,8 +142,8 @@ export function buildClearanceDimensions(box, space, below = []) {
   const top = box.y + box.height;
   // najbliższy blat / wierzch pod płytą
   const under = below.filter((b) => b.top <= bottom + 0.5).sort((a, b) => b.top - a.top)[0];
-  if (under) add(under.top, bottom, off(0, 0, NEAR), `od ${under.label} ${fmt(bottom - under.top)}`);
-  add(0, bottom, off(0, 0, under ? FAR : NEAR), `od podłogi ${fmt(bottom)}`);
-  add(top, space.height, off(0, 0, NEAR), `do sufitu ${fmt(space.height - top)}`);
+  if (under) add(under.top, bottom, off(0, 0, NEAR), `${under.label} ${fmt(bottom - under.top)}`);
+  add(0, bottom, off(0, 0, under ? FAR : NEAR), t('od podłogi {v}', { v: fmt(bottom) }));
+  add(top, space.height, off(0, 0, NEAR), t('do sufitu {v}', { v: fmt(space.height - top) }));
   return group;
 }

@@ -1,3 +1,4 @@
+import { t } from '../i18n.js';
 // Zwijane grupy w panelu po lewej: każdy nagłówek <h3> (bezpośrednio w panelu) razem z treścią do następnego
 // nagłówka trafia do <details class="panel-sec"> — w nagłówku tytuł i liczba elementów (karty .item w grupie).
 // Stan (otwarta / zwinięta) zapamiętany dla panelu w przeglądarce; domyślnie otwarte grupy z defaultsOpen.
@@ -32,7 +33,7 @@ export function groupPanelSections(root, storageKey, defaultsOpen = [], { window
     body.className = 'panel-sec-body';
     if (windows) {
       body.dataset.title = title;
-      body.insertAdjacentHTML('afterbegin', '<button type="button" class="icon tiny section-close" data-sec-close title="Zamknij" aria-label="Zamknij">✕</button>');
+      body.insertAdjacentHTML('afterbegin', `<button type="button" class="icon tiny section-close" data-sec-close title="${t('Zamknij')}" aria-label="${t('Zamknij')}">✕</button>`);
     }
     let el = h.nextSibling;
     while (el && !(el.nodeType === 1 && (el.tagName === 'H3' || el.tagName === 'H2'))) {

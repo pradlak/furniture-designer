@@ -1,5 +1,6 @@
 import { escapeHtml } from './dom.js';
 import { COLOR_PRESETS } from '../model/materials.js';
+import { t } from '../i18n.js';
 
 // Wspólne elementy formularzy paneli mebli i blend.
 
@@ -7,7 +8,7 @@ import { COLOR_PRESETS } from '../model/materials.js';
 export function setEye(btn, hidden, what) {
   if (!btn) return;
   btn.classList.toggle('off', !!hidden);
-  btn.title = hidden ? `Pokaż ${what} w widoku 3D` : `Ukryj ${what} w widoku 3D`;
+  btn.title = hidden ? t('Pokaż {what} w widoku 3D', { what }) : t('Ukryj {what} w widoku 3D', { what });
 }
 
 // --- Wybór koloru (niezależny od materiału) ---
@@ -16,9 +17,9 @@ export function setEye(btn, hidden, what) {
 // Odczyt zmiany: readColorInput(input) → { path, value } (value: { hex, name } albo null).
 // Lista kolorów pogrupowana: jednolite kolory i dekory z fakturą (drewno, beton, marmur).
 const COLOR_GROUPS = [
-  { label: 'Kolory jednolite', test: (c) => !c.texture },
-  { label: 'Dekory drewna', test: (c) => c.texture === 'wood' },
-  { label: 'Beton i marmur', test: (c) => c.texture === 'concrete' || c.texture === 'marble' },
+  { label: t('Kolory jednolite'), test: (c) => !c.texture },
+  { label: t('Dekory drewna'), test: (c) => c.texture === 'wood' },
+  { label: t('Beton i marmur'), test: (c) => c.texture === 'concrete' || c.texture === 'marble' },
 ];
 export const colorOptions = () =>
   COLOR_GROUPS.map(
@@ -26,7 +27,7 @@ export const colorOptions = () =>
   ).join('');
 
 // wide — pole na całą szerokość karty (np. blat: wybór dekoru)
-export function colorPicker(label, path, { wide = false, resetLabel = 'jak w materiale' } = {}) {
+export function colorPicker(label, path, { wide = false, resetLabel = t('jak w materiale') } = {}) {
   return `
     <label class="field small color-field${wide ? ' wide' : ''}">
       <span>${label}</span>
@@ -34,9 +35,9 @@ export function colorPicker(label, path, { wide = false, resetLabel = 'jak w mat
         <select data-color-select="${path}">
           <option value="">${resetLabel}</option>
           ${colorOptions()}
-          <option value="custom">własny…</option>
+          <option value="custom">${t('własny…')}</option>
         </select>
-        <input type="color" data-color-custom="${path}" title="Własny kolor" />
+        <input type="color" data-color-custom="${path}" title="${t('Własny kolor')}" />
       </span>
     </label>`;
 }
@@ -48,11 +49,11 @@ export function readColorInput(input) {
     if (preset) return { path: input.dataset.colorSelect, value: { ...preset } };
     // „własny…” — bierzemy kolor z próbnika obok
     const custom = input.parentElement.querySelector('[data-color-custom]').value;
-    return { path: input.dataset.colorSelect, value: { hex: custom, name: `własny ${custom}` } };
+    return { path: input.dataset.colorSelect, value: { hex: custom, name: t('własny {hex}', { hex: custom }) } };
   }
   if (input.dataset.colorCustom) {
     const preset = COLOR_PRESETS.find((c) => c.hex === input.value.toLowerCase());
-    return { path: input.dataset.colorCustom, value: preset ? { ...preset } : { hex: input.value, name: `własny ${input.value}` } };
+    return { path: input.dataset.colorCustom, value: preset ? { ...preset } : { hex: input.value, name: t('własny {hex}', { hex: input.value }) } };
   }
   return null;
 }
@@ -65,7 +66,7 @@ export function syncColorPicker(root, path, color, fallbackHex) {
   const preset = color && COLOR_PRESETS.find((c) => c.hex === color.hex);
   if (document.activeElement !== select) select.value = !color ? '' : preset ? preset.hex : 'custom';
   if (document.activeElement !== custom) custom.value = color?.hex ?? fallbackHex ?? '#ffffff';
-  select.title = color ? `Kolor: ${color.name}` : 'Kolor jak w wybranym materiale';
+  select.title = color ? t('Kolor: {name}', { name: color.name }) : t('Kolor jak w wybranym materiale');
 }
 
 // Lista wyboru materiału z biblioteki projektu.
@@ -75,6 +76,12 @@ export function materialSelect(label, field, project) {
       <span>${label}</span>
       <select data-f="${field}">
         ${project.materials.map((m) => `<option value="${m.id}">${escapeHtml(m.name)} (${m.thickness} mm)</option>`).join('')}
+        ${NEW_MATERIAL_OPTION}
       </select>
     </label>`;
 }
+
+// Ostatnia pozycja list materiałów: „+ Nowy materiał…” — tworzy materiał (kopię wybranego wcześniej), wybiera go
+// w tej liście i otwiera okienko „Materiały” do ustawienia nazwy i grubości (obsługa w main.js).
+export const NEW_MATERIAL = '__new-material';
+export const NEW_MATERIAL_OPTION = `<option value="${NEW_MATERIAL}">${t('+ Nowy materiał…')}</option>`;

@@ -2,6 +2,7 @@ import { LIMITS, isWallLike } from './space.js';
 import { cabinetBounds, legHeight, ceilingGapFor } from './furniture.js';
 import { spaceOutline, outlineEdges, edgeOutward, isFrontPoint, selfIntersects, cleanOutline } from './outline.js';
 import { updateSpaceRefit, refillRows, refillDepth } from './layout.js';
+import { t } from '../i18n.js';
 
 // Przesuwanie całych ścian (np. przeciąganiem w widoku 3D). Meble, przeszkody i płyty zostają tam, gdzie stoją
 // — zmienia się tylko pomieszczenie. Przesunięcie `d` (mm) mierzymy na zewnątrz pomieszczenia: d > 0 — ściana
@@ -133,7 +134,7 @@ function moveOutlineEdge(project, i, d) {
 export function wallSnapTargets(project, wall) {
   const { space } = project;
   const items = [
-    ...project.furniture.map((c) => ({ box: cabinetBounds(c, project), label: `korpusu „${c.name}”`, c })),
+    ...project.furniture.map((c) => ({ box: cabinetBounds(c, project), label: t('korpusu „{name}”', { name: c.name }), c })),
     ...(project.boards ?? []).map((b) => ({ box: b, label: `„${b.name}”` })),
   ];
   const out = [];
@@ -168,9 +169,9 @@ export function wallSnapTargets(project, wall) {
 
 // Opis ściany i jej wymiaru (do podpowiedzi przy przeciąganiu).
 export function wallMoveLabel(space, wall) {
-  if (wall === 'left' || wall === 'right') return `${wall === 'left' ? 'Lewa' : 'Prawa'} ściana · szerokość ${space.width} mm`;
-  if (wall === 'back') return `Tylna ściana · głębokość ${space.depth} mm`;
-  if (wall === 'ceiling') return `Sufit · wysokość ${space.height} mm`;
+  if (wall === 'left' || wall === 'right') return wall === 'left' ? t('Lewa ściana · szerokość {w} mm', { w: space.width }) : t('Prawa ściana · szerokość {w} mm', { w: space.width });
+  if (wall === 'back') return t('Tylna ściana · głębokość {d} mm', { d: space.depth });
+  if (wall === 'ceiling') return t('Sufit · wysokość {h} mm', { h: space.height });
   const e = outlineEdges(space)[Number(wall.slice(5))];
-  return e ? `Ściana · ${Math.round(Math.hypot(e.b[0] - e.a[0], e.b[1] - e.a[1]))} mm` : 'Ściana';
+  return e ? t('Ściana · {len} mm', { len: Math.round(Math.hypot(e.b[0] - e.a[0], e.b[1] - e.a[1])) }) : t('Ściana');
 }

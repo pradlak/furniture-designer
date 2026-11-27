@@ -7,6 +7,7 @@ import { createLegsDialog } from './legsDialog.js';
 import { getPath, setPath, BACK_TYPES, TOP_TYPES, HANDLE_TYPES, HANDLE_GROOVES, HANDLE_POSITIONS, CABINET_LIMITS, LEG_LIMITS, FRONT_LIMITS } from '../model/furniture.js';
 import { FRONT_DECORS } from '../model/decor.js';
 import { duplicateSelected } from '../state/duplicate.js';
+import { t } from '../i18n.js';
 
 // Okienko po prawej przy kilku zaznaczonych korpusach (Ctrl + klik): pola wspólne dla wszystkich — zmiana
 // dotyczy każdego zaznaczonego korpusu. Pole z różnymi wartościami w korpusach — puste („różne”); zostaje,
@@ -32,41 +33,41 @@ export function createMultiCabinetWindow(viewport, store, ui) {
 
   function render(project) {
     root.innerHTML = `
-      <div class="bi-head"><b data-mc-title></b><button type="button" class="icon tiny" data-mc-close title="Odznacz">✕</button></div>
-      <p class="bi-note">Zmiana dotyczy wszystkich zaznaczonych korpusów. Puste pole — w korpusach są różne wartości. Ctrl + klik w 3D albo na mapce — dodaj / odejmij korpus.</p>
+      <div class="bi-head"><b data-mc-title></b><button type="button" class="icon tiny" data-mc-close title="${t('Odznacz')}">✕</button></div>
+      <p class="bi-note">${t('Zmiana dotyczy wszystkich zaznaczonych korpusów. Puste pole — w korpusach są różne wartości. Ctrl + klik w 3D albo na mapce — dodaj / odejmij korpus.')}</p>
       <div class="mc-list" data-mc-list></div>
-      <div class="bi-sec">Wymiary</div>
-      <div class="bi-grid">${num('Szerokość', 'width', { min: CABINET_LIMITS.sizeMin })}${num('Wysokość', 'height', { min: CABINET_LIMITS.sizeMin })}${num('Głębokość', 'depth', { min: CABINET_LIMITS.sizeMin })}</div>
-      <p class="bi-note mc-small">Szerokość: korpusy w rzędzie obok przesuwają się, żeby dalej stały bok przy boku.</p>
-      <div class="bi-sec">Korpus</div>
+      <div class="bi-sec">${t('Wymiary')}</div>
+      <div class="bi-grid">${num(t('Szerokość'), 'width', { min: CABINET_LIMITS.sizeMin })}${num(t('Wysokość'), 'height', { min: CABINET_LIMITS.sizeMin })}${num(t('Głębokość'), 'depth', { min: CABINET_LIMITS.sizeMin })}</div>
+      <p class="bi-note mc-small">${t('Szerokość: korpusy w rzędzie obok przesuwają się, żeby dalej stały bok przy boku.')}</p>
+      <div class="bi-sec">${t('Korpus')}</div>
       <div class="mc-form">
-        ${materialSelect('Materiał korpusu', 'materialId', project).replace('data-f=', 'data-mc=')}
-        ${colorPicker('Kolor korpusu', 'colors.body')}
-        ${sel('Plecy', 'backType', BACK_TYPES)}
-        ${sel('Góra korpusu', 'topType', TOP_TYPES)}
-        ${materialSelect('Materiał blend', 'blendMaterialId', project).replace('data-f=', 'data-mc=')}
-        ${colorPicker('Kolor blend', 'colors.blend')}
+        ${materialSelect(t('Materiał korpusu'), 'materialId', project).replace('data-f=', 'data-mc=')}
+        ${colorPicker(t('Kolor korpusu'), 'colors.body')}
+        ${sel(t('Plecy'), 'backType', BACK_TYPES)}
+        ${sel(t('Góra korpusu'), 'topType', TOP_TYPES)}
+        ${materialSelect(t('Materiał blend'), 'blendMaterialId', project).replace('data-f=', 'data-mc=')}
+        ${colorPicker(t('Kolor blend'), 'colors.blend')}
       </div>
-      <div class="bi-sec">Fronty</div>
+      <div class="bi-sec">${t('Fronty')}</div>
       <div class="mc-form">
-        ${materialSelect('Materiał frontów', 'frontMaterialId', project).replace('data-f=', 'data-mc=')}
-        ${colorPicker('Kolor frontów', 'colors.front')}
-        ${sel('Frez dekoracyjny', 'fronts.decor', FRONT_DECORS)}
-        ${sel('Frez uchwytowy', 'fronts.groove', HANDLE_GROOVES)}
-        ${sel('Uchwyt', 'fronts.handle.type', HANDLE_TYPES)}
-        ${sel('Położenie uchwytu', 'fronts.handle.position', HANDLE_POSITIONS)}
+        ${materialSelect(t('Materiał frontów'), 'frontMaterialId', project).replace('data-f=', 'data-mc=')}
+        ${colorPicker(t('Kolor frontów'), 'colors.front')}
+        ${sel(t('Frez dekoracyjny'), 'fronts.decor', FRONT_DECORS)}
+        ${sel(t('Frez uchwytowy'), 'fronts.groove', HANDLE_GROOVES)}
+        ${sel(t('Uchwyt'), 'fronts.handle.type', HANDLE_TYPES)}
+        ${sel(t('Położenie uchwytu'), 'fronts.handle.position', HANDLE_POSITIONS)}
       </div>
-      <div class="bi-grid">${num('Rozstaw uchw.', 'fronts.handle.spacing', { min: 16, max: 2000 })}${num('Szczelina pion.', 'fronts.gap', { max: FRONT_LIMITS.gapMax, step: 0.5 })}${num('Szczelina poz.', 'fronts.gapV', { max: FRONT_LIMITS.gapMax, step: 0.5 })}</div>
-      <div class="bi-sec">Nóżki</div>
-      <div class="bi-grid">${num('Wysokość nóżek', 'legs.height', { min: LEG_LIMITS.min, max: LEG_LIMITS.max })}</div>
+      <div class="bi-grid">${num(t('Rozstaw uchw.'), 'fronts.handle.spacing', { min: 16, max: 2000 })}${num(t('Szczelina pion.'), 'fronts.gap', { max: FRONT_LIMITS.gapMax, step: 0.5 })}${num(t('Szczelina poz.'), 'fronts.gapV', { max: FRONT_LIMITS.gapMax, step: 0.5 })}</div>
+      <div class="bi-sec">${t('Nóżki')}</div>
+      <div class="bi-grid">${num(t('Wysokość nóżek'), 'legs.height', { min: LEG_LIMITS.min, max: LEG_LIMITS.max })}</div>
       <p class="bi-note mc-small" data-mc-legs-note></p>
       <div class="bi-actions mc-legs-actions">
-        <button type="button" data-mc-legs="add" title="Nóżki we wszystkich zaznaczonych korpusach, które ich nie mają">+ Dodaj nóżki</button>
-        <button type="button" data-mc-legs="remove" title="Usuń nóżki ze wszystkich zaznaczonych korpusów">Usuń nóżki</button>
+        <button type="button" data-mc-legs="add" title="${t('Nóżki we wszystkich zaznaczonych korpusach, które ich nie mają')}">${t('+ Dodaj nóżki')}</button>
+        <button type="button" data-mc-legs="remove" title="${t('Usuń nóżki ze wszystkich zaznaczonych korpusów')}">${t('Usuń nóżki')}</button>
       </div>
       <div class="bi-actions">
-        <button type="button" data-mc-dup>⧉ Duplikuj</button>
-        <button type="button" class="danger" data-mc-del>🗑 Usuń zaznaczone</button>
+        <button type="button" data-mc-dup>${t('⧉ Duplikuj')}</button>
+        <button type="button" class="danger" data-mc-del>${t('🗑 Usuń zaznaczone')}</button>
       </div>`;
   }
 
@@ -78,7 +79,7 @@ export function createMultiCabinetWindow(viewport, store, ui) {
   };
   const mixedOption = (select, mixed) => {
     let o = select.querySelector(`option[value="${MIXED}"]`);
-    if (mixed && !o) select.insertAdjacentHTML('afterbegin', `<option value="${MIXED}">— różne —</option>`);
+    if (mixed && !o) select.insertAdjacentHTML('afterbegin', `<option value="${MIXED}">${t('— różne —')}</option>`);
     if (!mixed && o) o.remove();
   };
 
@@ -94,7 +95,7 @@ export function createMultiCabinetWindow(viewport, store, ui) {
     if (sig !== shownSig) render(project);
     shownSig = sig;
     root.hidden = false;
-    root.querySelector('[data-mc-title]').textContent = `Zaznaczone korpusy: ${cabs.length}`;
+    root.querySelector('[data-mc-title]').textContent = t('Zaznaczone korpusy: {n}', { n: cabs.length });
     root.querySelector('[data-mc-list]').innerHTML = cabs.map((c) => `<span class="mc-chip">${escapeHtml(c.name)}</span>`).join('');
     root.querySelectorAll('[data-mc]').forEach((el) => {
       if (document.activeElement === el) return;
@@ -106,7 +107,7 @@ export function createMultiCabinetWindow(viewport, store, ui) {
         el.value = v === MIXED ? MIXED : String(v ?? '');
       } else {
         el.value = v === MIXED || v == null ? '' : Math.round(v * 10) / 10;
-        el.placeholder = v === MIXED ? 'różne' : '';
+        el.placeholder = v === MIXED ? t('różne') : '';
       }
       if (path.startsWith('legs.')) el.disabled = !group.length;
     });
@@ -122,10 +123,10 @@ export function createMultiCabinetWindow(viewport, store, ui) {
     });
     const withLegs = cabs.filter((c) => c.legs?.enabled).length;
     root.querySelector('[data-mc-legs-note]').textContent =
-      withLegs === cabs.length ? '' : withLegs ? `Nóżki ma ${withLegs} z ${cabs.length} korpusów — wysokość zmienia się tylko w nich.` : 'Zaznaczone korpusy nie mają nóżek.';
+      withLegs === cabs.length ? '' : withLegs ? t('Nóżki ma {n} z {total} korpusów — wysokość zmienia się tylko w nich.', { n: withLegs, total: cabs.length }) : t('Zaznaczone korpusy nie mają nóżek.');
     const addBtn = root.querySelector('[data-mc-legs="add"]');
     addBtn.hidden = withLegs === cabs.length;
-    addBtn.textContent = withLegs ? `+ Dodaj nóżki pozostałym (${cabs.length - withLegs})` : `+ Dodaj nóżki (${cabs.length})`;
+    addBtn.textContent = withLegs ? t('+ Dodaj nóżki pozostałym ({n})', { n: cabs.length - withLegs }) : t('+ Dodaj nóżki ({n})', { n: cabs.length });
     root.querySelector('[data-mc-legs="remove"]').hidden = !withLegs;
   }
 
@@ -201,19 +202,19 @@ export function createMultiCabinetWindow(viewport, store, ui) {
     if (e.key === 'Enter' && e.target.dataset.mc) e.target.dispatchEvent(new Event('change', { bubbles: true }));
   });
   root.addEventListener('click', (e) => {
-    const t = e.target;
-    if (t.closest('[data-mc-close]')) {
+    const tg = e.target;
+    if (tg.closest('[data-mc-close]')) {
       ui.set({ ...ui.get(), selectedId: null, selectedIds: [] });
       return;
     }
-    if (t.closest('[data-mc-dup]')) {
+    if (tg.closest('[data-mc-dup]')) {
       const id = ui.get().selectedId;
       if (id) duplicateSelected(store, ui, id);
       return;
     }
-    if (t.closest('[data-mc-del]')) {
+    if (tg.closest('[data-mc-del]')) {
       const cabs = selected();
-      if (!cabs.length || !confirm(`Usunąć zaznaczone korpusy (${cabs.length})?`)) return;
+      if (!cabs.length || !confirm(t('Usunąć zaznaczone korpusy ({n})?', { n: cabs.length }))) return;
       const ids = new Set(cabs.map((c) => c.id));
       ui.set({ ...ui.get(), selectedId: null, selectedIds: [] });
       store.set((p) => ({ ...p, furniture: p.furniture.filter((c) => !ids.has(c.id)) }));

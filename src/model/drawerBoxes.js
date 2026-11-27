@@ -1,5 +1,6 @@
 import { cabinetPanels, frontParts } from './furniture.js';
 import { drawerSystemBox } from './drawerSystems.js';
+import { t } from '../i18n.js';
 
 // Szuflady z wybranym systemem (part.system) w korpusie: wymiary dna i pleców do docięcia, prowadnice, kolor.
 // LW — szerokość wewnętrzna korpusu (między bokami; z dystansami pod prowadnice — węższa), LT — dostępna głębokość
@@ -45,7 +46,7 @@ export function cabinetDrawerBoxes(cabinet, project) {
         zFront: left ? left.z + left.depth : cabinet.z + cabinet.depth, // przednia krawędź boków
       };
     }
-    out.push({ index, part, front, inner, LW, LT, ...box, rail, name: front?.name ?? `Szuflada ${st.parts.length - index}` });
+    out.push({ index, part, front, inner, LW, LT, ...box, rail, name: front?.name ?? t('Szuflada {n}', { n: st.parts.length - index }) });
   });
   return out;
 }

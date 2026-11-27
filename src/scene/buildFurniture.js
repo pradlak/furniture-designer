@@ -10,6 +10,7 @@ import { projectSolids, panelEdgeSet, trimEdgeSet, TRIM_THICKNESS_AXIS } from '.
 import { buildCabinetDimensions, buildPartDimensions, buildTotalDimensions, buildClearanceDimensions } from './furnitureDims.js';
 import { decorSegments } from '../model/decor.js';
 import { buildSlab, needsSlab } from './slab.js';
+import { t } from '../i18n.js';
 import { resolveHoles } from '../model/boardFeatures.js';
 import { boardBox, boardMaterial as boardPlateMaterial, boardIssues, mountPoints } from '../model/boards.js';
 import { getSettings } from '../state/settings.js';
@@ -231,8 +232,8 @@ function addSeatLine(group, project) {
   }
   const el = document.createElement('div');
   el.className = 'dim-label seat-label';
-  el.textContent = `siedzisko ${Math.round(y)} mm`;
-  el.title = 'Wysokość siedziska od podłogi (zmiana: Pokaż → Linia siedziska)';
+  el.textContent = t('siedzisko {v} mm', { v: Math.round(y) });
+  el.title = t('Wysokość siedziska od podłogi (zmiana: Pokaż → Linia siedziska)');
   const label = new CSS2DObject(el);
   label.position.set(...toScene(Math.min(space.width - 120, 160), y + 25, off, space));
   group.add(label);
@@ -443,7 +444,7 @@ function selectedPartBoxes(project, ids) {
       const l = legs.reduce((best, x) => (!best || x.z > best.z + 0.5 || (Math.abs(x.z - best.z) <= 0.5 && x.x < best.x) ? x : best), null);
       if (l) {
         const box = { x: l.x - l.diameter / 2, y: l.y, z: l.z - l.diameter / 2, width: l.diameter, height: l.height, depth: l.diameter };
-        parts.push({ box, name: `Nóżki ${cabinet.name} (${legs.length} szt.)`, round: true, owner: cabinet.id });
+        parts.push({ box, name: t('Nóżki {name} ({n} szt.)', { name: cabinet.name, n: legs.length }), round: true, owner: cabinet.id });
       }
       continue;
     }
@@ -576,14 +577,14 @@ function addOpenFrontsButton(group, cabinet, project, isFrontOpen, frontKey = nu
   const open = fronts.some((p) => isFrontOpen(`${cabinet.id}:${p.key}`));
   const drawers = fronts.every((p) => p.opening?.drawer);
   const doors = fronts.every((p) => !p.opening?.drawer);
-  const what = frontKey ? (drawers ? 'szufladę' : 'drzwi') : drawers ? 'szuflady' : doors ? 'drzwi' : 'fronty';
+  const what = frontKey ? (drawers ? t('szufladę') : t('drzwi')) : drawers ? t('szuflady') : doors ? t('drzwi') : t('fronty');
   const el = document.createElement('button');
   el.type = 'button';
   el.className = `open-fronts-btn${open ? ' is-open' : ''}`;
   if (frontKey) el.dataset.openFront = `${cabinet.id}:${frontKey}`;
   else el.dataset.openFronts = cabinet.id;
   el.textContent = open ? '⇥' : '⇤';
-  el.title = open ? `Zamknij ${what}` : `${drawers ? 'Wysuń' : 'Otwórz'} ${what}`;
+  el.title = open ? t('Zamknij {what}', { what }) : drawers ? t('Wysuń {what}', { what }) : t('Otwórz {what}', { what });
   el.setAttribute('aria-label', el.title);
   const label = new CSS2DObject(el);
   if (frontKey) {
@@ -871,9 +872,9 @@ export function buildFurniture(project, selectedIds = new Set(), selectedFronts 
     const belowOf = (box, skipBoard = null, skipCabinet = null) => {
       const overlapsX = (b) => b.x < box.x + box.width && b.x + b.width > box.x;
       return [
-        ...(project.trims ?? []).filter((t) => t.type === 'countertop' && !t.hidden).map((t) => trimBox(t, project)).filter((b) => b && overlapsX(b)).map((b) => ({ top: b.y + b.height, front: b.z + b.depth, label: 'blatu' })),
-        ...(project.boards ?? []).filter((b) => b.id !== skipBoard && !b.hidden).map((b) => ({ b, box: boardBox(b, project) })).filter(({ box: b }) => overlapsX(b)).map(({ b, box: bb }) => ({ top: bb.y + bb.height, front: bb.z + bb.depth, label: b.kind === 'worktop' ? 'blatu' : 'półki' })),
-        ...project.furniture.filter((c) => !c.hidden && c.id !== skipCabinet).map((c) => cabinetBounds(c, project)).filter(overlapsX).map((b) => ({ top: b.y + b.height, front: b.z + b.depth, label: 'korpusu' })),
+        ...(project.trims ?? []).filter((t) => t.type === 'countertop' && !t.hidden).map((t) => trimBox(t, project)).filter((b) => b && overlapsX(b)).map((b) => ({ top: b.y + b.height, front: b.z + b.depth, label: t('od blatu') })),
+        ...(project.boards ?? []).filter((b) => b.id !== skipBoard && !b.hidden).map((b) => ({ b, box: boardBox(b, project) })).filter(({ box: b }) => overlapsX(b)).map(({ b, box: bb }) => ({ top: bb.y + bb.height, front: bb.z + bb.depth, label: b.kind === 'worktop' ? t('od blatu') : t('od półki') })),
+        ...project.furniture.filter((c) => !c.hidden && c.id !== skipCabinet).map((c) => cabinetBounds(c, project)).filter(overlapsX).map((b) => ({ top: b.y + b.height, front: b.z + b.depth, label: t('od korpusu') })),
       ];
     };
     const boardIds = [...selectedFronts].filter((id) => id.startsWith('board:'));

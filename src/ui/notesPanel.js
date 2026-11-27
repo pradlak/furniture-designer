@@ -1,5 +1,6 @@
 import { escapeHtml, setIfNotFocused } from './dom.js';
 import { createNote, NOTE_MAX_LENGTH } from '../model/notes.js';
+import { t, isEnglish } from '../i18n.js';
 
 // Zakładka „Notatki”: lista notatek projektu — dodawanie, edycja tekstu, „dotyczy” (cały projekt albo korpus),
 // odhaczanie jako zrobione, usuwanie. Notatki są częścią projektu (cofnij / ponów, autozapis, eksport, konto).
@@ -12,7 +13,7 @@ export function createNotesPanel(root, store, { onShowCabinet, onCountChange } =
 
   const dateText = (ms) => {
     try {
-      return new Date(ms).toLocaleDateString('pl-PL', { day: 'numeric', month: 'short', year: 'numeric' });
+      return new Date(ms).toLocaleDateString(isEnglish() ? 'en-GB' : 'pl-PL', { day: 'numeric', month: 'short', year: 'numeric' });
     } catch {
       return '';
     }
@@ -20,18 +21,18 @@ export function createNotesPanel(root, store, { onShowCabinet, onCountChange } =
 
   function card(n, project) {
     const options = [
-      `<option value="">Cały projekt</option>`,
+      `<option value="">${t('Cały projekt')}</option>`,
       ...project.furniture.map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`),
     ].join('');
     return `
       <div class="item note" data-kind="note" data-id="${n.id}">
-        <textarea data-note-text rows="3" maxlength="${NOTE_MAX_LENGTH}" placeholder="Treść notatki…" aria-label="Treść notatki"></textarea>
+        <textarea data-note-text rows="3" maxlength="${NOTE_MAX_LENGTH}" placeholder="${t('Treść notatki…')}" aria-label="${t('Treść notatki')}"></textarea>
         <div class="note-meta">
-          <label class="check small"><input type="checkbox" data-note-done /> zrobione</label>
-          <label class="note-target"><span>Dotyczy:</span> <select data-note-cabinet>${options}</select></label>
-          <button type="button" class="icon" data-note-show title="Pokaż korpus">⌖</button>
+          <label class="check small"><input type="checkbox" data-note-done /> ${t('zrobione')}</label>
+          <label class="note-target"><span>${t('Dotyczy:')}</span> <select data-note-cabinet>${options}</select></label>
+          <button type="button" class="icon" data-note-show title="${t('Pokaż korpus')}">⌖</button>
           <span class="note-date">${escapeHtml(dateText(n.createdAt))}</span>
-          <button type="button" class="danger" data-note-remove title="Usuń notatkę">✕</button>
+          <button type="button" class="danger" data-note-remove title="${t('Usuń notatkę')}">✕</button>
         </div>
       </div>`;
   }
@@ -39,10 +40,10 @@ export function createNotesPanel(root, store, { onShowCabinet, onCountChange } =
   function render(project) {
     const notes = project.notes ?? [];
     root.innerHTML = `
-      <p class="hint">Notatki do projektu — pomysły, rzeczy do zmierzenia albo sprawdzenia, ustalenia. Zapisują się
-        razem z projektem (także w pliku z „Eksportuj” i na koncie). Notatkę można przypiąć do korpusu.</p>
-      <div class="add-row notes-add"><button type="button" data-note-add>+ Notatka</button></div>
-      <div class="items">${notes.length ? notes.map((n) => card(n, project)).join('') : '<p class="empty">Brak notatek.</p>'}</div>`;
+      <p class="hint">${t(`Notatki do projektu — pomysły, rzeczy do zmierzenia albo sprawdzenia, ustalenia. Zapisują się
+        razem z projektem (także w pliku z „Eksportuj” i na koncie). Notatkę można przypiąć do korpusu.`)}</p>
+      <div class="add-row notes-add"><button type="button" data-note-add>${t('+ Notatka')}</button></div>
+      <div class="items">${notes.length ? notes.map((n) => card(n, project)).join('') : `<p class="empty">${t('Brak notatek.')}</p>`}</div>`;
     renderedKey = structureKey(project);
     sync(project);
   }
@@ -80,7 +81,7 @@ export function createNotesPanel(root, store, { onShowCabinet, onCountChange } =
     if (!id) return;
     const note = store.get().notes?.find((n) => n.id === id);
     if (e.target.closest('[data-note-remove]')) {
-      if (note?.text.trim() && !confirm('Usunąć tę notatkę?')) return;
+      if (note?.text.trim() && !confirm(t('Usunąć tę notatkę?'))) return;
       store.set((p) => ({ ...p, notes: p.notes.filter((n) => n.id !== id) }));
       return;
     }

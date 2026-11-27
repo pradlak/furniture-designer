@@ -3,12 +3,15 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Darmowy projektant mebli online — szafy, zabudowy, lista formatek | Meble Samemu</title>
+    <title>Darmowy projektant mebli online — o programie | Meble Samemu</title>
     <meta
       name="description"
-      content="Darmowy program do projektowania mebli w przeglądarce: szafa do wnęki, zabudowa poddasza ze skosem, szafki kuchenne. Model 3D, lista formatek do rozkroju (Excel, CSV) i plik do rozkroju na meble.pl. Bez rejestracji."
+      content="Darmowy projektant mebli w przeglądarce: szafa do wnęki, zabudowa poddasza, szafki kuchenne w 3D i lista formatek do rozkroju (Excel, CSV, meble.pl)."
     />
     <link rel="canonical" href="https://meblesamemu.pl/o-programie" />
+    <link rel="alternate" hreflang="pl" href="https://meblesamemu.pl/o-programie" />
+    <link rel="alternate" hreflang="en" href="https://meblesamemu.pl/en/about" />
+    <link rel="alternate" hreflang="x-default" href="https://meblesamemu.pl/o-programie" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/strony.css" />
     <meta property="og:type" content="website" />
@@ -47,6 +50,30 @@
         ]
       }
     </script>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "BreadcrumbList",
+            "itemListElement": [
+              {
+                "@type": "ListItem",
+                "position": 1,
+                "name": "Meble Samemu",
+                "item": "https://meblesamemu.pl/"
+              },
+              {
+                "@type": "ListItem",
+                "position": 2,
+                "name": "O programie",
+                "item": "https://meblesamemu.pl/o-programie"
+              }
+            ]
+          }
+        ]
+      }
+    </script>
   </head>
   <body>
     <header class="site-header">
@@ -56,17 +83,26 @@
           <a href="/">Projektant</a>
           <a href="/o-programie" aria-current="page">O programie</a>
           <a href="/poradniki/">Poradniki</a>
+          <a href="/en/about" lang="en" hreflang="en" class="lang-link">English</a>
         </nav>
       </div>
     </header>
 
     <main class="wrap">
+      <nav class="crumbs" aria-label="Okruszki"><a href="/">Meble Samemu</a> › <span aria-current="page">O programie</span></nav>
       <h1>Darmowy projektant mebli online</h1>
       <p class="lead">
         Zaprojektuj szafę do wnęki, zabudowę poddasza albo szafki kuchenne w 3D, a potem pobierz listę formatek
         do zamówienia rozkroju płyt. Bez rejestracji, bez instalacji — w przeglądarce.
       </p>
       <p><a class="cta" href="/">Otwórz projektant mebli →</a></p>
+
+      <figure class="shot">
+        <img src="/obrazki/projektant-mebli-3d-wymiary.webp" width="1200" height="771" fetchpriority="high"
+          alt="Okno programu Meble Samemu: szafa z trzech korpusów w widoku 3D, zaznaczony środkowy korpus z wymiarami i karta z rysunkiem z przodu i z boku" />
+        <figcaption>Szafa we wnęce w widoku 3D. Zaznaczony korpus pokazuje wymiary (szerokość, głębokość, wysokość korpusu
+          i nóżek), a karta po prawej — rysunek z przodu i z boku oraz wszystkie ustawienia.</figcaption>
+      </figure>
 
       <h2>Dla kogo jest ten program?</h2>
       <p>
@@ -92,7 +128,62 @@
         <li><b>Łańcuszki</b> — zmień szerokość, wysokość, głębokość albo nóżki w kilku korpusach naraz.</li>
         <li><b>Materiały i okleina</b> — płyta meblowa, MDF lakierowany, HDF, blat; grubości, kolory i obrzeże na wybranych krawędziach.</li>
         <li><b>Działania w polach</b> — wpisz np. <code>1100-70</code>, a program policzy wynik.</li>
-        <li><b>Przykładowe projekty</b> — otwierasz jednym kliknięciem: <a href="/?przyklad=kuchnia">szafki kuchenne</a>, <a href="/?przyklad=szafa">szafa we wnęce</a>, <a href="/?przyklad=poddasze">zabudowa poddasza</a>, <a href="/?przyklad=regal">regał na książki</a>, <a href="/?przyklad=komoda">komoda</a>.</li>
+      </ul>
+
+      <h2>Przykładowe projekty w 3D</h2>
+      <p>
+        Każdy z tych projektów otworzysz w programie jednym kliknięciem — potem wystarczy zmienić wymiary pod swoją wnękę
+        albo pokój, a korpusy, fronty i blendy dopasują się same.
+      </p>
+      <ul class="gallery">
+        <li>
+          <a href="/?przyklad=szafa">
+            <img src="/obrazki/przyklad-szafa-we-wnece.webp" width="900" height="540" loading="lazy"
+              alt="Szafa we wnęce: trzy korpusy do sufitu z drzwiami frezowanymi, blendy boczne przy ścianach" />
+            <span>Szafa we wnęce</span>
+          </a>
+          <p>Trzy korpusy do sufitu, drzwi podwójne, blendy przy ścianach i cokół.</p>
+        </li>
+        <li>
+          <a href="/?przyklad=poddasze">
+            <img src="/obrazki/przyklad-zabudowa-poddasza.webp" width="900" height="540" loading="lazy"
+              alt="Zabudowa poddasza: korpusy ze skośną górą pod skosem dachu, drzwi ścięte pod kąt" />
+            <span>Zabudowa poddasza</span>
+          </a>
+          <p>Korpusy ze skośną górą pod skosem 45°, drzwi i półki dopasowane do dachu.</p>
+        </li>
+        <li>
+          <a href="/?przyklad=kuchnia">
+            <img src="/obrazki/przyklad-szafki-kuchenne.webp" width="900" height="540" loading="lazy"
+              alt="Szafki kuchenne dolne z drewnianym blatem, drzwiami i trzema szufladami" />
+            <span>Szafki kuchenne</span>
+          </a>
+          <p>Szafki dolne na nóżkach z blatem, cokołem, drzwiami i szufladami.</p>
+        </li>
+        <li>
+          <a href="/?przyklad=kominek">
+            <img src="/obrazki/przyklad-salon-przy-kominku.webp" width="900" height="540" loading="lazy"
+              alt="Zabudowa w salonie po obu stronach kominka, z otwartymi drzwiami i półkami w środku" />
+            <span>Salon przy kominku</span>
+          </a>
+          <p>Szafki po obu stronach kominka — drzwi otwierasz w 3D i zaglądasz do środka.</p>
+        </li>
+        <li>
+          <a href="/?przyklad=regal">
+            <img src="/obrazki/przyklad-regal-na-ksiazki.webp" width="900" height="540" loading="lazy"
+              alt="Regał na książki z dwóch otwartych korpusów z półkami" />
+            <span>Regał na książki</span>
+          </a>
+          <p>Otwarte korpusy z półkami, bez frontów.</p>
+        </li>
+        <li>
+          <a href="/?przyklad=komoda">
+            <img src="/obrazki/przyklad-komoda.webp" width="750" height="450" loading="lazy"
+              alt="Komoda na nóżkach z czterema szufladami, drzwiami i drewnianym blatem" />
+            <span>Komoda</span>
+          </a>
+          <p>Szuflady i drzwi na nóżkach, z blatem.</p>
+        </li>
       </ul>
 
       <h2>Lista formatek do rozkroju</h2>
@@ -102,6 +193,12 @@
         okleić, a także cięcia skośne, frezy i otwory pod uchwyty. Jednakowe formatki są złączone w jeden wiersz.
         Osobno dostajesz listę akcesoriów: nóżki, zawiasy, prowadnice i uchwyty.
       </p>
+      <figure class="shot shot-narrow">
+        <img src="/obrazki/lista-formatek-okno.webp" width="520" height="560" loading="lazy"
+          alt="Okienko Formatki do rozkroju: wybór formatu pliku (Excel, CSV, meble.pl, fronty MDF, blaty) i elementów do eksportu" />
+        <figcaption>Okienko „Formatki”: wybierasz format pliku i to, co ma się znaleźć na liście — korpusy, plecy,
+          fronty, blendy, blaty i akcesoria, dla wybranych mebli i materiałów.</figcaption>
+      </figure>
       <p>
         Więcej: <a href="/poradniki/formatki-rozkroj-plyt">jak policzyć formatki i zamówić rozkrój płyt</a> oraz
         <a href="/poradniki/rozkroj-meble-pl-csv">rozkrój na meble.pl z pliku CSV</a>.
@@ -135,6 +232,15 @@
         <li><a href="/szafa-na-skosy">Szafa na skosy — zabudowa poddasza</a></li>
         <li><a href="/projektant-kuchni">Program do projektowania kuchni — szafki kuchenne</a></li>
         <li><a href="/lista-formatek">Lista formatek do rozkroju płyt</a></li>
+      </ul>
+      <h2>Powiązane poradniki</h2>
+      <ul>
+        <li><a href="/poradniki/szafa-do-wneki">Jak zaprojektować szafę do wnęki krok po kroku</a></li>
+        <li><a href="/poradniki/wymiary-szafek-kuchennych">Standardowe wymiary szafek kuchennych</a></li>
+        <li><a href="/poradniki/ile-plyty-na-szafe">Ile płyty potrzeba na szafę — i 18 czy 16 mm</a></li>
+        <li><a href="/poradniki/zawiasy-puszkowe-otwory">Zawiasy puszkowe — gdzie wiercić otwory</a></li>
+        <li><a href="/poradniki/okleina-obrzeze-krawedzi">Okleina na krawędzie płyty — ile i gdzie</a></li>
+        <li><a href="/poradniki/darmowy-program-do-projektowania-mebli">Darmowy program do projektowania mebli — porównanie</a></li>
       </ul>
     </main>
 

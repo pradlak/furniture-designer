@@ -3,6 +3,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { cabinetPanels } from '../model/furniture.js';
 import { selectedCabinetIds } from '../state/selection.js';
 import { getSettings } from '../state/settings.js';
+import { t } from '../i18n.js';
 
 // Mini-podgląd 3D zaznaczonego korpusu — okienko pod mapką zabudowy (lewy górny róg): obracany myszką, a klik
 // w płytę zaznacza ją (bok, wieniec, plecy, półka, front — jak w głównym widoku 3D) i otwiera jej ustawienia.
@@ -18,8 +19,8 @@ export function initMiniCabinet(store, ui) {
   win.hidden = true;
   // sam korpus (bez ramki okienka): przezroczyste tło, mały przełącznik frontów w rogu
   win.innerHTML = `
-    <div class="mini-canvas" title="Przeciągnij — obróć, klik — zaznacz płytę"></div>
-    <button type="button" class="mini-toggle" data-mini-fronts title="Pokaż / schowaj fronty (żeby zaznaczyć płyty w środku)">fronty</button>
+    <div class="mini-canvas" title="${t('Przeciągnij — obróć, klik — zaznacz płytę')}"></div>
+    <button type="button" class="mini-toggle" data-mini-fronts title="${t('Pokaż / schowaj fronty (żeby zaznaczyć płyty w środku)')}">${t('fronty')}</button>
     <div class="mini-tip" hidden></div>`;
   document.body.appendChild(win);
   const box = win.querySelector('.mini-canvas');

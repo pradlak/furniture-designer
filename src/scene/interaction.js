@@ -35,6 +35,7 @@ import { tileTargets } from '../model/tileTargets.js';
 import { wallFinishOf, setWallFinish, wallLabel, tilesEstimate, TILE_DEFAULTS, TILE_LAYOUTS, TILE_LIMITS } from '../model/wallFinish.js';
 import { FRONT_DECORS, decorPreviewSvg } from '../model/decor.js';
 import { panelInfoMenu } from '../ui/panelInfo.js';
+import { t, isEnglish } from '../i18n.js';
 
 const CLICK_TOLERANCE_PX = 4;
 
@@ -217,7 +218,7 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
     }
     el.style.cursor = m.wall === 'ceiling' ? 'ns-resize' : 'ew-resize';
     const r = viewer.container.getBoundingClientRect();
-    snapTip.textContent = wallMoveLabel(next.space, m.wall) + (snapLabel ? ` · 🧲 dosunięta do ${snapLabel}` : '');
+    snapTip.textContent = wallMoveLabel(next.space, m.wall) + (snapLabel ? ` · 🧲 ${t('dosunięta do {what}', { what: snapLabel })}` : '');
     snapTip.style.left = `${e.clientX - r.left + 14}px`;
     snapTip.style.top = `${e.clientY - r.top + 18}px`;
     snapTip.hidden = false;
@@ -244,16 +245,16 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
     return { obstacleResize: { ...h, base: { ...o }, start: h.point, held: null }, plane };
   }
   // Krawędź przyciąga się (jak przy korpusie) do ścian, krawędzi mebli i innych przeszkód; Alt — bez przyciągania.
-  const OBSTACLE_LABEL = { left: 'Szerokość', right: 'Szerokość', front: 'Głębokość', back: 'Głębokość', top: 'Wysokość', bottom: 'Wysokość (od sufitu)' };
+  const OBSTACLE_LABEL = { left: t('Szerokość'), right: t('Szerokość'), front: t('Głębokość'), back: t('Głębokość'), top: t('Wysokość'), bottom: t('Wysokość (od sufitu)') };
   function dragObstacleResize(pt, e) {
     const m = drag.obstacleResize;
     const project = store.get();
     const { space } = project;
     const o0 = m.base;
     const boxes = [
-      ...project.furniture.map((c) => ({ box: cabinetBounds(c, project), label: `korpusu „${c.name}”` })),
-      ...space.obstacles.filter((x) => x.id !== o0.id).map((x) => ({ box: x, label: `„${x.name || 'przeszkody'}”` })),
-      ...(project.boards ?? []).map((x) => ({ box: boardBox(x, project), label: `„${x.name}”` })),
+      ...project.furniture.map((c) => ({ box: cabinetBounds(c, project), label: t('korpusu „{name}”', { name: c.name }) })),
+      ...space.obstacles.filter((x) => x.id !== o0.id).map((x) => ({ box: x, label: t('„{name}”', { name: x.name || t('przeszkody') }) })),
+      ...(project.boards ?? []).map((x) => ({ box: boardBox(x, project), label: t('„{name}”', { name: x.name }) })),
     ];
     let edge;
     let targets;
@@ -261,19 +262,19 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
       const dx = (pt.x - m.start.x) / MM;
       edge = m.face === 'right' ? o0.x + o0.width + dx : o0.x + dx;
       targets = [
-        { v: m.face === 'right' ? space.width : 0, label: m.face === 'right' ? 'prawej ściany' : 'lewej ściany' },
+        { v: m.face === 'right' ? space.width : 0, label: m.face === 'right' ? t('prawej ściany') : t('lewej ściany') },
         ...boxes.flatMap(({ box, label }) => [{ v: box.x, label }, { v: box.x + box.width, label }]),
       ];
     } else if (m.face === 'back') {
       edge = o0.z + (pt.z - m.start.z) / MM;
-      targets = [{ v: 0, label: 'tylnej ściany' }, ...boxes.map(({ box, label }) => ({ v: box.z + box.depth, label: `przodu ${label}` }))];
+      targets = [{ v: 0, label: t('tylnej ściany') }, ...boxes.map(({ box, label }) => ({ v: box.z + box.depth, label: t('przodu {what}', { what: label }) }))];
     } else if (m.face === 'front') {
       edge = o0.z + o0.depth + (pt.z - m.start.z) / MM;
-      targets = [{ v: space.depth, label: 'przodu przestrzeni' }, ...boxes.map(({ box, label }) => ({ v: box.z + box.depth, label: `wyrównany z ${label}` }))];
+      targets = [{ v: space.depth, label: t('przodu przestrzeni') }, ...boxes.map(({ box, label }) => ({ v: box.z + box.depth, label: t('wyrównany z {what}', { what: label }) }))];
     } else {
       const dy = (pt.y - m.start.y) / MM;
       edge = m.face === 'top' ? o0.y + o0.height + dy : o0.y + dy;
-      targets = m.face === 'top' ? [{ v: space.height, label: 'sufitu' }] : boxes.map(({ box, label }) => ({ v: box.y + box.height, label: `wierzchu ${label}` }));
+      targets = m.face === 'top' ? [{ v: space.height, label: t('sufitu') }] : boxes.map(({ box, label }) => ({ v: box.y + box.height, label: t('wierzchu {what}', { what: label }) }));
     }
     let label = null;
     if (!e.altKey) {
@@ -332,7 +333,7 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
     const project = store.get();
     const d = (project.decorations ?? []).find((x) => x.id === id);
     if (!d) return null;
-    const t = decorType(d.type);
+    const dt = decorType(d.type);
     const { space } = project;
     const own = (o) => {
       for (let p = o; p; p = p.parent) if (p.userData?.decorId === id) return true;
@@ -343,7 +344,7 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
       .filter((h) => h.object.isMesh && h.object.material?.visible !== false && !h.object.userData.wallHandle && !h.object.userData.obstacleResize && !own(h.object));
     const mm = (v) => Math.round(v);
     const P = (h) => ({ x: h.point.x / MM, y: h.point.y / MM, z: h.point.z / MM + space.depth });
-    if (t.place === 'wall') {
+    if (dt.place === 'wall') {
       const h = hits.find((x) => x.object.userData.wall && !['floor', 'ceiling', 'slope'].includes(x.object.userData.wall));
       if (!h) return null;
       const tag = h.object.userData.wall;
@@ -359,14 +360,14 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
         n = [-out[0], -out[1]];
       }
       const rotation = mm((-Math.atan2(n[0], n[1]) * 180) / Math.PI);
-      const names = { back: 'tylnej ściany', left: 'lewej ściany', right: 'prawej ściany' };
-      return { pos: { x: mm(p.x), y: mm(Math.max(0, p.y - d.height / 2)), z: mm(p.z), rotation }, label: `do ${names[tag] ?? 'ściany'}` };
+      const names = { back: t('tylnej ściany'), left: t('lewej ściany'), right: t('prawej ściany') };
+      return { pos: { x: mm(p.x), y: mm(Math.max(0, p.y - d.height / 2)), z: mm(p.z), rotation }, label: t('do {what}', { what: names[tag] ?? t('ściany') }) };
     }
-    if (t.place === 'ceiling') {
+    if (dt.place === 'ceiling') {
       const h = hits[0];
       if (!h) return null;
       const p = P(h);
-      return { pos: { x: mm(p.x), y: mm(space.height - d.height), z: mm(Math.min(space.depth, Math.max(0, p.z))) }, label: 'pod sufitem' };
+      return { pos: { x: mm(p.x), y: mm(space.height - d.height), z: mm(Math.min(space.depth, Math.max(0, p.z))) }, label: t('pod sufitem') };
     }
     // podłoga / mebel: pierwsza powierzchnia „od góry” (normalna w górę) albo podłoga
     for (const h of hits) {
@@ -374,11 +375,11 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
       const up = h.face && new THREE.Vector3().copy(h.face.normal).transformDirection(h.object.matrixWorld).y > 0.7;
       if (tag === 'floor' || (!tag && up)) {
         const p = P(h);
-        let label = 'na podłodze';
+        let label = t('na podłodze');
         if (tag !== 'floor') {
           let o = h.object;
           while (o && !o.userData.cabinetId && !o.userData.trimId && !o.userData.boardId && !o.userData.obstacleId) o = o.parent;
-          label = o?.userData.cabinetId ? 'na korpusie' : o?.userData.trimId ? 'na blacie' : o?.userData.boardId ? 'na półce / blacie' : 'na powierzchni';
+          label = o?.userData.cabinetId ? t('na korpusie') : o?.userData.trimId ? t('na blacie') : o?.userData.boardId ? t('na półce / blacie') : t('na powierzchni');
         }
         return { pos: { x: mm(p.x), y: mm(tag === 'floor' ? 0 : p.y), z: mm(p.z) }, label };
       }
@@ -407,15 +408,15 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
     for (const a of axes) pos[a] = m.from[a] + d[a];
     const DIM = { x: 'width', y: 'height', z: 'depth' };
     const others = [
-      ...project.furniture.map((c) => ({ box: cabinetBounds(c, project), label: `korpusu „${c.name}”` })),
-      ...space.obstacles.map((o) => ({ box: o, label: `„${o.name || 'przeszkody'}”` })),
-      ...project.boards.filter((x) => x.id !== m.id).map((x) => ({ box: boardBox(x, project), label: `„${x.name}”` })),
+      ...project.furniture.map((c) => ({ box: cabinetBounds(c, project), label: t('korpusu „{name}”', { name: c.name }) })),
+      ...space.obstacles.map((o) => ({ box: o, label: t('„{name}”', { name: o.name || t('przeszkody') }) })),
+      ...project.boards.filter((x) => x.id !== m.id).map((x) => ({ box: boardBox(x, project), label: t('„{name}”', { name: x.name }) })),
     ];
     const reach = snapThresholdMm(m.start) * WALL_SNAP_FACTOR;
     const labels = [];
     for (const a of axes) {
       const size = box[DIM[a]];
-      const walls = { x: [[0, 'lewej ściany'], [space.width, 'prawej ściany']], y: [[0, 'podłogi'], [space.height, 'sufitu']], z: [[0, 'tylnej ściany'], [space.depth, 'przodu przestrzeni']] }[a];
+      const walls = { x: [[0, t('lewej ściany')], [space.width, t('prawej ściany')]], y: [[0, t('podłogi')], [space.height, t('sufitu')]], z: [[0, t('tylnej ściany')], [space.depth, t('przodu przestrzeni')]] }[a];
       // cele: { v — położenie krawędzi, edge: 'lo' | 'hi' }
       const targets = [
         ...walls.map(([v, label]) => ({ v, label, edge: v === 0 ? 'lo' : 'hi' })),
@@ -424,8 +425,8 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
           .flatMap(({ box: o, label }) => [
             { v: o[a] + o[DIM[a]], label, edge: 'lo' }, // dosunięcie / postawienie na wierzchu
             { v: o[a], label, edge: 'hi' },
-            { v: o[a], label: `wyrównana z ${label}`, edge: 'lo' },
-            { v: o[a] + o[DIM[a]], label: `wyrównana z ${label}`, edge: 'hi' },
+            { v: o[a], label: t('wyrównana z {what}', { what: label }), edge: 'lo' },
+            { v: o[a] + o[DIM[a]], label: t('wyrównana z {what}', { what: label }), edge: 'hi' },
           ]),
       ];
       let v = pos[a];
@@ -445,7 +446,7 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
     store.set((p) => ({ ...p, boards: p.boards.map((x) => (x.id === m.id ? { ...x, ...pos } : x)) }));
     el.style.cursor = 'grabbing';
     const r = viewer.container.getBoundingClientRect();
-    snapTip.textContent = m.vertical ? `Od podłogi ${pos.y} mm` : `Od lewej ${pos.x} mm · od tyłu ${pos.z} mm`;
+    snapTip.textContent = m.vertical ? t('Od podłogi {v} mm', { v: pos.y }) : t('Od lewej {x} mm · od tyłu {z} mm', { x: pos.x, z: pos.z });
     if (labels.length) snapTip.textContent += ` · 🧲 ${[...new Set(labels)].join(' · ')}`;
     snapTip.style.left = `${e.clientX - r.left + 14}px`;
     snapTip.style.top = `${e.clientY - r.top + 18}px`;
@@ -494,7 +495,7 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
     const hit = handles.length ? raycaster.intersectObjects(handles, false)[0] : null;
     return hit ? { ...hit.object.userData.cabinetResize, point: hit.point.clone() } : null;
   }
-  const FACE_LABEL = { left: 'Szerokość', right: 'Szerokość', top: 'Wysokość', front: 'Głębokość' };
+  const FACE_LABEL = { left: t('Szerokość'), right: t('Szerokość'), top: t('Wysokość'), front: t('Głębokość') };
   function startCabinetResize(h) {
     const cabinet = store.get().furniture.find((c) => c.id === h.cabinetId);
     let plane;
@@ -518,8 +519,8 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
     const project = m.group ? m.baseProject : store.get(); // (grupa — cele przyciągania ze stanu sprzed przeciągania)
     const c0 = m.base;
     const others = [
-      ...project.furniture.filter((c) => c.id !== c0.id && !m.group?.includes(c.id)).map((c) => ({ box: cabinetBounds(c, project), label: `korpusu „${c.name}”` })),
-      ...project.space.obstacles.map((o) => ({ box: o, label: `„${o.name || 'przeszkody'}”` })),
+      ...project.furniture.filter((c) => c.id !== c0.id && !m.group?.includes(c.id)).map((c) => ({ box: cabinetBounds(c, project), label: t('korpusu „{name}”', { name: c.name }) })),
+      ...project.space.obstacles.map((o) => ({ box: o, label: t('„{name}”', { name: o.name || t('przeszkody') }) })),
     ];
     const DIMS = { x: 'width', y: 'height', z: 'depth' };
     const near = (box, axes) =>
@@ -535,14 +536,14 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
       edge = c0.y + L0 + c0.height + (pt.y - m.start.y) / MM;
       const ceiling = c0.y + L0 + maxCabinetHeight(c0, project);
       targets = [
-        { v: ceiling, label: 'sufitu' },
-        ...others.filter((o) => near(o.box, ['x', 'z'])).map((o) => ({ v: o.box.y + o.box.height, label: `wyrównany z ${o.label}` })),
+        { v: ceiling, label: t('sufitu') },
+        ...others.filter((o) => near(o.box, ['x', 'z'])).map((o) => ({ v: o.box.y + o.box.height, label: t('wyrównany z {what}', { what: o.label }) })),
       ];
     } else if (m.face === 'front') {
       edge = c0.z + c0.depth + (pt.z - m.start.z) / MM;
       targets = [
-        { v: project.space.depth, label: 'przodu przestrzeni' },
-        ...others.filter((o) => near(o.box, ['x', 'y'])).map((o) => ({ v: o.box.z + o.box.depth, label: `wyrównany z ${o.label}` })),
+        { v: project.space.depth, label: t('przodu przestrzeni') },
+        ...others.filter((o) => near(o.box, ['x', 'y'])).map((o) => ({ v: o.box.z + o.box.depth, label: t('wyrównany z {what}', { what: o.label }) })),
       ];
     } else {
       const dx = (pt.x - m.start.x) / MM;
@@ -550,8 +551,8 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
       const nb = others.filter((o) => near(o.box, ['y', 'z']));
       targets =
         m.face === 'right'
-          ? [{ v: project.space.width, label: 'prawej ściany' }, ...nb.map((o) => ({ v: o.box.x, label: o.label }))]
-          : [{ v: 0, label: 'lewej ściany' }, ...nb.map((o) => ({ v: o.box.x + o.box.width, label: o.label }))];
+          ? [{ v: project.space.width, label: t('prawej ściany') }, ...nb.map((o) => ({ v: o.box.x, label: o.label }))]
+          : [{ v: 0, label: t('lewej ściany') }, ...nb.map((o) => ({ v: o.box.x + o.box.width, label: o.label }))];
     }
     let label = null;
     if (!e.altKey) {
@@ -585,7 +586,7 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
     const value = m.face === 'top' ? cab.height : m.face === 'front' ? cab.depth : cab.width;
     el.style.cursor = m.face === 'top' ? 'ns-resize' : 'ew-resize';
     const r = viewer.container.getBoundingClientRect();
-    snapTip.textContent = `${FACE_LABEL[m.face]} ${value} mm` + (m.group ? ` · ${m.group.length} korpusy` : '') + (label ? ` · 🧲 ${label}` : '');
+    snapTip.textContent = `${FACE_LABEL[m.face]} ${value} mm` + (m.group ? ` · ${t('{n} korpusy', { n: m.group.length })}` : '') + (label ? ` · 🧲 ${label}` : '');
     snapTip.style.left = `${e.clientX - r.left + 14}px`;
     snapTip.style.top = `${e.clientY - r.top + 18}px`;
     snapTip.hidden = false;
@@ -600,15 +601,15 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
     if (canRemovePoint(space, index)) {
       items.push({
         icon: '✕',
-        label: 'Usuń punkt',
+        label: t('Usuń punkt'),
         run: () => {
           const pts = spaceOutline(store.get().space).filter((_, j) => j !== index);
           if (!selfIntersects(pts)) setOutline(cleanOutline(pts, store.get().space));
         },
       });
-    } else items.push({ icon: '·', label: 'Tego punktu nie można usunąć (przód przestrzeni)', run: () => {} });
-    if (space.outline) items.push({ icon: '▭', label: 'Przywróć prostokąt (usuń kształt)', run: () => setOutline(null) });
-    menu.show(clientX, clientY, `Punkt ${index + 1} · od lewej ${p[0]}, od tyłu ${p[1]} mm`, items);
+    } else items.push({ icon: '·', label: t('Tego punktu nie można usunąć (przód przestrzeni)'), run: () => {} });
+    if (space.outline) items.push({ icon: '▭', label: t('Przywróć prostokąt (usuń kształt)'), run: () => setOutline(null) });
+    menu.show(clientX, clientY, t('Punkt {n} · od lewej {x}, od tyłu {z} mm', { n: index + 1, x: p[0], z: p[1] }), items);
   }
 
   // Najbliższa krawędź obrysu o danym znaczniku (left / right / back / edge:<i>) do punktu (x, z)
@@ -628,7 +629,7 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
   }
 
   // Menu ściany / podłogi: dodaj punkt tutaj, gotowe kształty (gdy narożnik jest jeszcze prosty), prostokąt.
-  const SURFACE_NAMES = { floor: 'Podłoga', ceiling: 'Sufit', left: 'Ściana lewa', right: 'Ściana prawa', back: 'Ściana tylna', slope: 'Skos' };
+  const SURFACE_NAMES = { floor: t('Podłoga'), ceiling: t('Sufit'), left: t('Ściana lewa'), right: t('Ściana prawa'), back: t('Ściana tylna'), slope: t('Skos') };
   const PRESETS_FOR = {
     left: ['leftFront', 'leftBack', 'chamferLeft'],
     right: ['rightFront', 'rightBack', 'chamferRight'],
@@ -641,7 +642,7 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
     if (near) {
       items.push({
         icon: '+',
-        label: 'Dodaj punkt tutaj (do kształtowania ściany)',
+        label: t('Dodaj punkt tutaj (do kształtowania ściany)'),
         run: () => {
           setOutline(insertPoint(store.get().space, near.e.i, near.p).outline);
           hooks.showSpace?.();
@@ -664,13 +665,13 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
     }
     if (near) {
       const fin = wallFinishOf(space, tag);
-      items.push({ icon: '🎨', label: 'Kolor tej ściany…', submenu: () => wallColorMenu(tag) });
-      items.push({ icon: '▦', label: fin.tiles ? 'Płytki na tej ścianie…' : 'Połóż płytki na tej ścianie…', submenu: () => tilesMenu(tag) });
+      items.push({ icon: '🎨', label: t('Kolor tej ściany…'), submenu: () => wallColorMenu(tag) });
+      items.push({ icon: '▦', label: fin.tiles ? t('Płytki na tej ścianie…') : t('Połóż płytki na tej ścianie…'), submenu: () => tilesMenu(tag) });
     }
-    if (space.outline) items.push({ icon: '▭', label: 'Przywróć prostokąt (usuń kształt)', run: () => setOutline(null) });
-    items.push({ icon: '✥', label: 'Kształtuj ściany myszką (punkty na podłodze)…', run: () => hooks.showSpace?.() });
-    items.push({ icon: '⚙', label: 'Ustawienia przestrzeni (wymiary, ściany, skosy, kolory)…', run: () => hooks.showSpace?.() });
-    menu.show(clientX, clientY, tag.startsWith('edge:') ? 'Ściana' : (SURFACE_NAMES[tag] ?? 'Ściana'), items);
+    if (space.outline) items.push({ icon: '▭', label: t('Przywróć prostokąt (usuń kształt)'), run: () => setOutline(null) });
+    items.push({ icon: '✥', label: t('Kształtuj ściany myszką (punkty na podłodze)…'), run: () => hooks.showSpace?.() });
+    items.push({ icon: '⚙', label: t('Ustawienia przestrzeni (wymiary, ściany, skosy, kolory)…'), run: () => hooks.showSpace?.() });
+    menu.show(clientX, clientY, tag.startsWith('edge:') ? t('Ściana') : (SURFACE_NAMES[tag] ?? t('Ściana')), items);
   }
 
   // --- wykończenie ściany: kolor i płytki (model/wallFinish.js) ---
@@ -678,52 +679,53 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
   const swatch = (hex) => `<span class="context-menu-swatch" style="background:${hex}"></span>`;
   // lista kolorów: run(hex) — po wyborze menu wraca do back()
   const colorChoices = (pick, back) => [
-    { icon: swatch('#ffffff'), label: 'czysta biel', run: () => (pick('#ffffff'), back()) },
+    { icon: swatch('#ffffff'), label: t('czysta biel'), run: () => (pick('#ffffff'), back()) },
     ...COLOR_PRESETS.filter((c) => !c.texture).map((c) => ({ icon: swatch(c.hex), label: c.name, run: () => (pick(c.hex), back()) })),
-    { icon: '…', label: 'własny kolor', run: () => pickCustomColor((c) => pick(c.hex)) },
+    { icon: '…', label: t('własny kolor'), run: () => pickCustomColor((c) => pick(c.hex)) },
   ];
   function wallColorMenu(tag) {
     const space = store.get().space;
     const cur = wallFinishOf(space, tag).color;
     return {
-      title: `Kolor: ${wallLabel(space, tag)}`,
+      title: t('Kolor: {what}', { what: wallLabel(space, tag) }),
       items: [
-        { icon: '↺', label: `jak pozostałe ściany${cur ? '' : ' ✓'}`, run: () => setFinish(tag, { color: null }) },
+        { icon: '↺', label: `${t('jak pozostałe ściany')}${cur ? '' : ' ✓'}`, run: () => setFinish(tag, { color: null }) },
         ...colorChoices((hex) => setFinish(tag, { color: hex }), () => null),
       ],
     };
   }
   function tilesMenu(tag) {
     const space = store.get().space;
-    const t = wallFinishOf(space, tag).tiles;
-    const title = `Płytki: ${wallLabel(space, tag)}`;
+    const tl = wallFinishOf(space, tag).tiles;
+    const title = t('Płytki: {what}', { what: wallLabel(space, tag) });
     const back = () => tilesMenu(tag);
-    if (!t) {
+    if (!tl) {
       return {
         title,
         items: [
-          { icon: '▦', label: 'Pas nad blatem (90–150 cm od podłogi)', run: () => (setFinish(tag, { tiles: { ...TILE_DEFAULTS } }), back()) },
-          { icon: '▦', label: 'Cała ściana (od podłogi do sufitu)', run: () => (setFinish(tag, { tiles: { ...TILE_DEFAULTS, from: 0, to: space.height, width: 600, height: 300, layout: 'grid' } }), back()) },
+          { icon: '▦', label: t('Pas nad blatem (90–150 cm od podłogi)'), run: () => (setFinish(tag, { tiles: { ...TILE_DEFAULTS } }), back()) },
+          { icon: '▦', label: t('Cała ściana (od podłogi do sufitu)'), run: () => (setFinish(tag, { tiles: { ...TILE_DEFAULTS, from: 0, to: space.height, width: 600, height: 300, layout: 'grid' } }), back()) },
         ],
       };
     }
     const set = (patch) => (setFinish(tag, { tiles: patch }), back());
     const est = tilesEstimate(space, tag);
-    const field = (label, key, min, max) => ({ input: true, label, unit: 'mm', value: t[key], min, max, onChange: (v) => (v == null ? back() : set({ [key]: v })) });
+    const field = (label, key, min, max) => ({ input: true, label, unit: 'mm', value: tl[key], min, max, onChange: (v) => (v == null ? back() : set({ [key]: v })) });
+    const area = est ? (isEnglish() ? est.area.toFixed(2) : est.area.toFixed(2).replace('.', ',')) : '';
     return {
       title,
       items: [
-        field('Od wysokości', 'from', 0, 20000),
-        field('Do wysokości', 'to', 0, 20000),
+        field(t('Od wysokości'), 'from', 0, 20000),
+        field(t('Do wysokości'), 'to', 0, 20000),
         ...tileTargets(store.get()).map((q) => ({ icon: q.icon, label: q.label, run: () => set(q.patch) })),
-        field('Płytka — szerokość', 'width', TILE_LIMITS.sizeMin, TILE_LIMITS.sizeMax),
-        field('Płytka — wysokość', 'height', TILE_LIMITS.sizeMin, TILE_LIMITS.sizeMax),
-        field('Fuga', 'grout', 0, TILE_LIMITS.groutMax),
-        ...TILE_LAYOUTS.map((l) => ({ icon: l.key === t.layout ? '✓' : '·', label: l.label, run: () => set({ layout: l.key }) })),
-        { icon: swatch(t.color), label: 'Kolor płytek…', submenu: () => ({ title: 'Kolor płytek', items: colorChoices((hex) => setFinish(tag, { tiles: { color: hex } }), back) }) },
-        { icon: swatch(t.groutColor), label: 'Kolor fugi…', submenu: () => ({ title: 'Kolor fugi', items: colorChoices((hex) => setFinish(tag, { tiles: { groutColor: hex } }), back) }) },
-        ...(est ? [{ info: true, icon: 'ℹ', label: `ok. ${est.area.toFixed(2).replace('.', ',')} m² · ok. ${est.count} płytek (z 10% zapasu)` }] : []),
-        { icon: '✕', label: 'Usuń płytki z tej ściany', run: () => setFinish(tag, { tiles: null }) },
+        field(t('Płytka — szerokość'), 'width', TILE_LIMITS.sizeMin, TILE_LIMITS.sizeMax),
+        field(t('Płytka — wysokość'), 'height', TILE_LIMITS.sizeMin, TILE_LIMITS.sizeMax),
+        field(t('Fuga'), 'grout', 0, TILE_LIMITS.groutMax),
+        ...TILE_LAYOUTS.map((l) => ({ icon: l.key === tl.layout ? '✓' : '·', label: l.label, run: () => set({ layout: l.key }) })),
+        { icon: swatch(tl.color), label: t('Kolor płytek…'), submenu: () => ({ title: t('Kolor płytek'), items: colorChoices((hex) => setFinish(tag, { tiles: { color: hex } }), back) }) },
+        { icon: swatch(tl.groutColor), label: t('Kolor fugi…'), submenu: () => ({ title: t('Kolor fugi'), items: colorChoices((hex) => setFinish(tag, { tiles: { groutColor: hex } }), back) }) },
+        ...(est ? [{ info: true, icon: 'ℹ', label: t('ok. {area} m² · ok. {n} płytek (z 10% zapasu)', { area, n: est.count }) }] : []),
+        { icon: '✕', label: t('Usuń płytki z tej ściany'), run: () => setFinish(tag, { tiles: null }) },
       ],
     };
   }
@@ -791,29 +793,29 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
     if (!o) return;
     const items = [];
     const sides = [
-      ['left', 'w lewo', '⇤', '←'],
-      ['right', 'w prawo', '⇥', '→'],
+      ['left', t('w lewo'), '⇤', '←'],
+      ['right', t('w prawo'), '⇥', '→'],
     ];
     for (const [side, dir, extendIcon] of sides) {
       const n = obstacleNeighbour(project, obstacleId, side);
-      if (n?.gap >= 0.5) items.push({ icon: extendIcon, label: `Rozszerz ${dir} do ${n.label} (+${Math.round(n.gap)} mm)`, run: () => store.set((p) => extendObstacle(p, obstacleId, side)) });
+      if (n?.gap >= 0.5) items.push({ icon: extendIcon, label: t('Rozszerz {dir} do {what} (+{d})', { dir, what: n.label, d: `${Math.round(n.gap)} mm` }), run: () => store.set((p) => extendObstacle(p, obstacleId, side)) });
     }
     for (const [side, dir, , moveIcon] of sides) {
       const n = obstacleNeighbour(project, obstacleId, side);
-      if (n?.gap >= 0.5) items.push({ icon: moveIcon, label: `Przesuń ${dir} do ${n.label} (${Math.round(n.gap)} mm)`, run: () => store.set((p) => slideObstacle(p, obstacleId, side)) });
+      if (n?.gap >= 0.5) items.push({ icon: moveIcon, label: t('Przesuń {dir} do {what} ({d})', { dir, what: n.label, d: `${Math.round(n.gap)} mm` }), run: () => store.set((p) => slideObstacle(p, obstacleId, side)) });
     }
     // Kolizja z korpusami — zmniejszenie występu (na górze menu, bo to zwykle o to chodzi)
     const fix = obstacleWithoutCollisions(project, obstacleId);
     if (fix) {
-      const who = fix.names.length === 1 ? `korpusem „${fix.names[0]}”` : `${fix.names.length} korpusami`;
-      items.unshift({ icon: '⚠', label: `Zmniejsz, żeby nie kolidował z ${who} (−${fix.removed} mm)`, run: () => store.set((p) => obstacleWithoutCollisions(p, obstacleId)?.project ?? p) });
+      const who = fix.names.length === 1 ? t('korpusem „{name}”', { name: fix.names[0] }) : t('{n} korpusami', { n: fix.names.length });
+      items.unshift({ icon: '⚠', label: t('Zmniejsz, żeby nie kolidował z {who} (−{d} mm)', { who, d: fix.removed }), run: () => store.set((p) => obstacleWithoutCollisions(p, obstacleId)?.project ?? p) });
     }
-    if (!items.length) items.push({ icon: '·', label: 'Dotyka z obu stron — nie ma dokąd rozszerzyć', run: () => {} });
+    if (!items.length) items.push({ icon: '·', label: t('Dotyka z obu stron — nie ma dokąd rozszerzyć'), run: () => {} });
     items.push({
       icon: '🔥',
-      label: o.kind === 'hood' ? 'Okap (urządzenie pod zabudową)…' : 'Wygląd (kominek, telewizor)…',
+      label: o.kind === 'hood' ? t('Okap (urządzenie pod zabudową)…') : t('Wygląd (kominek, telewizor)…'),
       submenu: () => ({
-        title: `Wygląd: ${o.name || (o.kind === 'hood' ? 'okap' : 'występ ściany')}`,
+        title: t('Wygląd: {what}', { what: o.name || (o.kind === 'hood' ? t('okap') : t('występ ściany')) }),
         items: (o.kind === 'hood' ? HOOD_DECORS : WALL_DECORS).map((d) => ({
           icon: d.key === (o.decor ?? null) ? '✓' : '',
           label: d.label,
@@ -829,26 +831,26 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
     const setColor = (color) => store.set((p) => ({ ...p, space: { ...p.space, obstacles: p.space.obstacles.map((x) => (x.id === obstacleId ? { ...x, color } : x)) } }));
     items.push({
       icon: '🎨',
-      label: 'Zmień kolor…',
+      label: t('Zmień kolor…'),
       submenu: () => ({
-        title: `Kolor: ${o.name || 'występ'}`,
+        title: t('Kolor: {what}', { what: o.name || t('występ') }),
         items: [
-          { icon: '↺', label: 'domyślny (jak ściany)', run: () => setColor(null) },
+          { icon: '↺', label: t('domyślny (jak ściany)'), run: () => setColor(null) },
           ...COLOR_PRESETS.map((c) => ({ icon: `<span class="context-menu-swatch" style="background:${c.hex}"></span>`, label: c.name, run: () => setColor({ hex: c.hex, name: c.name }) })),
-          { icon: '…', label: 'własny kolor', run: () => pickCustomColor((c) => setColor(c)) },
+          { icon: '…', label: t('własny kolor'), run: () => pickCustomColor((c) => setColor(c)) },
         ],
       }),
     });
-    items.push({ icon: '⚙', label: 'Wymiary i położenie…', run: () => ui.set({ ...ui.get(), selectedObstacle: obstacleId }, { revealObstacle: true }) });
+    items.push({ icon: '⚙', label: t('Wymiary i położenie…'), run: () => ui.set({ ...ui.get(), selectedObstacle: obstacleId }, { revealObstacle: true }) });
     items.push({
       icon: '✕',
-      label: 'Usuń',
+      label: t('Usuń'),
       run: () => {
         ui.set({ ...ui.get(), selectedObstacle: null });
         store.set((p) => ({ ...p, space: { ...p.space, obstacles: p.space.obstacles.filter((x) => x.id !== obstacleId) } }));
       },
     });
-    menu.show(clientX, clientY, `${o.name || 'Występ ściany'} · ${o.width} mm`, items);
+    menu.show(clientX, clientY, `${o.name || t('Występ ściany')} · ${o.width} mm`, items);
   }
 
   // Menu korpusu (albo grupy zaznaczonej Ctrl + klik): dosuń w lewo / w prawo / do tyłu / w dół do najbliższego
@@ -867,7 +869,7 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
     if (fp) {
       items.push({
         icon: fp.opening?.drawer ? '▤' : '▯',
-        label: `${fp.name}: menu frontu…`,
+        label: t('{name}: menu frontu…', { name: fp.name }),
         run: () => {
           ui.set({ ...ui.get(), selectedId: cabinetId, selectedIds: [cabinetId], selectedFronts: [frontId], selectedBlends: [] }, { reveal: true });
           setTimeout(() => showFrontMenu([frontId], clientX, clientY), 0);
@@ -880,47 +882,49 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
     if (shelfItem) items.push(shelfItem);
     const mm = (v) => `${Math.round(Math.abs(v))} mm`;
     if (!many) {
-      for (const [side, dir, icon] of [['left', 'w lewo', '⇤'], ['right', 'w prawo', '⇥']]) {
-        const t = slideTarget(project, ids, side === 'left' ? '-x' : '+x');
-        if (Math.abs(t?.delta ?? 0) >= 0.5)
-          items.push({ icon, label: `Rozszerz ${dir} do ${t.label} (+${mm(t.delta)})`, run: () => store.set((p) => extendCabinet(p, cabinetId, side)) });
+      for (const [side, dir, icon] of [['left', t('w lewo'), '⇤'], ['right', t('w prawo'), '⇥']]) {
+        const st = slideTarget(project, ids, side === 'left' ? '-x' : '+x');
+        if (Math.abs(st?.delta ?? 0) >= 0.5)
+          items.push({ icon, label: t('Rozszerz {dir} do {what} (+{d})', { dir, what: st.label, d: mm(st.delta) }), run: () => store.set((p) => extendCabinet(p, cabinetId, side)) });
       }
     }
     const moves = [
-      ['-x', 'w lewo', '←'],
-      ['+x', 'w prawo', '→'],
-      ['-z', 'do tyłu', '↑'],
-      ['-y', 'w dół', '⤓'],
+      ['-x', t('w lewo'), '←'],
+      ['+x', t('w prawo'), '→'],
+      ['-z', t('do tyłu'), '↑'],
+      ['-y', t('w dół'), '⤓'],
     ];
     for (const [direction, dir, icon] of moves) {
-      const t = slideTarget(project, ids, direction);
-      if (Math.abs(t?.delta ?? 0) >= 0.5)
-        items.push({ icon, label: `${many ? 'Dosuń wszystkie' : 'Dosuń'} ${dir} do ${t.label} (${mm(t.delta)})`, run: () => store.set((p) => slideCabinets(p, ids, direction)) });
+      const st = slideTarget(project, ids, direction);
+      if (Math.abs(st?.delta ?? 0) >= 0.5) {
+        const vars = { dir, what: st.label, d: mm(st.delta) };
+        items.push({ icon, label: many ? t('Dosuń wszystkie {dir} do {what} ({d})', vars) : t('Dosuń {dir} do {what} ({d})', vars), run: () => store.set((p) => slideCabinets(p, ids, direction)) });
+      }
     }
-    if (items.length === (fp ? 1 : 0) + (panelItem ? 1 : 0) + (shelfItem ? 1 : 0)) items.push({ icon: '·', label: 'Dotyka sąsiadów i ścian — nie ma dokąd dosunąć', run: () => {} });
+    if (items.length === (fp ? 1 : 0) + (panelItem ? 1 : 0) + (shelfItem ? 1 : 0)) items.push({ icon: '·', label: t('Dotyka sąsiadów i ścian — nie ma dokąd dosunąć'), run: () => {} });
     if (!many) {
-      items.push({ icon: '📐', label: 'Wymiary (szerokość, wysokość, głębokość, grubość)…', submenu: () => cabinetDimsMenu(cabinetId) });
-      items.push({ icon: '⤢', label: 'Dopasuj do wnęki', run: () => store.set((p) => ({ ...p, furniture: p.furniture.map((c) => (c.id === cabinetId ? fitCabinetToSpace(c, p) : c)) })) });
+      items.push({ icon: '📐', label: t('Wymiary (szerokość, wysokość, głębokość, grubość)…'), submenu: () => cabinetDimsMenu(cabinetId) });
+      items.push({ icon: '⤢', label: t('Dopasuj do wnęki'), run: () => store.set((p) => ({ ...p, furniture: p.furniture.map((c) => (c.id === cabinetId ? fitCabinetToSpace(c, p) : c)) })) });
     }
     {
       // kopia korpusu (albo zaznaczonych korpusów) razem z zaznaczonymi blatami / blendami / płytami
       const extra = (ui.get().selectedBlends ?? []).filter((id) => id.startsWith('trim:') || id.startsWith('board:')).length;
       items.push({
         icon: '⧉',
-        label: many || extra ? `Duplikuj zaznaczone (${ids.length} ${ids.length === 1 ? 'korpus' : 'korpusy'}${extra ? ` + ${extra} ${extra === 1 ? 'blat / płyta' : 'blaty / płyty'}` : ''})` : 'Duplikuj',
+        label: many || extra ? `${t('Duplikuj zaznaczone')} (${ids.length} ${ids.length === 1 ? t('korpus') : t('korpusy')}${extra ? ` + ${extra} ${extra === 1 ? t('blat / płyta') : t('blaty / płyty')}` : ''})` : t('Duplikuj'),
         run: () => duplicateSelected(store, ui, cabinetId),
       });
     }
     items.push({
       icon: '✕',
-      label: many ? `Usuń ${ids.length} korpusy` : 'Usuń',
+      label: many ? t('Usuń {n} korpusy', { n: ids.length }) : t('Usuń'),
       run: () => {
-        if (many && !confirm(`Usunąć ${ids.length} zaznaczone korpusy?`)) return;
+        if (many && !confirm(t('Usunąć {n} zaznaczone korpusy?', { n: ids.length }))) return;
         ui.set({ ...ui.get(), selectedId: null, selectedIds: [], selectedFronts: [], selectedBlends: [] });
         store.set((p) => ({ ...p, furniture: p.furniture.filter((c) => !ids.includes(c.id)) }));
       },
     });
-    const title = many ? `Zaznaczone korpusy: ${ids.length}` : `${cabinet.name} · ${cabinet.width} mm`;
+    const title = many ? t('Zaznaczone korpusy: {n}', { n: ids.length }) : `${cabinet.name} · ${cabinet.width} mm`;
     menu.show(clientX, clientY, title, items);
   }
 
@@ -948,7 +952,7 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
     if (!panel) return null;
     return {
       icon: '📐',
-      label: `${panel.name} — zaznacz, wymiary i obrzeże…`,
+      label: t('{name} — zaznacz, wymiary i obrzeże…', { name: panel.name }),
       run: () => {
         selectPanel(cabinetId, panelKey);
         return panelInfoMenu(store, cabinetId, panelKey);
@@ -968,7 +972,7 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
     if (!panelKey?.startsWith('shelf-')) return null;
     return {
       icon: '🗑',
-      label: 'Usuń półkę',
+      label: t('Usuń półkę'),
       run: () => {
         store.set((p) => ({ ...p, furniture: p.furniture.map((c) => (c.id === cabinetId ? removeShelves(c, [panelKey]) : c)) }));
         const id = `${cabinetId}:${panelKey}`;
@@ -1043,7 +1047,7 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
     // podpowiedź przy kursorze: położenie i do czego przyciągnęło
     if (e) {
       const r = viewer.container.getBoundingClientRect();
-      snapTip.textContent = mode === 'move' ? `Od lewej ${x} mm · szer. ${width} mm` : `Szerokość ${width} mm`;
+      snapTip.textContent = mode === 'move' ? t('Od lewej {x} mm · szer. {w} mm', { x, w: width }) : t('Szerokość {w} mm', { w: width });
       if (labels.length) snapTip.textContent += ` · 🧲 ${[...new Set(labels)].join(' · ')}`;
       snapTip.style.left = `${e.clientX - r.left + 14}px`;
       snapTip.style.top = `${e.clientY - r.top + 18}px`;
@@ -1180,7 +1184,7 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
   colorInput.addEventListener('change', () => {
     const hex = colorInput.value.toLowerCase();
     const preset = COLOR_PRESETS.find((c) => c.hex === hex);
-    onCustomColor?.(preset ? { ...preset } : { hex, name: `własny ${hex}` });
+    onCustomColor?.(preset ? { ...preset } : { hex, name: t('własny {hex}', { hex }) });
     onCustomColor = null;
   });
   function pickCustomColor(done) {
@@ -1196,7 +1200,7 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
   const partsLabel = (parts) => {
     const fronts = parts.filter((id) => id.includes(':front-')).length;
     const blends = parts.length - fronts;
-    return [fronts && `${fronts} ${fronts === 1 ? 'front' : fronts < 5 ? 'fronty' : 'frontów'}`, blends && `${blends} ${blends === 1 ? 'blenda' : blends < 5 ? 'blendy' : 'blend'}`]
+    return [fronts && `${fronts} ${fronts === 1 ? t('front') : fronts < 5 ? t('fronty') : t('frontów')}`, blends && `${blends} ${blends === 1 ? t('blenda') : blends < 5 ? t('blendy') : t('blend')}`]
       .filter(Boolean)
       .join(' + ');
   };
@@ -1215,7 +1219,7 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
             label: c.name,
             run: () => setPartsColor(partIds, { ...c }),
           })),
-          { icon: '…', label: 'własny kolor', run: () => pickCustomColor((c) => setPartsColor(partIds, c)) },
+          { icon: '…', label: t('własny kolor'), run: () => pickCustomColor((c) => setPartsColor(partIds, c)) },
         ],
       }),
     };
@@ -1236,7 +1240,7 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
     // kolor — dla wszystkich zaznaczonych elementów (blendy i fronty razem)
     const parts = [...new Set([...ids, ...selectedParts()])];
     const multi = parts.length > 1;
-    const title = multi ? `Zaznaczone: ${partsLabel(parts)}` : nameOf(ids[0]);
+    const title = multi ? t('Zaznaczone: {what}', { what: partsLabel(parts) }) : nameOf(ids[0]);
     // jedna blenda boczna (płyta korpusu) — także jej wymiary i obrzeże
     const [cabId, key] = ids[0].split(':');
     const info = !multi && !ids[0].startsWith('trim:') && !ids[0].startsWith('board:') ? panelInfoItem(cabId, key) : null;
@@ -1250,7 +1254,7 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
       ...(merge
         ? [{
             icon: '⇔',
-            label: merge.kind === 'trims' ? `Połącz ${merge.ids.length} blaty w jeden (na wszystkie korpusy)` : `Połącz ${merge.ids.length} płyty w jedną`,
+            label: merge.kind === 'trims' ? t('Połącz {n} blaty w jeden (na wszystkie korpusy)', { n: merge.ids.length }) : t('Połącz {n} płyty w jedną', { n: merge.ids.length }),
             run: () => {
               const r = mergeParts(store.get(), ids);
               if (!r) return;
@@ -1262,7 +1266,7 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
       ...(removable
         ? [{
             icon: '🗑',
-            label: removable > 1 ? `Usuń zaznaczone (${removable})` : 'Usuń',
+            label: removable > 1 ? t('Usuń zaznaczone ({n})', { n: removable }) : t('Usuń'),
             run: () => {
               ui.set({ ...ui.get(), selectedBlends: (ui.get().selectedBlends ?? []).filter((b) => !ids.includes(b)) });
               store.set((p) => removeParts(p, ids));
@@ -1276,18 +1280,18 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
       const bid = ids[0].slice(6);
       const run = (side, mode) => () => store.set((p) => nudgeBoard(p, bid, side, mode));
       const bd = project.boards.find((b) => b.id === bid);
-      const zap = bd?.clearance ? ` z zapasem ${bd.clearance} mm` : '';
+      const zap = bd?.clearance ? ` ${t('z zapasem {d} mm', { d: bd.clearance })}` : '';
       // dopasowanie szerokości do wnęki (od sąsiada do sąsiada, minus zapas)
       const niche = boardNicheWidth(project, bid);
       const fitW = niche != null ? Math.round((niche - (bd?.clearance ?? 0)) * 10) / 10 : null;
-      if (fitW != null && Math.abs(fitW - bd.width) >= 0.5) boardMoves.push({ icon: '⇔', label: `Dopasuj szerokość do wnęki: ${fitW} mm (wnęka ${niche}${zap ? `, zapas ${bd.clearance}` : ''})`, run: () => store.set((p) => fitBoardWidth(p, bid)) });
-      for (const [side, dir, icon] of [['left', 'w lewo', '⇤'], ['right', 'w prawo', '⇥']]) {
+      if (fitW != null && Math.abs(fitW - bd.width) >= 0.5) boardMoves.push({ icon: '⇔', label: zap ? t('Dopasuj szerokość do wnęki: {w} mm (wnęka {n}, zapas {c})', { w: fitW, n: niche, c: bd.clearance }) : t('Dopasuj szerokość do wnęki: {w} mm (wnęka {n})', { w: fitW, n: niche }), run: () => store.set((p) => fitBoardWidth(p, bid)) });
+      for (const [side, dir, icon] of [['left', t('w lewo'), '⇤'], ['right', t('w prawo'), '⇥']]) {
         const n = boardStep(project, bid, side);
-        if (n) boardMoves.push({ icon, label: `Rozszerz ${dir} do ${n.label} (+${n.gap} mm${zap})`, run: run(side, 'extend') });
+        if (n) boardMoves.push({ icon, label: t('Rozszerz {dir} do {what} (+{d})', { dir, what: n.label, d: `${n.gap} mm${zap}` }), run: run(side, 'extend') });
       }
-      for (const [side, dir, icon] of [['left', 'w lewo', '←'], ['right', 'w prawo', '→'], ['down', 'w dół', '⤓'], ['up', 'w górę', '⤒']]) {
+      for (const [side, dir, icon] of [['left', t('w lewo'), '←'], ['right', t('w prawo'), '→'], ['down', t('w dół'), '⤓'], ['up', t('w górę'), '⤒']]) {
         const n = boardStep(project, bid, side);
-        if (n) boardMoves.push({ icon, label: `Dosuń ${dir} do ${n.label} (${n.gap} mm)`, run: run(side, 'move') });
+        if (n) boardMoves.push({ icon, label: t('Dosuń {dir} do {what} ({d})', { dir, what: n.label, d: `${n.gap} mm` }), run: run(side, 'move') });
       }
     }
     // jedna samodzielna płyta — mocowanie do ściany
@@ -1296,9 +1300,9 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
       const cur = project.boards.find((b) => b.id === bid)?.mount?.type ?? null;
       boardMoves.push({
         icon: '🔩',
-        label: `Mocowanie do ściany: ${mountInfo(cur).label.split(' (')[0].split(' —')[0]}…`,
+        label: t('Mocowanie do ściany: {what}…', { what: mountInfo(cur).label.split(' (')[0].split(' —')[0] }),
         submenu: () => ({
-          title: 'Mocowanie do ściany',
+          title: t('Mocowanie do ściany'),
           items: [
             ...BOARD_MOUNTS.map((m) => ({
               icon: (m.key ?? null) === cur ? '✓' : '·',
@@ -1311,7 +1315,7 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
                   const now = normalizeMount(project.boards.find((b) => b.id === bid)?.mount).machining;
                   return {
                     icon: (m.key ?? null) === now ? '☑' : '☐',
-                    label: `Obróbka: ${m.label}`,
+                    label: t('Obróbka: {what}', { what: m.label }),
                     run: () => store.set((p) => ({ ...p, boards: p.boards.map((b) => (b.id === bid ? { ...b, mount: { ...normalizeMount(b.mount), machining: m.key } } : b)) })),
                   };
                 })
@@ -1325,14 +1329,14 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
       const tid = ids[0].slice(5);
       boardMoves.push({
         icon: '💾',
-        label: 'Pobierz formatkę / rysunek…',
+        label: t('Pobierz formatkę / rysunek…'),
         submenu: () => ({
-          title: 'Pobierz',
+          title: t('Pobierz'),
           items: [
-            { icon: '💾', label: 'Formatka — Excel (.xlsx)', run: () => downloadTrimCutList(store.get(), tid, 'xlsx') },
-            { icon: '💾', label: 'Formatka — CSV (.csv)', run: () => downloadTrimCutList(store.get(), tid, 'csv') },
-            { icon: '💾', label: 'Rysunek z wymiarami — PDF', run: () => downloadTrimDrawing(store.get(), tid, 'pdf') },
-            { icon: '💾', label: 'Rysunek z wymiarami — obraz PNG', run: () => downloadTrimDrawing(store.get(), tid, 'png') },
+            { icon: '💾', label: t('Formatka — Excel (.xlsx)'), run: () => downloadTrimCutList(store.get(), tid, 'xlsx') },
+            { icon: '💾', label: t('Formatka — CSV (.csv)'), run: () => downloadTrimCutList(store.get(), tid, 'csv') },
+            { icon: '💾', label: t('Rysunek z wymiarami — PDF'), run: () => downloadTrimDrawing(store.get(), tid, 'pdf') },
+            { icon: '💾', label: t('Rysunek z wymiarami — obraz PNG'), run: () => downloadTrimDrawing(store.get(), tid, 'png') },
           ],
         }),
       });
@@ -1342,14 +1346,14 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
       const bid = ids[0].slice(6);
       boardMoves.push({
         icon: '💾',
-        label: 'Pobierz formatkę / rysunek…',
+        label: t('Pobierz formatkę / rysunek…'),
         submenu: () => ({
-          title: 'Pobierz',
+          title: t('Pobierz'),
           items: [
-            { icon: '💾', label: 'Formatka — Excel (.xlsx)', run: () => downloadBoardCutList(store.get(), bid, 'xlsx') },
-            { icon: '💾', label: 'Formatka — CSV (.csv)', run: () => downloadBoardCutList(store.get(), bid, 'csv') },
-            { icon: '💾', label: 'Rysunek z wymiarami — PDF', run: () => downloadBoardDrawing(store.get(), bid, 'pdf') },
-            { icon: '💾', label: 'Rysunek z wymiarami — obraz PNG', run: () => downloadBoardDrawing(store.get(), bid, 'png') },
+            { icon: '💾', label: t('Formatka — Excel (.xlsx)'), run: () => downloadBoardCutList(store.get(), bid, 'xlsx') },
+            { icon: '💾', label: t('Formatka — CSV (.csv)'), run: () => downloadBoardCutList(store.get(), bid, 'csv') },
+            { icon: '💾', label: t('Rysunek z wymiarami — PDF'), run: () => downloadBoardDrawing(store.get(), bid, 'pdf') },
+            { icon: '💾', label: t('Rysunek z wymiarami — obraz PNG'), run: () => downloadBoardDrawing(store.get(), bid, 'png') },
           ],
         }),
       });
@@ -1359,7 +1363,7 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
       ...boardMoves,
       ...(boardDims ? [boardDims] : []),
       ...partActions,
-      colorItem(`Zmień kolor${multi ? ' wszystkich' : ''}…`, multi ? `Kolor: ${partsLabel(parts)}` : `Kolor: ${nameOf(ids[0])}`, 'jak w korpusie / materiale', parts),
+      colorItem(multi ? t('Zmień kolor wszystkich…') : t('Zmień kolor…'), t('Kolor: {what}', { what: multi ? partsLabel(parts) : nameOf(ids[0]) }), t('jak w korpusie / materiale'), parts),
     ]);
   }
 
@@ -1376,13 +1380,13 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
     const L = BOARD_LIMITS;
     const clamp = (v, min, max) => Math.round(Math.min(max, Math.max(min, v)));
     return {
-      title: `Wymiary: ${b.name}`,
+      title: t('Wymiary: {name}', { name: b.name }),
       items: [
-        { input: true, label: 'Szerokość', unit: 'mm', value: b.width, min: L.sizeMin, max: L.sizeMax, onChange: (v) => (v == null ? boardDimsMenu(id) : set({ width: clamp(v, L.sizeMin, L.sizeMax) })) },
-        { input: true, label: 'Głębokość', unit: 'mm', value: b.depth, min: L.sizeMin, max: L.sizeMax, onChange: (v) => (v == null ? boardDimsMenu(id) : set({ depth: clamp(v, L.sizeMin, L.sizeMax) })) },
-        { input: true, label: 'Grubość', unit: 'mm', value: b.thickness ?? '', placeholder: `${matThickness} (z materiału)`, min: 3, max: 100, onChange: (v) => set({ thickness: v == null ? null : clamp(v, 3, 100) }) },
-        { input: true, label: 'Od podłogi', unit: 'mm', value: b.y, onChange: (v) => (v == null ? boardDimsMenu(id) : set({ y: Math.round(v) })) },
-        { info: true, icon: 'ℹ', label: 'Enter albo Tab — zatwierdź; grubość puste — z materiału.' },
+        { input: true, label: t('Szerokość'), unit: 'mm', value: b.width, min: L.sizeMin, max: L.sizeMax, onChange: (v) => (v == null ? boardDimsMenu(id) : set({ width: clamp(v, L.sizeMin, L.sizeMax) })) },
+        { input: true, label: t('Głębokość'), unit: 'mm', value: b.depth, min: L.sizeMin, max: L.sizeMax, onChange: (v) => (v == null ? boardDimsMenu(id) : set({ depth: clamp(v, L.sizeMin, L.sizeMax) })) },
+        { input: true, label: t('Grubość'), unit: 'mm', value: b.thickness ?? '', placeholder: t('{v} (z materiału)', { v: matThickness }), min: 3, max: 100, onChange: (v) => set({ thickness: v == null ? null : clamp(v, 3, 100) }) },
+        { input: true, label: t('Od podłogi'), unit: 'mm', value: b.y, onChange: (v) => (v == null ? boardDimsMenu(id) : set({ y: Math.round(v) })) },
+        { info: true, icon: 'ℹ', label: t('Enter albo Tab — zatwierdź; grubość puste — z materiału.') },
       ],
     };
   }
@@ -1410,28 +1414,28 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
     const thicknessItems = boards.length > 1
       ? boards.map((m) => ({
           icon: m.id === (c.materialId ?? boards[0].id) ? '✓' : '·',
-          label: `Grubość ${m.thickness} mm — ${m.name}`,
+          label: t('Grubość {v} mm — {name}', { v: m.thickness, name: m.name }),
           run: () => set({ materialId: m.id }),
         }))
-      : [{ info: true, icon: 'ℹ', label: `Grubość płyty ${body.thickness} mm (z materiału) — inną grubość dodasz w „Materiałach”.` }];
+      : [{ info: true, icon: 'ℹ', label: t('Grubość płyty {v} mm (z materiału) — inną grubość dodasz w „Materiałach”.', { v: body.thickness }) }];
     return {
-      title: group ? `Wymiary: ${group.length} zaznaczone korpusy` : `Wymiary: ${c.name}`,
+      title: group ? t('Wymiary: {n} zaznaczone korpusy', { n: group.length }) : t('Wymiary: {name}', { name: c.name }),
       items: [
-        { input: true, label: 'Szerokość', unit: 'mm', value: c.width, min: sizeMin, max: sizeMax, onChange: (v) => (v == null ? same() : set({ width: clamp(v, sizeMin, sizeMax) })) },
-        { input: true, label: 'Wysokość', unit: 'mm', value: c.height, min: sizeMin, max: maxH, onChange: (v) => (v == null ? same() : set({ height: clamp(v, sizeMin, maxH) })) },
-        { input: true, label: 'Głębokość', unit: 'mm', value: c.depth, min: sizeMin, max: sizeMax, onChange: (v) => (v == null ? same() : set({ depth: clamp(v, sizeMin, sizeMax) })) },
+        { input: true, label: t('Szerokość'), unit: 'mm', value: c.width, min: sizeMin, max: sizeMax, onChange: (v) => (v == null ? same() : set({ width: clamp(v, sizeMin, sizeMax) })) },
+        { input: true, label: t('Wysokość'), unit: 'mm', value: c.height, min: sizeMin, max: maxH, onChange: (v) => (v == null ? same() : set({ height: clamp(v, sizeMin, maxH) })) },
+        { input: true, label: t('Głębokość'), unit: 'mm', value: c.depth, min: sizeMin, max: sizeMax, onChange: (v) => (v == null ? same() : set({ depth: clamp(v, sizeMin, sizeMax) })) },
         ...thicknessItems,
-        { info: true, icon: 'ℹ', label: 'Enter albo Tab — zatwierdź.' },
+        { info: true, icon: 'ℹ', label: t('Enter albo Tab — zatwierdź.') },
       ],
     };
   }
   // „Wymiary…” blatu na szafkach: długość, głębokość, grubość — puste pole wraca do wartości automatycznej.
   function countertopDimsMenu(id) {
     const project = store.get();
-    const t = project.trims.find((x) => x.id === id);
-    if (!t) return null;
-    const box = trimBox(t, project);
-    const matThickness = trimMaterial({ ...t, thickness: null }, project).thickness;
+    const tr = project.trims.find((x) => x.id === id);
+    if (!tr) return null;
+    const box = trimBox(tr, project);
+    const matThickness = trimMaterial({ ...tr, thickness: null }, project).thickness;
     const set = (patch) => {
       store.set((p) => ({ ...p, trims: p.trims.map((x) => (x.id === id ? { ...x, ...patch } : x)) }));
       return countertopDimsMenu(id);
@@ -1439,17 +1443,17 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
     const clamp = (v, min, max) => Math.round(Math.min(max, Math.max(min, v)));
     const auto = (v) => (v != null ? '' : ' (auto)');
     return {
-      title: `Wymiary: ${t.name}`,
+      title: t('Wymiary: {name}', { name: tr.name }),
       items: [
-        { input: true, label: `Długość${auto(t.length)}`, unit: 'mm', value: t.length ?? '', placeholder: box ? `${Math.round(box.width)} auto` : 'auto', min: 1, max: 20000, onChange: (v) => set({ length: v == null ? null : clamp(v, 1, 20000) }) },
-        { input: true, label: `Głębokość${auto(t.depth)}`, unit: 'mm', value: t.depth ?? '', placeholder: box ? `${Math.round(box.depth)} auto` : 'auto', min: 1, max: 20000, onChange: (v) => set({ depth: v == null ? null : clamp(v, 1, 20000) }) },
-        { input: true, label: 'Grubość', unit: 'mm', value: t.thickness ?? '', placeholder: `${matThickness} (z materiału)`, min: 3, max: 100, onChange: (v) => set({ thickness: v == null ? null : clamp(v, 3, 100) }) },
-        { info: true, icon: 'ℹ', label: 'Enter albo Tab — zatwierdź; puste pole — automatycznie / z materiału.' },
+        { input: true, label: `${t('Długość')}${auto(tr.length)}`, unit: 'mm', value: tr.length ?? '', placeholder: box ? `${Math.round(box.width)} auto` : 'auto', min: 1, max: 20000, onChange: (v) => set({ length: v == null ? null : clamp(v, 1, 20000) }) },
+        { input: true, label: `${t('Głębokość')}${auto(tr.depth)}`, unit: 'mm', value: tr.depth ?? '', placeholder: box ? `${Math.round(box.depth)} auto` : 'auto', min: 1, max: 20000, onChange: (v) => set({ depth: v == null ? null : clamp(v, 1, 20000) }) },
+        { input: true, label: t('Grubość'), unit: 'mm', value: tr.thickness ?? '', placeholder: t('{v} (z materiału)', { v: matThickness }), min: 3, max: 100, onChange: (v) => set({ thickness: v == null ? null : clamp(v, 3, 100) }) },
+        { info: true, icon: 'ℹ', label: t('Enter albo Tab — zatwierdź; puste pole — automatycznie / z materiału.') },
       ],
     };
   }
-  const countertopDimsItem = (id) => ({ icon: '📐', label: 'Wymiary (długość, głębokość, grubość)…', submenu: () => countertopDimsMenu(id) });
-  const boardDimsItem = (id) => ({ icon: '📐', label: 'Wymiary (szerokość, głębokość, grubość)…', submenu: () => boardDimsMenu(id) });
+  const countertopDimsItem = (id) => ({ icon: '📐', label: t('Wymiary (długość, głębokość, grubość)…'), submenu: () => countertopDimsMenu(id) });
+  const boardDimsItem = (id) => ({ icon: '📐', label: t('Wymiary (szerokość, głębokość, grubość)…'), submenu: () => boardDimsMenu(id) });
 
   // Menu akcji dla zaznaczonych frontów (jednego albo kilku, z Ctrl): otwórz / zamknij (wysuń / wsuń), ukryj.
   // Gdy część jest otwarta, a część zamknięta — obie akcje.
@@ -1464,7 +1468,7 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
     const many = fronts.length > 1;
     const all = many ? ' wszystkie' : '';
     const items = [];
-    if (openCount < ids.length) items.push({ icon: '⇤', label: `${drawers ? 'Wysuń' : 'Otwórz'}${all}`, run: () => setFrontsOpen(ids, true) });
+    if (openCount < ids.length) items.push({ icon: '⇤', label: drawers ? (many ? t('Wysuń wszystkie') : t('Wysuń')) : many ? t('Otwórz wszystkie') : t('Otwórz'), run: () => setFrontsOpen(ids, true) });
     // jedna szuflada (front albo czoło wewnętrzne) — przestawienie w wnętrzu, przykrycie drzwiami / własny front
     if (!many && fronts[0].panel.part != null) {
       const cabinetId = fronts[0].id.split(':')[0];
@@ -1478,20 +1482,20 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
       };
       const gain = cab ? freeSpaceOf(cab, i, project) : 0;
       if (gain) items.push({ icon: '⤢', label: fitLabel(gain), run: change((c, p) => fillFreeSpace(c, i, p)) });
-      if (i < n - 1) items.push({ icon: '↑', label: 'Przenieś szufladę wyżej', run: change((c, p) => movePart(c, i, i + 1, p)) });
-      if (i > 0) items.push({ icon: '↓', label: 'Przenieś szufladę niżej', run: change((c, p) => movePart(c, i, i - 1, p)) });
-      if (i < n - 2) items.push({ icon: '⤒', label: 'Przenieś szufladę na samą górę', run: change((c, p) => movePart(c, i, n - 1, p)) });
-      if (i > 1) items.push({ icon: '⤓', label: 'Przenieś szufladę na sam dół', run: change((c, p) => movePart(c, i, 0, p)) });
+      if (i < n - 1) items.push({ icon: '↑', label: t('Przenieś szufladę wyżej'), run: change((c, p) => movePart(c, i, i + 1, p)) });
+      if (i > 0) items.push({ icon: '↓', label: t('Przenieś szufladę niżej'), run: change((c, p) => movePart(c, i, i - 1, p)) });
+      if (i < n - 2) items.push({ icon: '⤒', label: t('Przenieś szufladę na samą górę'), run: change((c, p) => movePart(c, i, n - 1, p)) });
+      if (i > 1) items.push({ icon: '⤓', label: t('Przenieś szufladę na sam dół'), run: change((c, p) => movePart(c, i, 0, p)) });
       const inner = fronts[0].id.split(':')[1].startsWith('idrawer-');
       if (!inner) {
-        items.push({ icon: '▢', label: 'Zamień na szufladę wewnętrzną (bez frontu)', run: change((c, p) => setPartKind(c, i, 'innerDrawer', p)) });
-        items.push({ icon: '▣', label: 'Schowaj za drzwiami', run: change((c, p) => coverWithDoor(c, i, p)) });
+        items.push({ icon: '▢', label: t('Zamień na szufladę wewnętrzną (bez frontu)'), run: change((c, p) => setPartKind(c, i, 'innerDrawer', p)) });
+        items.push({ icon: '▣', label: t('Schowaj za drzwiami'), run: change((c, p) => coverWithDoor(c, i, p)) });
       } else {
-        items.push({ icon: '▤', label: 'Zamień na szufladę z frontem', run: change((c, p) => setPartKind(c, i, 'drawer', p)) });
-        if (canUncover(st, i)) items.push({ icon: '⇲', label: 'Wyjmij spod drzwi', run: change((c, p) => uncoverPart(c, i, p)) });
+        items.push({ icon: '▤', label: t('Zamień na szufladę z frontem'), run: change((c, p) => setPartKind(c, i, 'drawer', p)) });
+        if (canUncover(st, i)) items.push({ icon: '⇲', label: t('Wyjmij spod drzwi'), run: change((c, p) => uncoverPart(c, i, p)) });
         const dj = st.doors.findIndex((d) => d.covers.includes(st.parts[i]?.id));
-        if (dj < 0) items.push({ icon: '▣', label: 'Schowaj za drzwiami', run: change((c, p) => coverWithDoor(c, i, p)) });
-        else if (cab && canDoorGrow(cab, dj)) items.push({ icon: '⇕', label: 'Drzwi na całą wysokość', run: change((c, p) => doorFullHeight(c, dj, p)) });
+        if (dj < 0) items.push({ icon: '▣', label: t('Schowaj za drzwiami'), run: change((c, p) => coverWithDoor(c, i, p)) });
+        else if (cab && canDoorGrow(cab, dj)) items.push({ icon: '⇕', label: t('Drzwi na całą wysokość'), run: change((c, p) => doorFullHeight(c, dj, p)) });
       }
     }
     // jedne drzwi — na całą wysokość (przykrywają szuflady wewnętrzne i wolne miejsce pod / nad nimi)
@@ -1502,25 +1506,25 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
       if (cab && canDoorGrow(cab, j))
         items.push({
           icon: '⇕',
-          label: 'Drzwi na całą wysokość (przykryj szuflady wewnętrzne)',
+          label: t('Drzwi na całą wysokość (przykryj szuflady wewnętrzne)'),
           run: () => {
             store.set((p) => ({ ...p, furniture: p.furniture.map((c) => (c.id === cabinetId ? doorFullHeight(c, j, p) : c)) }));
             ui.set({ ...ui.get(), selectedFronts: [] });
           },
         });
     }
-    if (openCount > 0) items.push({ icon: '⇥', label: `${drawers ? 'Wsuń' : 'Zamknij'}${all}`, run: () => setFrontsOpen(ids, false) });
+    if (openCount > 0) items.push({ icon: '⇥', label: drawers ? (many ? t('Wsuń wszystkie') : t('Wsuń')) : many ? t('Zamknij wszystkie') : t('Zamknij'), run: () => setFrontsOpen(ids, false) });
     {
       const cabIds = [...new Set(ids.map((id) => id.split(':')[0]))];
       items.push({
         icon: '▣',
-        label: cabIds.length > 1 ? `Zaznacz całe korpusy (${cabIds.length})` : 'Zaznacz cały korpus',
+        label: cabIds.length > 1 ? t('Zaznacz całe korpusy ({n})', { n: cabIds.length }) : t('Zaznacz cały korpus'),
         run: () => ui.set({ ...ui.get(), selectedId: cabIds.at(-1), selectedIds: cabIds, selectedFronts: [], selectedBlends: [] }, { reveal: true }),
       });
     }
     items.push({
       icon: '👁',
-      label: `Ukryj${all}`,
+      label: many ? t('Ukryj wszystkie') : t('Ukryj'),
       run: () =>
         store.set((p) => ({
           ...p,
@@ -1539,9 +1543,9 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
     const multi = parts.length > 1;
     items.push(
       colorItem(
-        `Zmień kolor${multi ? ` (${partsLabel(parts)})` : ''}…`,
-        multi ? `Kolor: ${partsLabel(parts)}` : `Kolor: ${fronts[0].panel.name}`,
-        'jak w korpusie / materiale',
+        multi ? t('Zmień kolor ({what})…', { what: partsLabel(parts) }) : t('Zmień kolor…'),
+        t('Kolor: {what}', { what: multi ? partsLabel(parts) : fronts[0].panel.name }),
+        t('jak w korpusie / materiale'),
         parts,
       ),
     );
@@ -1549,11 +1553,11 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
     if (selectedParts().every((id) => id.includes(':front-'))) {
       items.push({
         icon: '▦',
-        label: `Zmień frez${all}…`,
+        label: many ? t('Zmień frez wszystkie…') : t('Zmień frez…'),
         submenu: () => ({
-          title: many ? `Frez: ${fronts.length} frontów` : `Frez: ${fronts[0].panel.name}`,
+          title: many ? t('Frez: {n} frontów', { n: fronts.length }) : t('Frez: {what}', { what: fronts[0].panel.name }),
           items: [
-            { icon: '↺', label: 'jak w korpusie (frez frontów)', run: () => setFrontsDecor(ids, null) },
+            { icon: '↺', label: t('jak w korpusie (frez frontów)'), run: () => setFrontsDecor(ids, null) },
             ...FRONT_DECORS.map((d) => ({
               icon: `<span class="context-menu-decor">${decorPreviewSvg(d.key, 450, 700, {}, 18)}</span>`,
               label: d.label,
@@ -1566,9 +1570,9 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
     if (!many) {
       const [cabId, key] = ids[0].split(':');
       const info = panelInfoItem(cabId, key);
-      if (info) items.push({ ...info, label: 'Wymiary i obrzeże…' });
+      if (info) items.push({ ...info, label: t('Wymiary i obrzeże…') });
     }
-    const title = many ? `Zaznaczone fronty: ${fronts.length}` : fronts[0].panel.name;
+    const title = many ? t('Zaznaczone fronty: {n}', { n: fronts.length }) : fronts[0].panel.name;
     menu.show(clientX, clientY, title, items);
   }
 
@@ -1632,7 +1636,7 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
     dropGhost.scale.set(spot.width * MM, spot.thickness * MM, spot.depth * MM);
     dropGhost.position.set(...toScene(spot.x + spot.width / 2, spot.y + spot.thickness / 2, spot.depth / 2, space));
     const r = viewer.container.getBoundingClientRect();
-    snapTip.textContent = `${kind === 'worktop' ? 'Blat' : 'Półka'} ${spot.width} mm · od lewej ${spot.x} · od podłogi ${spot.y} mm`;
+    snapTip.textContent = t('{what} {w} mm · od lewej {x} · od podłogi {y} mm', { what: kind === 'worktop' ? t('Blat') : t('Półka'), w: spot.width, x: spot.x, y: spot.y });
     snapTip.style.left = `${e.clientX - r.left + 14}px`;
     snapTip.style.top = `${e.clientY - r.top + 18}px`;
     snapTip.hidden = false;
@@ -1682,10 +1686,10 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
     snapTip.style.left = e ? `${e.clientX - r.left + 14}px` : `${r.width / 2 - 120}px`;
     snapTip.style.top = e ? `${e.clientY - r.top + 18}px` : `${r.height - 160}px`;
     snapTip.hidden = false;
-    const hint = floating ? ' — kliknij, żeby postawić (Esc — anuluj)' : '';
+    const hint = floating ? t(' — kliknij, żeby postawić (Esc — anuluj)') : '';
     if (!spot) {
       cabGhost.visible = false;
-      snapTip.textContent = `Brak wolnego miejsca tutaj${floating ? ' — przesuń kursor nad wolne miejsce na podłodze (Esc — anuluj)' : ''}`;
+      snapTip.textContent = floating ? t('Brak wolnego miejsca tutaj — przesuń kursor nad wolne miejsce na podłodze (Esc — anuluj)') : t('Brak wolnego miejsca tutaj');
       return;
     }
     const c = spot.cabinet;
@@ -1695,7 +1699,7 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
     cabGhost.visible = true;
     cabGhost.scale.set(c.width * MM, h * MM, c.depth * MM);
     cabGhost.position.set(...toScene(c.x + c.width / 2, c.y + h / 2 + lift, c.z + c.depth / 2, space));
-    snapTip.textContent = `${c.mount === 'wall' ? `Korpus wiszący (spód ${c.y} mm nad podłogą)` : 'Korpus'} ${c.width} × ${c.height} × ${c.depth} mm · od lewej ${c.x} mm${hint}`;
+    snapTip.textContent = `${c.mount === 'wall' ? t('Korpus wiszący (spód {y} mm nad podłogą)', { y: c.y }) : t('Korpus')} ${c.width} × ${c.height} × ${c.depth} mm · ${t('od lewej {x} mm', { x: c.x })}${hint}`;
   }
 
   // --- tryb wstawiania (ui.placingCabinet): korpus unosi się nad podłogą i idzie za kursorem; klik stawia ---
@@ -1847,11 +1851,11 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
       const centerItems = ['h', 'v']
         .map((axis) => ({ axis, c: centerDecoration(store.get(), id, axis, { trimBox, boardBox }) }))
         .filter((x) => x.c)
-        .map(({ axis, c }) => ({ icon: axis === 'h' ? '⇔' : '⇕', label: `Wyśrodkuj ${axis === 'h' ? 'poziomo' : 'pionowo'} ${c.label}`, run: () => store.set((p) => ({ ...p, decorations: p.decorations.map((x) => (x.id === id ? { ...x, ...c.pos } : x)) })) }));
-      menu.show(e.clientX, e.clientY, d?.name ?? 'Dekoracja', [
+        .map(({ axis, c }) => ({ icon: axis === 'h' ? '⇔' : '⇕', label: axis === 'h' ? t('Wyśrodkuj poziomo {what}', { what: c.label }) : t('Wyśrodkuj pionowo {what}', { what: c.label }), run: () => store.set((p) => ({ ...p, decorations: p.decorations.map((x) => (x.id === id ? { ...x, ...c.pos } : x)) })) }));
+      menu.show(e.clientX, e.clientY, d?.name ?? t('Dekoracja'), [
         ...centerItems,
-        { icon: '⧉', label: 'Duplikuj', run: () => store.set((p) => ({ ...p, decorations: [...p.decorations, { ...structuredClone(d), id: crypto.randomUUID?.() ?? String(Date.now()), x: d.x + 200 }] })) },
-        { icon: '🗑', label: 'Usuń', run: () => store.set((p) => ({ ...p, decorations: p.decorations.filter((x) => x.id !== id) })) },
+        { icon: '⧉', label: t('Duplikuj'), run: () => store.set((p) => ({ ...p, decorations: [...p.decorations, { ...structuredClone(d), id: crypto.randomUUID?.() ?? String(Date.now()), x: d.x + 200 }] })) },
+        { icon: '🗑', label: t('Usuń'), run: () => store.set((p) => ({ ...p, decorations: p.decorations.filter((x) => x.id !== id) })) },
       ]);
       return;
     }
@@ -1866,11 +1870,11 @@ export function attachCabinetInteraction(viewer, store, ui, hooks = {}) {
       const items = [];
       if (h.shape === 'rect') {
         for (const f of HOLE_FILLS) {
-          items.push({ icon: (h.fill ?? null) === f.key ? '✓' : f.key === 'induction' ? '◉' : f.key === 'gas' ? '🔥' : '▢', label: f.key ? `Wstaw: ${f.label}` : 'Bez płyty (puste wycięcie)', run: () => setHoles((hs) => hs.map((x, i) => (i === index ? { ...x, fill: f.key } : x))) });
+          items.push({ icon: (h.fill ?? null) === f.key ? '✓' : f.key === 'induction' ? '◉' : f.key === 'gas' ? '🔥' : '▢', label: f.key ? t('Wstaw: {what}', { what: f.label }) : t('Bez płyty (puste wycięcie)'), run: () => setHoles((hs) => hs.map((x, i) => (i === index ? { ...x, fill: f.key } : x))) });
         }
-      } else items.push({ info: true, icon: 'ℹ', label: 'Płytę grzewczą można wstawić w otwór prostokątny.' });
-      items.push({ icon: '🗑', label: 'Usuń otwór', run: () => (setHoles((hs) => hs.filter((_, i) => i !== index)), ui.set({ ...ui.get(), selectedHole: null })) });
-      menu.show(e.clientX, e.clientY, `Otwór ${index + 1}${h.label ? ` · ${h.label}` : ''}`, items);
+      } else items.push({ info: true, icon: 'ℹ', label: t('Płytę grzewczą można wstawić w otwór prostokątny.') });
+      items.push({ icon: '🗑', label: t('Usuń otwór'), run: () => (setHoles((hs) => hs.filter((_, i) => i !== index)), ui.set({ ...ui.get(), selectedHole: null })) });
+      menu.show(e.clientX, e.clientY, `${t('Otwór {n}', { n: index + 1 })}${h.label ? ` · ${h.label}` : ''}`, items);
       return;
     }
     // Prawy klik na blendzie (bocznej, wspólnej, blacie): menu dla zaznaczonych blend, a gdy kliknięta

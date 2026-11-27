@@ -4,6 +4,7 @@ import { isWallLike } from '../model/space.js';
 import { trimBox } from '../model/trims.js';
 import { boardBox } from '../model/boards.js';
 import { getSettings } from '../state/settings.js';
+import { t } from '../i18n.js';
 
 // Mapka zabudowy na górze zakładki „Meble”: schemat ściany z przodu (mm → SVG), korpusy jako prostokąty
 // z nazwą albo numerem, występy ścian (kominek) szare, blaty jako cienkie paski. Klik w korpus — zaznacza go
@@ -24,7 +25,7 @@ export function cabinetMapSvg(project, selectedIds, selectedParts = new Set()) {
   const pickedObstacle = [...selectedParts].find((id) => id.startsWith('obstacle:'))?.slice(9) ?? null;
   for (const o of space.obstacles) {
     const cls = isWallLike(o) ? (o.kind === 'hood' ? 'map-wall map-hood' : 'map-wall') : 'map-obstacle';
-    parts.push(`<rect x="${o.x}" y="${Y(o.y + o.height)}" width="${o.width}" height="${Math.max(o.height, H * 0.01)}" class="${cls}${o.id === pickedObstacle ? ' picked' : ''}" data-map-obstacle="${o.id}" ${o.color?.hex ? `style="fill:${o.color.hex}"` : ''}><title>${escapeHtml(o.name || 'Przeszkoda')}</title></rect>`);
+    parts.push(`<rect x="${o.x}" y="${Y(o.y + o.height)}" width="${o.width}" height="${Math.max(o.height, H * 0.01)}" class="${cls}${o.id === pickedObstacle ? ' picked' : ''}" data-map-obstacle="${o.id}" ${o.color?.hex ? `style="fill:${o.color.hex}"` : ''}><title>${escapeHtml(o.name || t('Przeszkoda'))}</title></rect>`);
   }
   for (const t of (project.trims ?? []).filter((t) => t.type === 'countertop' && !t.hidden)) {
     const b = trimBox(t, project);
@@ -62,7 +63,7 @@ export function cabinetMapSvg(project, selectedIds, selectedParts = new Set()) {
     const picked = selectedParts.has(`board:${b.id}`);
     parts.push(`<rect x="${box.x}" y="${Y(box.y + box.height)}" width="${box.width}" height="${Math.max(box.height, H * 0.012)}" class="map-board${picked ? ' picked' : ''}" data-map-board="${b.id}" ${picked ? `style="fill:${highlight}"` : ''}><title>${escapeHtml(b.name)}</title></rect>`);
   }
-  return `<svg viewBox="${-pad} ${-pad} ${W + 2 * pad} ${H + 2 * pad}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Mapka zabudowy">${parts.join('')}</svg>`;
+  return `<svg viewBox="${-pad} ${-pad} ${W + 2 * pad} ${H + 2 * pad}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="${t('Mapka zabudowy')}">${parts.join('')}</svg>`;
 }
 
 // Fronty korpusu na mapce (widok z przodu): drzwi i szuflady — obrys, szuflady z kreską uchwytu, czoła szuflad

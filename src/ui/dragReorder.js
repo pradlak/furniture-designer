@@ -1,9 +1,10 @@
+import { t } from '../i18n.js';
 // Zmiana kolejności kart na liście przeciąganiem za uchwyt ⠿ (karty korpusów, blatów, samodzielnych płyt).
 // Karta: element z data-kind="<kind>" i data-id; uchwyt w jej nagłówku: DRAG_HANDLE (draggable).
 // Kreska nad / pod kartą pokazuje miejsce upuszczenia; karty przenosi się tylko w obrębie tej samej listy
 // (np. blat między blatami). onMove(movedId, targetId, after) — zmiana kolejności w projekcie.
 
-export const DRAG_HANDLE = '<span class="drag-handle" draggable="true" data-drag-card title="Przeciągnij, aby zmienić kolejność na liście">⠿</span>';
+export const DRAG_HANDLE = `<span class="drag-handle" draggable="true" data-drag-card title="${t('Przeciągnij, aby zmienić kolejność na liście')}">⠿</span>`;
 
 // Nowa kolejność listy: element `movedId` przed albo za `targetId` (pozostałe bez zmian).
 export function moveInList(list, movedId, targetId, after) {

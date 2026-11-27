@@ -3,12 +3,15 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Rozkrój na meble.pl z pliku CSV — jak przygotować listę formatek | Meble Samemu</title>
+    <title>Rozkrój na meble.pl z pliku CSV | Meble Samemu</title>
     <meta
       name="description"
-      content="Jak wczytać listę formatek z pliku CSV w rozkroju płyt na meble.pl: format pliku, oklejanie (= i -), słoje, plecy HDF w rozkroju płyt budowlanych. Gotowy plik z darmowego projektanta mebli."
+      content="Jak zamówić rozkrój płyt na meble.pl z gotowego pliku: eksport z projektu, osobny plik dla każdego dekoru, oklejanie krawędzi, słoje i sprawdzenie listy."
     />
     <link rel="canonical" href="https://meblesamemu.pl/poradniki/rozkroj-meble-pl-csv" />
+    <link rel="alternate" hreflang="pl" href="https://meblesamemu.pl/poradniki/rozkroj-meble-pl-csv" />
+    <link rel="alternate" hreflang="en" href="https://meblesamemu.pl/en/guides/meble-pl-cutting-csv" />
+    <link rel="alternate" hreflang="x-default" href="https://meblesamemu.pl/poradniki/rozkroj-meble-pl-csv" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/strony.css" />
     <meta property="og:type" content="article" />
@@ -19,6 +22,56 @@
     <meta property="og:description" content="Gotowa lista formatek do wczytania w rozkroju na meble.pl — z projektu 3D." />
     <meta property="og:image" content="https://meblesamemu.pl/og-image-2.png" />
     <meta name="twitter:card" content="summary_large_image" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "Article",
+            "headline": "Rozkrój na meble.pl z pliku CSV",
+            "description": "Jak zamówić rozkrój płyt na meble.pl z gotowego pliku: eksport z projektu, osobny plik dla każdego dekoru, oklejanie krawędzi, słoje i sprawdzenie listy.",
+            "inLanguage": "pl",
+            "datePublished": "2026-11-14",
+            "dateModified": "2026-11-26",
+            "author": {
+              "@type": "Organization",
+              "name": "Meble Samemu",
+              "url": "https://meblesamemu.pl/"
+            },
+            "publisher": {
+              "@type": "Organization",
+              "name": "Meble Samemu",
+              "url": "https://meblesamemu.pl/"
+            },
+            "image": "https://meblesamemu.pl/og-image-2.png",
+            "mainEntityOfPage": "https://meblesamemu.pl/poradniki/rozkroj-meble-pl-csv"
+          },
+          {
+            "@type": "BreadcrumbList",
+            "itemListElement": [
+              {
+                "@type": "ListItem",
+                "position": 1,
+                "name": "Meble Samemu",
+                "item": "https://meblesamemu.pl/"
+              },
+              {
+                "@type": "ListItem",
+                "position": 2,
+                "name": "Poradniki",
+                "item": "https://meblesamemu.pl/poradniki/"
+              },
+              {
+                "@type": "ListItem",
+                "position": 3,
+                "name": "Rozkrój na meble.pl z pliku CSV",
+                "item": "https://meblesamemu.pl/poradniki/rozkroj-meble-pl-csv"
+              }
+            ]
+          }
+        ]
+      }
+    </script>
   </head>
   <body>
     <header class="site-header">
@@ -28,12 +81,13 @@
           <a href="/">Projektant</a>
           <a href="/o-programie">O programie</a>
           <a href="/poradniki/">Poradniki</a>
+          <a href="/en/guides/meble-pl-cutting-csv" lang="en" hreflang="en" class="lang-link">English</a>
         </nav>
       </div>
     </header>
 
     <main class="wrap">
-      <p class="updated"><a href="/poradniki/">Poradniki</a> › Rozkrój na meble.pl z pliku CSV</p>
+      <nav class="crumbs" aria-label="Okruszki"><a href="/">Meble Samemu</a> › <a href="/poradniki/">Poradniki</a> › <span aria-current="page">Rozkrój na meble.pl z pliku CSV</span></nav>
       <h1>Rozkrój na meble.pl z pliku CSV</h1>
       <p class="lead">
         Rozkrój płyt na meble.pl pozwala wczytać listę formatek z pliku zamiast wpisywać każdą ręcznie.
@@ -47,6 +101,11 @@
         <li>W okienku z plikami kliknij <b>💾 Zapisz</b> przy każdej płycie — każda płyta (dekor) to osobny plik.</li>
         <li>Na meble.pl otwórz właściwy rozkrój, wybierz płytę i kliknij <b>„Wczytaj listę formatek z CSV”</b>. Sprawdź dane po wczytaniu.</li>
       </ol>
+      <figure class="shot shot-narrow">
+        <img src="/obrazki/krok-formatki-meble-pl.webp" width="520" height="430" loading="lazy" decoding="async"
+          alt="Okienko Formatki do rozkroju z zaznaczonym formatem meble.pl" />
+        <figcaption>W okienku „Formatki…” wybierz <b>meble.pl</b> — dostaniesz osobny plik dla każdej płyty.</figcaption>
+      </figure>
 
       <h2>Który rozkrój na meble.pl wybrać</h2>
       <table>
@@ -89,10 +148,12 @@
       </ul>
       <p><a class="cta" href="/">Przygotuj listę formatek →</a></p>
 
-      <h2>Zobacz też</h2>
+      <h2>Powiązane poradniki</h2>
       <ul>
-        <li><a href="/poradniki/formatki-rozkroj-plyt">Formatki do rozkroju płyt — jak je policzyć</a></li>
-        <li><a href="/poradniki/szafa-do-wneki">Jak zaprojektować szafę do wnęki</a></li>
+        <li><a href="/poradniki/formatki-rozkroj-plyt">Formatki do rozkroju płyt — jak je policzyć i zamówić</a></li>
+        <li><a href="/poradniki/okleina-obrzeze-krawedzi">Okleina na krawędzie płyty — ile i gdzie</a></li>
+        <li><a href="/poradniki/ile-plyty-na-szafe">Ile płyty potrzeba na szafę — i 18 czy 16 mm</a></li>
+        <li><a href="/lista-formatek">Lista formatek do rozkroju płyt</a></li>
       </ul>
       <p class="updated">Meble Samemu nie jest powiązane z meble.pl — to niezależny, darmowy projektant mebli, który zapisuje pliki w formacie ich rozkroju.</p>
     </main>

@@ -1,6 +1,7 @@
 import { CUT_LIST_PARTS, cutListItems, buildAccessories, BOARDS_KEY, MEBLEPL_CUTTING } from '../model/cutList.js';
 import { MATERIAL_TYPES } from '../model/materials.js';
 import { escapeHtml } from './dom.js';
+import { t } from '../i18n.js';
 
 // Okienko „Formatki”: wybór formatu (Excel / CSV / meble.pl…) i tego, co wyeksportować — rodzaje płyt
 // (korpusy, plecy HDF, fronty, blendy, blaty, akcesoria), które meble i które materiały.
@@ -25,54 +26,54 @@ export function createCutListDialog({ onExport }) {
   overlay.hidden = true;
   overlay.innerHTML = `
     <div class="welcome cut-list-dialog" role="dialog" aria-modal="true" aria-labelledby="cut-list-title">
-      <h2 id="cut-list-title">Formatki do rozkroju</h2>
-      <p class="welcome-note">Lista płyt do zamówienia cięcia (z wymiarami do cięcia, okleiną i obróbką).</p>
+      <div class="ui-h2" role="heading" aria-level="2" id="cut-list-title">${t('Formatki do rozkroju')}</div>
+      <p class="welcome-note">${t('Lista płyt do zamówienia cięcia (z wymiarami do cięcia, okleiną i obróbką).')}</p>
       <fieldset class="cut-list-group">
-        <legend>Format pliku</legend>
+        <legend>${t('Format pliku')}</legend>
         <label class="check"><input type="radio" name="cut-format" value="xlsx" checked />
-          <span><b>Excel (.xlsx)</b> <small>— najczytelniejszy: nagłówki, szerokie kolumny, arkusze</small></span></label>
+          <span><b>Excel (.xlsx)</b> <small>${t('— najczytelniejszy: nagłówki, szerokie kolumny, arkusze')}</small></span></label>
         <label class="check"><input type="radio" name="cut-format" value="csv" />
-          <span><b>CSV</b> <small>— zwykły tekst z tabulatorami, np. do programu do rozkroju</small></span></label>
+          <span><b>CSV</b> <small>${t('— zwykły tekst z tabulatorami, np. do programu do rozkroju')}</small></span></label>
         <label class="check"><input type="radio" name="cut-format" value="meblepl" />
-          <span><b>meble.pl</b> <small>— plik do wczytania w <a href="https://www.meble.pl/rozkroj,plyty-meblowe" target="_blank" rel="noopener">rozkroju na meble.pl</a>: wszystko z płyty meblowej (korpusy, a także fronty i blendy, jeśli są z płyty meblowej) i plecy HDF; osobny plik dla każdej płyty</small></span></label>
+          <span><b>meble.pl</b> <small>${t('— plik do wczytania w <a href="https://www.meble.pl/rozkroj,plyty-meblowe" target="_blank" rel="noopener">rozkroju na meble.pl</a>: wszystko z płyty meblowej (korpusy, a także fronty i blendy, jeśli są z płyty meblowej) i plecy HDF; osobny plik dla każdej płyty')}</small></span></label>
         <label class="check"><input type="radio" name="cut-format" value="mdf" />
-          <span><b>Fronty i blendy MDF</b> <small>— elementy z MDF lakierowanego (np. do zamówienia w <a href="https://smartfronty.pl/" target="_blank" rel="noopener">smartfronty.pl</a>): lista w Excelu i rysunek każdego elementu z otworami pod uchwyty i zawiasy</small></span></label>
+          <span><b>${t('Fronty i blendy MDF')}</b> <small>${t('— elementy z MDF lakierowanego (np. do zamówienia w <a href="https://smartfronty.pl/" target="_blank" rel="noopener">smartfronty.pl</a>): lista w Excelu i rysunek każdego elementu z otworami pod uchwyty i zawiasy')}</small></span></label>
         <label class="check"><input type="radio" name="cut-format" value="worktops" />
-          <span><b>Blaty i płyty z otworami</b> <small>— blaty na szafkach i samodzielne blaty i półki: lista w Excelu i rysunek każdej płyty z góry — wymiary, otwory i wycięcia (zlew, płyta grzewcza…), frezy krawędzi</small></span></label>
+          <span><b>${t('Blaty i płyty z otworami')}</b> <small>${t('— blaty na szafkach i samodzielne blaty i półki: lista w Excelu i rysunek każdej płyty z góry — wymiary, otwory i wycięcia (zlew, płyta grzewcza…), frezy krawędzi')}</small></span></label>
       </fieldset>
-      <p class="hint cut-list-whole" hidden>Ten format obejmuje zawsze cały projekt — poniższy wybór (rodzaje płyt, meble, materiały) go nie dotyczy.</p>
-      <p class="hint cut-list-meblepl" hidden>meble.pl tnie tylko płyty meblowe i HDF — pozostałe materiały są wyszarzone.</p>
+      <p class="hint cut-list-whole" hidden>${t('Ten format obejmuje zawsze cały projekt — poniższy wybór (rodzaje płyt, meble, materiały) go nie dotyczy.')}</p>
+      <p class="hint cut-list-meblepl" hidden>${t('meble.pl tnie tylko płyty meblowe i HDF — pozostałe materiały są wyszarzone.')}</p>
       <fieldset class="cut-list-group">
-        <legend>Co wyeksportować
-          <button type="button" class="link-button" data-pick="part" data-on="1">wszystko</button> ·
-          <button type="button" class="link-button" data-pick="part" data-on="0">nic</button>
+        <legend>${t('Co wyeksportować')}
+          <button type="button" class="link-button" data-pick="part" data-on="1">${t('wszystko')}</button> ·
+          <button type="button" class="link-button" data-pick="part" data-on="0">${t('nic')}</button>
         </legend>
         ${CUT_LIST_PARTS.map(
           (p) => `<label class="check"><input type="checkbox" data-part="${p.key}" checked />
             <span>${escapeHtml(p.label)}${p.hint ? ` <small>— ${escapeHtml(p.hint)}</small>` : ''} <small class="cut-count"></small></span></label>`,
         ).join('')}
         <label class="check"><input type="checkbox" data-part="accessories" checked />
-          <span>Akcesoria <small>— nóżki, zawiasy, prowadnice, uchwyty</small> <small class="cut-count"></small></span></label>
+          <span>${t('Akcesoria')} <small>${t('— nóżki, zawiasy, prowadnice, uchwyty')}</small> <small class="cut-count"></small></span></label>
       </fieldset>
       <fieldset class="cut-list-group">
-        <legend>Które meble
-          <button type="button" class="link-button" data-pick="cabinet" data-on="1">wszystkie</button> ·
-          <button type="button" class="link-button" data-pick="cabinet" data-on="0">żaden</button>
+        <legend>${t('Które meble')}
+          <button type="button" class="link-button" data-pick="cabinet" data-on="1">${t('wszystkie')}</button> ·
+          <button type="button" class="link-button" data-pick="cabinet" data-on="0">${t('żaden')}</button>
         </legend>
-        <small>Blendy dolne, górne i blaty — gdy obejmują choć jeden z zaznaczonych korpusów (w całości).</small>
+        <small>${t('Blendy dolne, górne i blaty — gdy obejmują choć jeden z zaznaczonych korpusów (w całości).')}</small>
         <div class="cut-list-scroll cut-list-cabinets"></div>
       </fieldset>
       <fieldset class="cut-list-group">
-        <legend>Które materiały
-          <button type="button" class="link-button" data-pick="material" data-on="1">wszystkie</button> ·
-          <button type="button" class="link-button" data-pick="material" data-on="0">żaden</button>
+        <legend>${t('Które materiały')}
+          <button type="button" class="link-button" data-pick="material" data-on="1">${t('wszystkie')}</button> ·
+          <button type="button" class="link-button" data-pick="material" data-on="0">${t('żaden')}</button>
         </legend>
         <div class="cut-list-scroll cut-list-materials"></div>
       </fieldset>
       <p class="warning cut-list-empty" hidden></p>
       <div class="welcome-actions">
-        <button type="button" data-cut="cancel">Anuluj</button>
-        <button type="button" class="primary" data-cut="export">💾 Zapisz</button>
+        <button type="button" data-cut="cancel">${t('Anuluj')}</button>
+        <button type="button" class="primary" data-cut="export">${t('💾 Zapisz')}</button>
       </div>
     </div>`;
   document.body.appendChild(overlay);
@@ -80,10 +81,10 @@ export function createCutListDialog({ onExport }) {
   const picks = (kind) => [...overlay.querySelectorAll(`input[data-${kind}]`)];
   const close = () => (overlay.hidden = true);
   const format = () => overlay.querySelector('input[name="cut-format"]:checked').value;
-  const typeLabel = (t) => MATERIAL_TYPES.find((x) => x.key === t)?.label.replace(/ \(.*\)/, '') ?? '';
+  const typeLabel = (type) => MATERIAL_TYPES.find((x) => x.key === type)?.label.replace(/ \(.*\)/, '') ?? '';
   const intent = (b) => b.dataset.intent !== '0';
   const setIntent = (b, on) => (b.dataset.intent = on ? '1' : '0');
-  const pcs = (n) => `${n} szt.`;
+  const pcs = (n) => t('{n} szt.', { n });
 
   // Dane bieżącego projektu (przy otwarciu): pojedyncze elementy i korpusy z akcesoriami.
   let items = [];
@@ -94,7 +95,7 @@ export function createCutListDialog({ onExport }) {
     items = cutListItems(project);
     accessoryCabinets = new Set(project.furniture.filter((c) => buildAccessories(project, new Set([c.id])).length).map((c) => c.id));
     const cabinets = project.furniture.map((c) => ({ id: c.id, label: escapeHtml(c.name), extra: `${c.width} × ${c.height} × ${c.depth} mm` }));
-    if (project.boards?.length) cabinets.push({ id: BOARDS_KEY, label: 'Samodzielne blaty i półki', extra: '' });
+    if (project.boards?.length) cabinets.push({ id: BOARDS_KEY, label: t('Samodzielne blaty i półki'), extra: '' });
     overlay.querySelector('.cut-list-cabinets').innerHTML = cabinets
       .map(
         (c) => `<label class="check"><input type="checkbox" data-cabinet="${escapeHtml(c.id)}" checked />
@@ -112,7 +113,7 @@ export function createCutListDialog({ onExport }) {
           ([name, type]) => `<label class="check"><input type="checkbox" data-material="${escapeHtml(name)}" checked />
             <span>${escapeHtml(name)} <small>— ${escapeHtml(typeLabel(type))}</small> <small class="cut-count"></small></span></label>`,
         )
-        .join('') || '<small>Brak płyt w projekcie.</small>';
+        .join('') || `<small>${t('Brak płyt w projekcie.')}</small>`;
     for (const kind of ['cabinet', 'material']) picks(kind).forEach((b) => setIntent(b, true));
   }
 
@@ -141,7 +142,7 @@ export function createCutListDialog({ onExport }) {
       box.checked = available && intent(box);
       box.closest('label').classList.toggle('unavailable', !available);
       const el = box.closest('label').querySelector('.cut-count');
-      if (el) el.textContent = n > 0 ? `(${pcs(n)})` : available ? '' : '(brak)';
+      if (el) el.textContent = n > 0 ? `(${pcs(n)})` : available ? '' : t('(brak)');
     };
 
     for (const box of picks('part')) {
@@ -210,7 +211,7 @@ export function createCutListDialog({ onExport }) {
       const pickedCabinets = on('cabinet').map((b) => b.dataset.cabinet);
       const materials = picks('material');
       const pickedMaterials = on('material').map((b) => b.dataset.material);
-      if (!WHOLE_PROJECT.has(fmt) && !parts.length) return showError('Przy tym wyborze nie ma nic do eksportu — zaznacz rodzaj płyt, mebel i materiał.');
+      if (!WHOLE_PROJECT.has(fmt) && !parts.length) return showError(t('Przy tym wyborze nie ma nic do eksportu — zaznacz rodzaj płyt, mebel i materiał.'));
       // w filtrze tylko to, co zawężone
       const filter = {};
       if (pickedCabinets.length < cabinets.length) {

@@ -1,6 +1,7 @@
 import { SPACE_TEMPLATES, templateIssues, createProjectFromTemplate } from '../model/templates.js';
 import { escapeHtml } from './dom.js';
 import { PICTURES } from './pictures.js';
+import { t } from '../i18n.js';
 
 // Okienko „Nowy projekt”: wybór szablonu przestrzeni (wnęka prostokątna / poddasze ze skosem)
 // z polami wymiarów do poprawienia od razu. Zastępuje bieżący projekt.
@@ -11,22 +12,22 @@ export function createNewProjectDialog(store, { onExamples } = {}) {
   overlay.hidden = true;
   overlay.innerHTML = `
     <div class="welcome new-project" role="dialog" aria-modal="true" aria-labelledby="new-project-title">
-      <h2 id="new-project-title">Nowy projekt</h2>
-      <p class="welcome-note">Wybierz rodzaj przestrzeni i popraw wymiary — wszystko zmienisz też później w zakładce „Przestrzeń”.</p>
+      <div class="ui-h2" role="heading" aria-level="2" id="new-project-title">${t('Nowy projekt')}</div>
+      <p class="welcome-note">${t('Wybierz rodzaj przestrzeni i popraw wymiary — wszystko zmienisz też później w zakładce „Przestrzeń”.')}</p>
       <div class="templates">
         ${SPACE_TEMPLATES.map(
-          (t, i) => `
-          <label class="template" data-template="${t.key}">
+          (tp, i) => `
+          <label class="template" data-template="${tp.key}">
             <span class="template-head">
-              <input type="radio" name="space-template" value="${t.key}" ${i === 0 ? 'checked' : ''} />
-              <span class="template-sketch">${SKETCHES[t.key] ?? ''}</span>
+              <input type="radio" name="space-template" value="${tp.key}" ${i === 0 ? 'checked' : ''} />
+              <span class="template-sketch">${SKETCHES[tp.key] ?? ''}</span>
               <span>
-                <b>${escapeHtml(t.label)}</b>
-                <small>${escapeHtml(t.description)}</small>
+                <b>${escapeHtml(tp.label)}</b>
+                <small>${escapeHtml(tp.description)}</small>
               </span>
             </span>
             <span class="template-fields">
-              ${t.fields
+              ${tp.fields
                 .map(
                   (f) => `
                 <span class="field small">
@@ -43,17 +44,17 @@ export function createNewProjectDialog(store, { onExamples } = {}) {
             <span class="template-arrow">→</span>
             <span class="template-sketch template-picture">${PICTURES.kitchen}</span>
             <span>
-              <b>Przykładowe projekty</b>
-              <small>Kuchnia, szafa we wnęce, poddasze, regał, komoda — gotowe do obejrzenia i zmian.</small>
+              <b>${t('Przykładowe projekty')}</b>
+              <small>${t('Kuchnia, szafa we wnęce, poddasze, regał, komoda — gotowe do obejrzenia i zmian.')}</small>
             </span>
           </span>
         </button>
       </div>
       <ul class="issues new-project-issues"></ul>
-      <p class="warning new-project-replace" hidden>Bieżący projekt zostanie zastąpiony — jeśli chcesz go zachować, najpierw użyj „Eksportuj”.</p>
+      <p class="warning new-project-replace" hidden>${t('Bieżący projekt zostanie zastąpiony — jeśli chcesz go zachować, najpierw użyj „Eksportuj”.')}</p>
       <div class="welcome-actions">
-        <button type="button" data-new="cancel">Anuluj</button>
-        <button type="button" class="primary" data-new="create">Utwórz</button>
+        <button type="button" data-new="cancel">${t('Anuluj')}</button>
+        <button type="button" class="primary" data-new="create">${t('Utwórz')}</button>
       </div>
     </div>`;
   document.body.appendChild(overlay);

@@ -1,10 +1,11 @@
+import { t } from '../i18n.js';
 // Przycisk „+ Dodaj ▾” na pasku narzędzi: korpus, półka, blat, blendy, przeszkody — lista budowana z przycisków
 // dodawania w panelach (klik w pozycję = klik w ten przycisk, więc działa tak samo, także gdy panel jest zwinięty).
 const GROUPS = [
-  { title: 'Meble', selector: '#furniture-panel [data-action="add-cabinet"]' },
-  { title: 'Blaty i półki', selector: '#boards-panel [data-board-add], #worktop-trims-panel [data-add-trim]' },
-  { title: 'Blendy', selector: '#trims-panel [data-add-trim]' },
-  { title: 'Przeszkody w pokoju', selector: '#space-panel [data-add-obstacle]' },
+  { title: t('Meble'), selector: '#furniture-panel [data-action="add-cabinet"]' },
+  { title: t('Blaty i półki'), selector: '#boards-panel [data-board-add], #worktop-trims-panel [data-add-trim]' },
+  { title: t('Blendy'), selector: '#trims-panel [data-add-trim]' },
+  { title: t('Przeszkody w pokoju'), selector: '#space-panel [data-add-obstacle]' },
 ];
 
 // extra — dodatkowe podmenu: [{ title, search?, items?: [{ label, run, keywords? }], groups?: [{ title, items }] }]
@@ -13,7 +14,7 @@ export function initAddMenu(toolbar, { extra = [] } = {}) {
   const anchor = toolbar.querySelector('.group');
   const menu = document.createElement('details');
   menu.className = 'group add-menu';
-  menu.innerHTML = '<summary title="Dodaj korpus, półkę, blat, blendę albo przeszkodę"><svg class="add-ico" viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><circle cx="10" cy="10" r="8.2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M10 5.8v8.4M5.8 10h8.4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg> Dodaj ▾</summary><div class="add-menu-list"></div>';
+  menu.innerHTML = `<summary title="${t('Dodaj korpus, półkę, blat, blendę albo przeszkodę')}"><svg class="add-ico" viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><circle cx="10" cy="10" r="8.2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M10 5.8v8.4M5.8 10h8.4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg> ${t('Dodaj ▾')}</summary><div class="add-menu-list"></div>`;
   anchor?.after(menu);
   const list = menu.querySelector('.add-menu-list');
   let sources = [];
@@ -45,7 +46,7 @@ export function initAddMenu(toolbar, { extra = [] } = {}) {
           )
           .join('');
         if (!g.title) return `<div class="add-menu-sep"></div>${groups[0].items.map((it, i) => btn(it, 0, i)).join('')}`; // (zwykłe pozycje)
-        return `<details class="add-sub"><summary>${g.title}</summary><div class="add-sub-body">${g.search ? '<input type="search" class="add-search" placeholder="Szukaj…" aria-label="Szukaj" />' : ''}${cats}<p class="add-none" hidden>Nic nie znaleziono.</p></div></details>`;
+        return `<details class="add-sub"><summary>${g.title}</summary><div class="add-sub-body">${g.search ? `<input type="search" class="add-search" placeholder="${t('Szukaj…')}" aria-label="${t('Szukaj')}" />` : ''}${cats}<p class="add-none" hidden>${t('Nic nie znaleziono.')}</p></div></details>`;
       })
       .join('');
   });

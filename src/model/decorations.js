@@ -1,4 +1,5 @@
 import { newId, cabinetBounds } from './furniture.js';
+import { t } from '../i18n.js';
 
 // Dekoracje — obiekty tylko do wyglądu w 3D (nie trafiają do formatek, kolizji ani zamówień): lampy, kwiatek,
 // okno, obraz, książki, dywan.
@@ -16,34 +17,34 @@ import { newId, cabinetBounds } from './furniture.js';
 
 // kategorie w menu (kolejność wyświetlania)
 export const DECOR_CATEGORIES = [
-  { key: 'light', label: 'Oświetlenie' },
-  { key: 'plants', label: 'Rośliny' },
-  { key: 'wall', label: 'Na ścianie' },
-  { key: 'kitchen', label: 'Kuchnia' },
-  { key: 'accessories', label: 'Akcesoria' },
-  { key: 'floor', label: 'Podłoga' },
+  { key: 'light', label: t('Oświetlenie') },
+  { key: 'plants', label: t('Rośliny') },
+  { key: 'wall', label: t('Na ścianie') },
+  { key: 'kitchen', label: t('Kuchnia') },
+  { key: 'accessories', label: t('Akcesoria') },
+  { key: 'floor', label: t('Podłoga') },
 ];
 
 export const DECOR_TYPES = [
-  { key: 'lampFloor', label: 'Lampa stojąca', icon: '🛋️', category: 'light', size: [450, 1600, 450], place: 'floor', color: '#f5efe0', keywords: 'podłogowa' },
-  { key: 'lampPendant', label: 'Lampa wisząca', icon: '💡', category: 'light', size: [400, 700, 400], place: 'ceiling', color: '#1f2937', keywords: 'sufitowa żyrandol' },
-  { key: 'lampWallArm', label: 'Kinkiet z ramieniem (abażur z wikliny)', icon: '🏮', category: 'light', size: [260, 420, 480], place: 'wall', color: '#b08d57', keywords: 'kinkiet ścienna lampka mosiądz rattan wiklina ramię' },
-  { key: 'lampTable', label: 'Lampka na meblu', icon: '🪔', category: 'light', size: [260, 450, 260], place: 'top', color: '#f5efe0', keywords: 'nocna biurkowa' },
-  { key: 'plant', label: 'Kwiatek w doniczce', icon: '🪴', category: 'plants', size: [450, 900, 450], place: 'floor', color: '#e7e1d3', keywords: 'roślina' },
-  { key: 'plantSmall', label: 'Mały kwiatek (na meblu)', icon: '🌱', category: 'plants', size: [180, 300, 180], place: 'top', color: '#c2410c', keywords: 'roślina doniczka' },
-  { key: 'window', label: 'Okno', icon: '🪟', category: 'wall', size: [1200, 1400, 80], place: 'wall', color: '#ffffff', keywords: 'parapet' },
-  { key: 'picture', label: 'Obraz', icon: '🖼️', category: 'wall', size: [700, 500, 30], place: 'wall', color: '#7c5a36', keywords: 'rama plakat' },
-  { key: 'potFiller', label: 'Pot filler (składana bateria ścienna)', icon: '🚰', category: 'kitchen', size: [600, 290, 140], place: 'wall', color: '#c9a54a', keywords: 'bateria kran ścienny składany mosiądz złoty garnek kuchnia' },
-  { key: 'kitchenRobot', label: 'Robot kuchenny wielofunkcyjny (z naczyniem do gotowania na parze)', icon: '🍲', category: 'kitchen', size: [340, 480, 330], place: 'top', color: '#f3f4f6', keywords: 'thermomix termomiks robot blender kuchnia mikser parowar' },
-  { key: 'books', label: 'Książki', icon: '📚', category: 'accessories', size: [300, 240, 200], place: 'top', color: null },
-  { key: 'rug', label: 'Dywan', icon: '🟫', category: 'floor', size: [1600, 10, 2300], place: 'floor', color: '#a8a29e', keywords: 'chodnik' },
+  { key: 'lampFloor', label: t('Lampa stojąca'), icon: '🛋️', category: 'light', size: [450, 1600, 450], place: 'floor', color: '#f5efe0', keywords: t('podłogowa') },
+  { key: 'lampPendant', label: t('Lampa wisząca'), icon: '💡', category: 'light', size: [400, 700, 400], place: 'ceiling', color: '#1f2937', keywords: t('sufitowa żyrandol') },
+  { key: 'lampWallArm', label: t('Kinkiet z ramieniem (abażur z wikliny)'), icon: '🏮', category: 'light', size: [260, 420, 480], place: 'wall', color: '#b08d57', keywords: t('kinkiet ścienna lampka mosiądz rattan wiklina ramię') },
+  { key: 'lampTable', label: t('Lampka na meblu'), icon: '🪔', category: 'light', size: [260, 450, 260], place: 'top', color: '#f5efe0', keywords: t('nocna biurkowa') },
+  { key: 'plant', label: t('Kwiatek w doniczce'), icon: '🪴', category: 'plants', size: [450, 900, 450], place: 'floor', color: '#e7e1d3', keywords: t('roślina') },
+  { key: 'plantSmall', label: t('Mały kwiatek (na meblu)'), icon: '🌱', category: 'plants', size: [180, 300, 180], place: 'top', color: '#c2410c', keywords: t('roślina doniczka') },
+  { key: 'window', label: t('Okno'), icon: '🪟', category: 'wall', size: [1200, 1400, 80], place: 'wall', color: '#ffffff', keywords: t('parapet') },
+  { key: 'picture', label: t('Obraz'), icon: '🖼️', category: 'wall', size: [700, 500, 30], place: 'wall', color: '#7c5a36', keywords: t('rama plakat') },
+  { key: 'potFiller', label: t('Pot filler (składana bateria ścienna)'), icon: '🚰', category: 'kitchen', size: [600, 290, 140], place: 'wall', color: '#c9a54a', keywords: t('bateria kran ścienny składany mosiądz złoty garnek kuchnia') },
+  { key: 'kitchenRobot', label: t('Robot kuchenny wielofunkcyjny (z naczyniem do gotowania na parze)'), icon: '🍲', category: 'kitchen', size: [340, 480, 330], place: 'top', color: '#f3f4f6', keywords: t('thermomix termomiks robot blender kuchnia mikser parowar') },
+  { key: 'books', label: t('Książki'), icon: '📚', category: 'accessories', size: [300, 240, 200], place: 'top', color: null },
+  { key: 'rug', label: t('Dywan'), icon: '🟫', category: 'floor', size: [1600, 10, 2300], place: 'floor', color: '#a8a29e', keywords: t('chodnik') },
 ];
 // dekoracje pogrupowane wg kategorii (puste kategorie pominięte; dekoracja bez kategorii — „Inne”)
 export function decorsByCategory() {
   const known = new Set(DECOR_CATEGORIES.map((c) => c.key));
   const groups = DECOR_CATEGORIES.map((c) => ({ ...c, items: DECOR_TYPES.filter((t) => t.category === c.key) }));
   const other = DECOR_TYPES.filter((t) => !known.has(t.category));
-  if (other.length) groups.push({ key: 'other', label: 'Inne', items: other });
+  if (other.length) groups.push({ key: 'other', label: t('Inne'), items: other });
   return groups.filter((g) => g.items.length);
 }
 export const decorType = (key) => DECOR_TYPES.find((t) => t.key === key) ?? DECOR_TYPES[0];
@@ -129,10 +130,10 @@ export function centerDecoration(project, id, axis, { trimBox, boardBox } = {}) 
   };
   if (!side && decorType(d.type).place !== 'wall') me.z = d.z - d.depth / 2;
   const boxes = [
-    ...project.furniture.filter((c) => !c.hidden).map((c) => ({ box: cabinetBounds(c, project), label: `korpusem „${c.name}”` })),
-    ...space.obstacles.map((o) => ({ box: o, label: `„${o.name || 'przeszkodą'}”` })),
+    ...project.furniture.filter((c) => !c.hidden).map((c) => ({ box: cabinetBounds(c, project), label: t('korpusem „{name}”', { name: c.name }) })),
+    ...space.obstacles.map((o) => ({ box: o, label: `„${o.name || t('przeszkodą')}”` })),
     ...(boardBox ? (project.boards ?? []).filter((b) => !b.hidden).map((b) => ({ box: boardBox(b, project), label: `„${b.name}”` })) : []),
-    ...(trimBox ? (project.trims ?? []).filter((t) => t.type === 'countertop' && !t.hidden).map((t) => ({ box: trimBox(t, project), label: `blatem „${t.name}”` })).filter((x) => x.box) : []),
+    ...(trimBox ? (project.trims ?? []).filter((tr) => tr.type === 'countertop' && !tr.hidden).map((tr) => ({ box: trimBox(tr, project), label: t('blatem „{name}”', { name: tr.name }) })).filter((x) => x.box) : []),
     ...(project.decorations ?? [])
       .filter((x) => x.id !== id && !x.hidden && decorType(x.type).key !== 'rug')
       .map((x) => ({ box: { x: x.x - x.width / 2, width: x.width, y: x.y, height: x.height, z: decorType(x.type).place === 'wall' ? x.z : x.z - x.depth / 2, depth: x.depth }, label: `„${x.name}”` })),
@@ -142,8 +143,8 @@ export function centerDecoration(project, id, axis, { trimBox, boardBox } = {}) 
     const others = ['x', 'y', 'z'].filter((k) => k !== ha);
     const near = boxes.filter(({ box }) => others.every((k) => overlap(box, k) || (k === 'z' && !side && box.z < me.z + me.depth + 400) || (k === 'x' && side && box.x < me.x + me.width + 400)));
     const c0 = me[ha] + me[DIM[ha]] / 2;
-    let lo = { v: 0, label: side ? 'tylną ścianą' : 'lewą ścianą' };
-    let hi = { v: side ? space.depth : space.width, label: side ? 'przodem' : 'prawą ścianą' };
+    let lo = { v: 0, label: side ? t('tylną ścianą') : t('lewą ścianą') };
+    let hi = { v: side ? space.depth : space.width, label: side ? t('przodem') : t('prawą ścianą') };
     for (const { box, label } of near) {
       const a = box[ha];
       const b = box[ha] + box[DIM[ha]];
@@ -153,13 +154,13 @@ export function centerDecoration(project, id, axis, { trimBox, boardBox } = {}) 
     if (hi.v - lo.v < me[DIM[ha]]) return null;
     const mid = Math.round((lo.v + hi.v) / 2);
     if (Math.abs(mid - c0) < 0.5) return null;
-    return { pos: { [ha]: mid }, label: `między ${lo.label} a ${hi.label}` };
+    return { pos: { [ha]: mid }, label: t('między {a} a {b}', { a: lo.label, b: hi.label }) };
   }
   // pionowo — tylko dekoracje na ścianie / pod sufitem
   if (!['wall', 'ceiling'].includes(decorType(d.type).place)) return null;
   const near = boxes.filter(({ box }) => overlap(box, ha) && (side ? box.x < me.x + me.width + 400 : box.z < me.z + me.depth + 400));
-  let lo = { v: 0, label: 'podłogą' };
-  let hi = { v: space.height, label: 'sufitem' };
+  let lo = { v: 0, label: t('podłogą') };
+  let hi = { v: space.height, label: t('sufitem') };
   for (const { box, label } of near) {
     const top = box.y + box.height;
     if (top <= me.y + 0.5 && top > lo.v) lo = { v: top, label };
@@ -168,5 +169,5 @@ export function centerDecoration(project, id, axis, { trimBox, boardBox } = {}) 
   if (hi.v - lo.v < me.height) return null;
   const y = Math.round((lo.v + hi.v) / 2 - me.height / 2);
   if (Math.abs(y - me.y) < 0.5) return null;
-  return { pos: { y }, label: `między ${lo.label} a ${hi.label}` };
+  return { pos: { y }, label: t('między {a} a {b}', { a: lo.label, b: hi.label }) };
 }

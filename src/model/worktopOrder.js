@@ -10,6 +10,7 @@ import { trimMaterial } from './materials.js';
 import { boardBox, boardMaterial, BOARD_KINDS } from './boards.js';
 import { EDGE_KEYS, EDGE_NAMES, profileInfo, resolveHoles } from './boardFeatures.js';
 import { buildXlsx } from './xlsx.js';
+import { t } from '../i18n.js';
 
 const r1 = (v) => Math.round(v * 10) / 10;
 const num = (v) => String(r1(v)).replace('.', ',');
@@ -19,22 +20,22 @@ export function worktopItems(project) {
   const items = [];
   const cabName = new Map(project.furniture.map((c) => [c.id, c.name]));
   (project.trims ?? [])
-    .filter((t) => t.type === 'countertop')
-    .forEach((t) => {
-      const box = trimSegments(t, project)[0];
+    .filter((tr) => tr.type === 'countertop')
+    .forEach((tr) => {
+      const box = trimSegments(tr, project)[0];
       if (!box) return;
-      const m = trimMaterial(t, project);
+      const m = trimMaterial(tr, project);
       items.push({
         no: `T${items.filter((i) => i.no.startsWith('T')).length + 1}`,
-        kind: 'blat',
-        name: t.name || 'Blat',
+        kind: t('blat'),
+        name: tr.name || t('Blat'),
         width: r1(box.width),
         depth: r1(box.depth),
         thickness: m.thickness,
         material: m.name, // z kolorem / dekorem (withColor)
-        edges: t.edges,
-        holes: resolveHoles(t.holes, box.width, box.depth),
-        owners: t.cabinetIds.map((id) => cabName.get(id)).filter(Boolean),
+        edges: tr.edges,
+        holes: resolveHoles(tr.holes, box.width, box.depth),
+        owners: tr.cabinetIds.map((id) => cabName.get(id)).filter(Boolean),
       });
     });
   (project.boards ?? []).forEach((b, i) => {
@@ -42,7 +43,7 @@ export function worktopItems(project) {
     const m = boardMaterial(b, project);
     items.push({
       no: `P${i + 1}`,
-      kind: (BOARD_KINDS.find((k) => k.key === b.kind)?.label ?? 'płyta').toLowerCase(),
+      kind: (BOARD_KINDS.find((k) => k.key === b.kind)?.label ?? t('płyta')).toLowerCase(),
       name: b.name,
       width: r1(box.width),
       depth: r1(box.depth),
@@ -68,34 +69,34 @@ const edgesText = (edges) => EDGE_KEYS.map((k) => edgeText(k, edges?.[k])).filte
 // Otwór: opis i odległości krawędzi otworu od lewej i przedniej krawędzi płyty.
 function holeInfo(h, i) {
   const [hw, hd] = h.shape === 'circle' ? [h.d / 2, h.d / 2] : [h.w / 2, h.h / 2];
-  const what = h.shape === 'circle' ? `Ø${num(h.d)}` : `wycięcie ${num(h.w)} × ${num(h.h)}${h.r ? ` R${num(h.r)}` : ''}`;
+  const what = h.shape === 'circle' ? `Ø${num(h.d)}` : t('wycięcie {w} × {h}', { w: num(h.w), h: num(h.h) }) + (h.r ? ` R${num(h.r)}` : '');
   return { id: `O${i + 1}`, what, label: h.label, left: h.x - hw, front: h.y - hd };
 }
 const holesText = (holes) =>
   holes
     .map((h, i) => {
       const o = holeInfo(h, i);
-      return `${o.id}${o.label ? ` (${o.label})` : ''}: ${o.what}, środek x ${num(h.x)} / y ${num(h.y)}`;
+      return `${o.id}${o.label ? ` (${o.label})` : ''}: ${o.what}, ` + t('środek x {x} / y {y}', { x: num(h.x), y: num(h.y) });
     })
     .join('; ');
 
 export const WORKTOP_NOTES = [
-  'Wymiary w mm. Widok z góry: długość — wzdłuż przedniej krawędzi (od lewej), głębokość — od przodu do tyłu.',
-  'Otwory: środek (x; y) — x od lewej krawędzi, y od przedniej krawędzi płyty, patrząc z góry.',
-  'Dla wycięć podana jest też odległość krawędzi wycięcia od lewej i od przedniej krawędzi płyty.',
-  'Wycięcia pod zlew i płytę grzewczą — sprawdź z instrukcją montażu konkretnego urządzenia.',
-  'Do każdej pozycji jest rysunek — plik PNG z numerem i wymiarami w nazwie, np. blat_T1_2400x600.png.',
+  t('Wymiary w mm. Widok z góry: długość — wzdłuż przedniej krawędzi (od lewej), głębokość — od przodu do tyłu.'),
+  t('Otwory: środek (x; y) — x od lewej krawędzi, y od przedniej krawędzi płyty, patrząc z góry.'),
+  t('Dla wycięć podana jest też odległość krawędzi wycięcia od lewej i od przedniej krawędzi płyty.'),
+  t('Wycięcia pod zlew i płytę grzewczą — sprawdź z instrukcją montażu konkretnego urządzenia.'),
+  t('Do każdej pozycji jest rysunek — plik PNG z numerem i wymiarami w nazwie, np. blat_T1_2400x600.png.'),
 ];
 
 export function worktopXlsx(project) {
   const items = worktopItems(project);
-  const header = ['Nr rysunku', 'Rodzaj', 'Nazwa', 'Długość [mm]', 'Głębokość [mm]', 'Grubość [mm]', 'Materiał / dekor', 'Frezy krawędzi', 'Otwory i wycięcia', 'Na korpusach'];
+  const header = [t('Nr rysunku'), t('Rodzaj'), t('Nazwa'), t('Długość [mm]'), t('Głębokość [mm]'), t('Grubość [mm]'), t('Materiał / dekor'), t('Frezy krawędzi'), t('Otwory i wycięcia'), t('Na korpusach')];
   const rows = items.map((it) => [
     it.no, it.kind, it.name, it.width, it.depth, it.thickness, it.material, edgesText(it.edges), holesText(it.holes), it.owners.join(', '),
   ]);
   return buildXlsx([
-    { name: 'Blaty i płyty', header, rows, widths: [9, 12, 22, 12, 13, 11, 28, 46, 80, 26] },
-    { name: 'Objaśnienia', header: ['Objaśnienia'], rows: WORKTOP_NOTES.map((n) => [n]), widths: [140] },
+    { name: t('Blaty i płyty'), header, rows, widths: [9, 12, 22, 12, 13, 11, 28, 46, 80, 26] },
+    { name: t('Objaśnienia'), header: [t('Objaśnienia')], rows: WORKTOP_NOTES.map((n) => [n]), widths: [140] },
   ]);
 }
 
@@ -119,9 +120,9 @@ export function worktopDrawingSvg(it) {
 
   const parts = [];
   parts.push(`<text x="24" y="40" class="t1">${esc(`${it.no} — ${it.kind} ${num(W)} × ${num(D)} × ${num(it.thickness)} mm`)}</text>`);
-  parts.push(`<text x="24" y="66" class="t3">${esc([it.name, it.material, it.owners.length ? `na: ${it.owners.join(', ')}` : ''].filter(Boolean).join(' · '))}</text>`);
-  parts.push(`<text x="${X(W / 2)}" y="${oy - 10}" class="side" text-anchor="middle">TYŁ (ściana)</text>`);
-  parts.push(`<text x="${X(W / 2)}" y="${oy + pd + 22}" class="side" text-anchor="middle">PRZÓD</text>`);
+  parts.push(`<text x="24" y="66" class="t3">${esc([it.name, it.material, it.owners.length ? t('na: {names}', { names: it.owners.join(', ') }) : ''].filter(Boolean).join(' · '))}</text>`);
+  parts.push(`<text x="${X(W / 2)}" y="${oy - 10}" class="side" text-anchor="middle">${t('TYŁ (ściana)')}</text>`);
+  parts.push(`<text x="${X(W / 2)}" y="${oy + pd + 22}" class="side" text-anchor="middle">${t('PRZÓD')}</text>`);
   // płyta
   parts.push(`<rect x="${X(0)}" y="${Y(D)}" width="${pw}" height="${pd}" class="plate"/>`);
   // frezy krawędzi — pogrubiona niebieska krawędź
@@ -159,16 +160,16 @@ export function worktopDrawingSvg(it) {
   // tabela: otwory, frezy, uwagi
   let ty = tableTop;
   if (holes.length) {
-    parts.push(`<text x="24" y="${ty}" class="t2b">Otwory i wycięcia (środek: x od lewej, y od przedniej krawędzi):</text>`);
+    parts.push(`<text x="24" y="${ty}" class="t2b">${t('Otwory i wycięcia (środek: x od lewej, y od przedniej krawędzi):')}</text>`);
     for (const h of holes) {
       ty += lineH;
-      const edgesOf = h.shape === 'rect' ? ` — krawędź wycięcia ${num(h.left)} od lewej, ${num(h.front)} od przodu` : '';
+      const edgesOf = h.shape === 'rect' ? t(' — krawędź wycięcia {left} od lewej, {front} od przodu', { left: num(h.left), front: num(h.front) }) : '';
       parts.push(`<text x="40" y="${ty}" class="t2">${esc(`${h.id}${h.label ? ` (${h.label})` : ''}: ${h.what}, x = ${num(h.x)}, y = ${num(h.y)}${edgesOf}`)}</text>`);
     }
-  } else parts.push(`<text x="24" y="${ty}" class="t2">Bez otworów.</text>`);
+  } else parts.push(`<text x="24" y="${ty}" class="t2">${t('Bez otworów.')}</text>`);
   ty += lineH * 1.5;
   if (edges.length) {
-    parts.push(`<text x="24" y="${ty}" class="t2b">Frezy krawędzi (na rysunku — niebieska krawędź):</text>`);
+    parts.push(`<text x="24" y="${ty}" class="t2b">${t('Frezy krawędzi (na rysunku — niebieska krawędź):')}</text>`);
     for (const e of edges) {
       ty += lineH;
       parts.push(`<text x="40" y="${ty}" class="t2">${esc(e.text)}</text>`);

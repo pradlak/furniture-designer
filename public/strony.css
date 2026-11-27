@@ -155,3 +155,23 @@ figcaption { font-size: 14px; opacity: 0.75; margin-top: 6px; }
 .faq details { border: 1px solid rgba(0, 0, 0, 0.12); border-radius: 8px; padding: 10px 14px; margin: 8px 0; }
 .faq summary { cursor: pointer; font-weight: 600; }
 .faq details p { margin: 8px 0 0; }
+
+/* O programie: zrzuty ekranu i galeria przykładów */
+.shot { margin: 24px 0 8px; }
+.shot img { box-shadow: 0 6px 24px rgba(0, 0, 0, 0.08); }
+.shot-narrow { max-width: 520px; margin-left: auto; margin-right: auto; }
+.gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; margin: 16px 0 24px; padding: 0; list-style: none; }
+.gallery li { margin: 0; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.gallery a { display: block; text-decoration: none; }
+.gallery img { display: block; width: 100%; height: auto; aspect-ratio: 5 / 3; object-fit: cover; background: #d5dae1; transition: transform 0.2s; }
+.gallery a:hover img { transform: scale(1.03); }
+.gallery span { display: block; padding: 10px 14px 0; font-weight: 600; }
+.gallery p { margin: 2px 14px 12px; font-size: 15px; color: var(--muted); }
+
+/* okruszki nawigacyjne (Meble Samemu › Poradniki › …) */
+.crumbs { font-size: 14px; color: var(--muted); margin: 0 0 12px; }
+.crumbs a { color: var(--muted); }
+.crumbs a:hover { color: var(--accent); }
+
+/* przełącznik języka w nagłówku stron z treścią */
+.site-nav .lang-link { font-weight: 600; }

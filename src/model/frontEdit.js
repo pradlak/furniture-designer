@@ -13,6 +13,7 @@ import {
   HINGE_EDGE_MIN,
   HINGE_LIMITS,
 } from './furniture.js';
+import { t } from '../i18n.js';
 
 // Edycja układu frontów (wnętrze: szuflady i wolne przestrzenie; drzwi przykrywające wybrane części) — z panelu
 // i z widoku 3D. Model: fronts.parts / fronts.doors (patrz frontParts w model/furniture.js). Wszystkie funkcje
@@ -500,7 +501,7 @@ export const freeSpaceOf = (cabinet, index, project) => {
   return freeAround(stateOf(cabinet), ranges, area, gvOf(cabinet), index, panels.frontOverflow).gain;
 };
 // tekst opcji: „Dopasuj wysokość do miejsca (+294 mm)” / „(−120 mm)”
-export const fitLabel = (gain) => `Dopasuj wysokość do miejsca (${gain > 0 ? '+' : '−'}${Math.abs(gain)} mm)`;
+export const fitLabel = (gain) => t('Dopasuj wysokość do miejsca ({gain} mm)', { gain: `${gain > 0 ? '+' : '−'}${Math.abs(gain)}` });
 
 // --- zawiasy drzwi (okienko „Zawias”, przeciąganie w 3D) ---
 // Zawiasy liczone są na płycie frontu drzwi (panel.hinges, panel.door — indeks drzwi, panel.wing — skrzydło).

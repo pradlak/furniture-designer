@@ -5,6 +5,7 @@ import { defaultMaterials, normalizeMaterials } from './materials.js';
 import { normalizeBoard } from './boards.js';
 import { normalizeDecoration } from './decorations.js';
 import { normalizeNote } from './notes.js';
+import { t } from '../i18n.js';
 
 // Projekt = przestrzeń + materiały + meble + blendy wspólne + notatki + ustawienia widoku.
 export const PROJECT_VERSION = 5;
@@ -35,7 +36,7 @@ export function createDefaultProject() {
 
 export function normalizeProject(raw) {
   if (!raw || typeof raw !== 'object' || !raw.space) {
-    throw new Error('To nie jest prawidłowy plik projektu.');
+    throw new Error(t('To nie jest prawidłowy plik projektu.'));
   }
   const rawFurniture = Array.isArray(raw.furniture) ? raw.furniture : [];
   const furniture = rawFurniture.map(normalizeCabinet);

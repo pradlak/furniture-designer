@@ -1,4 +1,5 @@
 import { escapeHtml } from './dom.js';
+import { t } from '../i18n.js';
 import { saveFile } from './saveFile.js';
 import { zipStored } from '../model/xlsx.js';
 
@@ -13,19 +14,19 @@ export function createFilesDialog() {
   overlay.hidden = true;
   overlay.innerHTML = `
     <div class="welcome files-dialog" role="dialog" aria-modal="true" aria-labelledby="files-title">
-      <h2 id="files-title"></h2>
+      <div class="ui-h2" role="heading" aria-level="2" id="files-title"></div>
       <p class="welcome-note files-intro"></p>
-      <div class="files-all"><button type="button" class="primary" data-files="all" disabled>⏳ Przygotowuję pliki…</button></div>
+      <div class="files-all"><button type="button" class="primary" data-files="all" disabled>${t('⏳ Przygotowuję pliki…')}</button></div>
       <ul class="files-list"></ul>
       <div class="files-warning"></div>
       <div class="welcome-actions">
-        <button type="button" class="primary" data-files="close">Zamknij</button>
+        <button type="button" class="primary" data-files="close">${t('Zamknij')}</button>
       </div>
     </div>`;
   document.body.appendChild(overlay);
 
   let current = [];
-  let zipName = 'pliki.zip';
+  let zipName = t('pliki.zip');
   let zipBlob = null; // archiwum gotowe zawczasu — zapis musi ruszyć od razu po kliknięciu
   const blobs = new Map(); // gotowe pliki (rysunki PNG robią się chwilę — przygotowujemy je od razu)
   const close = () => (overlay.hidden = true);
@@ -35,8 +36,8 @@ export function createFilesDialog() {
     const allBtn = e.target.closest('[data-files="all"]');
     if (allBtn) {
       if (!zipBlob) return;
-      const saved = await saveFile(zipBlob, zipName, { description: 'Archiwum ZIP' });
-      if (saved) allBtn.textContent = '✔ Zapisano wszystkie — zapisz jeszcze raz';
+      const saved = await saveFile(zipBlob, zipName, { description: t('Archiwum ZIP') });
+      if (saved) allBtn.textContent = t('✔ Zapisano wszystkie — zapisz jeszcze raz');
       return;
     }
     const btn = e.target.closest('[data-file]');
@@ -45,20 +46,20 @@ export function createFilesDialog() {
     const blob = blobs.get(i);
     if (!blob) return;
     const f = current[i];
-    const saved = await saveFile(blob, f.fileName, { description: f.description ?? 'Plik' });
-    if (saved) btn.textContent = '✔ Zapisano — zapisz jeszcze raz';
+    const saved = await saveFile(blob, f.fileName, { description: f.description ?? t('Plik') });
+    if (saved) btn.textContent = t('✔ Zapisano — zapisz jeszcze raz');
   });
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && !overlay.hidden) close();
   });
 
   return {
-    show({ title, intro, files, warningHtml = '', zipName: zip = 'pliki.zip' }) {
+    show({ title, intro, files, warningHtml = '', zipName: zip = t('pliki.zip') }) {
       current = files;
       zipName = zip;
       const allBtn = overlay.querySelector('[data-files="all"]');
       allBtn.disabled = true;
-      allBtn.textContent = '⏳ Przygotowuję pliki…';
+      allBtn.textContent = t('⏳ Przygotowuję pliki…');
       zipBlob = null;
       overlay.querySelector('.files-all').hidden = files.length < 2;
       blobs.clear();
@@ -71,7 +72,7 @@ export function createFilesDialog() {
             <div><b>${escapeHtml(f.label)}</b>${f.info ? ` — ${escapeHtml(f.info)}` : ''}
               ${f.linkUrl ? `<br /><small><a href="${f.linkUrl}" target="_blank" rel="noopener">${escapeHtml(f.linkText ?? f.linkUrl)}</a></small>` : ''}
               <br /><small class="files-name">${escapeHtml(f.fileName)}</small></div>
-            <button type="button" data-file="${i}" disabled>⏳ Przygotowuję…</button>
+            <button type="button" data-file="${i}" disabled>${t('⏳ Przygotowuję…')}</button>
           </li>`,
         )
         .join('');
@@ -84,19 +85,19 @@ export function createFilesDialog() {
             if (current !== files) return; // okienko otwarte już dla innych plików
             blobs.set(i, blob);
             btn.disabled = false;
-            btn.textContent = '💾 Zapisz';
+            btn.textContent = t('💾 Zapisz');
             if (blobs.size === files.length) {
               const n = files.length;
               Promise.all(files.map(async (f, j) => [f.fileName, new Uint8Array(await blobs.get(j).arrayBuffer())])).then((entries) => {
                 if (current !== files) return;
                 zipBlob = new Blob([zipStored(entries)], { type: 'application/zip' });
                 allBtn.disabled = false;
-                allBtn.textContent = `💾 Zapisz wszystkie (${n} ${n < 5 ? 'pliki' : 'plików'} w jednym ZIP)`;
+                allBtn.textContent = t('💾 Zapisz wszystkie ({n} {files} w jednym ZIP)', { n, files: n < 5 ? t('pliki') : t('plików') });
               });
             }
           })
           .catch(() => {
-            btn.textContent = '✖ Błąd';
+            btn.textContent = t('✖ Błąd');
           });
       });
     },

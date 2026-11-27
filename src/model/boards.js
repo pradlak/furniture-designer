@@ -9,17 +9,18 @@ import { resolveMaterial, withColor, normalizeColor } from './materials.js';
 import { defaultEdges, normalizeEdges, normalizeHoles, holeFits } from './boardFeatures.js';
 import { isPointInside, describeOutside } from './space.js';
 import { newId, cabinetBounds } from './furniture.js';
+import { t } from '../i18n.js';
 
 export const BOARD_KINDS = [
-  { key: 'worktop', label: 'Blat' },
-  { key: 'shelf', label: 'Półka' },
+  { key: 'worktop', label: t('Blat') },
+  { key: 'shelf', label: t('Półka') },
 ];
 export const BOARD_LIMITS = { sizeMin: 50, sizeMax: 6000 };
 
 export function boardMaterial(board, project) {
   const m = withColor(resolveMaterial(project, board.materialId, board.kind === 'worktop' ? 'worktop' : 'chipboard'), board.color);
   // własna grubość płyty — materiał w tej grubości (do rysunku, formatek i zamówień)
-  return board.thickness ? { ...m, thickness: board.thickness, name: m.thickness === board.thickness ? m.name : `${m.name} (gr. ${board.thickness} mm)` } : m;
+  return board.thickness ? { ...m, thickness: board.thickness, name: m.thickness === board.thickness ? m.name : t('{name} (gr. {t} mm)', { name: m.name, t: board.thickness }) } : m;
 }
 
 // Prostopadłościan płyty (mm, układ przestrzeni).
@@ -39,7 +40,7 @@ export function createBoard(project, kind = 'worktop', at = null) {
     : freeBoardSpot(project, { ...size, y: worktop ? Math.min(750, space.height - 50) : Math.min(1500, space.height - 100) });
   return {
     id: newId(),
-    name: `${worktop ? 'Blat' : 'Półka'} ${count + 1}`,
+    name: `${worktop ? t('Blat') : t('Półka')} ${count + 1}`,
     kind,
     x: spot.x,
     y: spot.y,
@@ -63,7 +64,7 @@ export function normalizeBoard(raw = {}) {
   const { sizeMin, sizeMax } = BOARD_LIMITS;
   return {
     id: typeof raw.id === 'string' && raw.id ? raw.id : newId(),
-    name: typeof raw.name === 'string' ? raw.name.slice(0, 120) : 'Płyta',
+    name: typeof raw.name === 'string' ? raw.name.slice(0, 120) : t('Płyta'),
     kind: raw.kind === 'shelf' ? 'shelf' : 'worktop',
     x: num(raw.x, 0, -sizeMax, sizeMax * 4),
     y: num(raw.y, 750, -sizeMax, sizeMax * 4),
@@ -92,12 +93,12 @@ export function boardIssues(board, project) {
   const outside = describeOutside(corners, project.space, { openFront: true });
   if (outside) issues.push(outside);
   board.holes.forEach((h, i) => {
-    if (!holeFits(h, board.width, board.depth)) issues.push(`Otwór ${i + 1} nie mieści się w płycie (min. 10 mm od krawędzi).`);
+    if (!holeFits(h, board.width, board.depth)) issues.push(t('Otwór {n} nie mieści się w płycie (min. 10 mm od krawędzi).', { n: i + 1 }));
   });
   // mocowanie ukryte: pręt / płytka montażowa grubsze niż płyta — nie schowają się
   const work = mountMachining(board);
-  if (work?.kind === 'holes' && work.d > b.height - 6) issues.push(`Otwór pod pręt Ø${work.d} jest za duży do płyty grubości ${b.height} mm (zostaje mniej niż 3 mm ścianki) — weź grubszą płytę albo cieńszy pręt.`);
-  if (work?.plate && work.plate.h > b.height) issues.push(`Płytka montażowa (wys. ${work.plate.h} mm) jest wyższa niż płyta (${b.height} mm) — nie schowa się w tylnej krawędzi.`);
+  if (work?.kind === 'holes' && work.d > b.height - 6) issues.push(t('Otwór pod pręt Ø{d} jest za duży do płyty grubości {t} mm (zostaje mniej niż 3 mm ścianki) — weź grubszą płytę albo cieńszy pręt.', { d: work.d, t: b.height }));
+  if (work?.plate && work.plate.h > b.height) issues.push(t('Płytka montażowa (wys. {h} mm) jest wyższa niż płyta ({t} mm) — nie schowa się w tylnej krawędzi.', { h: work.plate.h, t: b.height }));
   return issues;
 }
 
@@ -182,8 +183,8 @@ export function boardNeighbour(project, id, side) {
   const { space } = project;
   const me = boardBox(board, project);
   const others = [
-    ...space.obstacles.map((o) => ({ box: o, label: `„${o.name || 'przeszkody'}”` })),
-    ...project.furniture.map((c) => ({ box: cabinetBounds(c, project), label: `korpusu „${c.name}”` })),
+    ...space.obstacles.map((o) => ({ box: o, label: `„${o.name || t('przeszkody')}”` })),
+    ...project.furniture.map((c) => ({ box: cabinetBounds(c, project), label: t('korpusu „{name}”', { name: c.name }) })),
     ...(project.boards ?? []).filter((b) => b.id !== id).map((b) => ({ box: boardBox(b, project), label: `„${b.name}”` })),
   ];
   const overlap = (b, axes) => axes.every((k) => {
@@ -192,14 +193,14 @@ export function boardNeighbour(project, id, side) {
   });
   let best;
   if (side === 'left' || side === 'right') {
-    best = side === 'left' ? { gap: me.x, label: 'lewej ściany' } : { gap: space.width - (me.x + me.width), label: 'prawej ściany' };
+    best = side === 'left' ? { gap: me.x, label: t('lewej ściany') } : { gap: space.width - (me.x + me.width), label: t('prawej ściany') };
     for (const { box, label } of others) {
       if (!overlap(box, ['y', 'z'])) continue;
       const gap = side === 'left' ? me.x - (box.x + box.width) : box.x - (me.x + me.width);
       if (gap >= -0.5 && gap < best.gap) best = { gap, label };
     }
   } else {
-    best = side === 'down' ? { gap: me.y, label: 'podłogi' } : { gap: space.height - (me.y + me.height), label: 'sufitu' };
+    best = side === 'down' ? { gap: me.y, label: t('podłogi') } : { gap: space.height - (me.y + me.height), label: t('sufitu') };
     for (const { box, label } of others) {
       if (!overlap(box, ['x', 'z'])) continue;
       const gap = side === 'down' ? me.y - (box.y + box.height) : box.y - (me.y + me.height);
@@ -260,11 +261,11 @@ export function boardNicheWidth(project, id) {
 // 'brackets' (wsporniki kątowe pod półką), 'hidden' (ukryte bolce / pręty — półka „wisząca”), 'cleat' (listwa pod
 // tylną krawędzią), 'rail' (szyny ścienne ze wspornikami); count — liczba wsporników / bolców (null — automatycznie).
 export const BOARD_MOUNTS = [
-  { key: null, label: 'Brak (leży na czymś / dobiorę sam)' },
-  { key: 'brackets', label: 'Wsporniki kątowe (pod półką)', item: 'Wspornik półki kątowy (z kołkami i wkrętami)', spacing: 700 },
-  { key: 'hidden', label: 'Ukryte — półka wisząca (bolce / pręty)', item: 'Bolec / pręt mocowania ukrytego półki (z kołkiem)', spacing: 400 },
-  { key: 'cleat', label: 'Listwa pod tylną krawędzią', item: 'Listwa montażowa pod półkę (z kołkami i wkrętami)' },
-  { key: 'rail', label: 'Szyny ścienne ze wspornikami', item: 'Szyna ścienna + wspornik półki (komplet)', spacing: 700 },
+  { key: null, label: t('Brak (leży na czymś / dobiorę sam)') },
+  { key: 'brackets', label: t('Wsporniki kątowe (pod półką)'), item: t('Wspornik półki kątowy (z kołkami i wkrętami)'), spacing: 700 },
+  { key: 'hidden', label: t('Ukryte — półka wisząca (bolce / pręty)'), item: t('Bolec / pręt mocowania ukrytego półki (z kołkiem)'), spacing: 400 },
+  { key: 'cleat', label: t('Listwa pod tylną krawędzią'), item: t('Listwa montażowa pod półkę (z kołkami i wkrętami)') },
+  { key: 'rail', label: t('Szyny ścienne ze wspornikami'), item: t('Szyna ścienna + wspornik półki (komplet)'), spacing: 700 },
 ];
 export const MOUNT_EDGE = 80; // mm — skrajne wsporniki od końców płyty
 export const mountInfo = (type) => BOARD_MOUNTS.find((m) => m.key === (type ?? null)) ?? BOARD_MOUNTS[0];
@@ -324,11 +325,11 @@ export function mountPoints(board) {
 // (w osi grubości), 'slot' — frez (wpust) w spodzie od tylnej krawędzi pod płaski wspornik; null — bez obróbki
 // (np. mocowanie zaciskowe). Położenia — jak wsporniki (mountPoints).
 export const MOUNT_MACHINING = [
-  { key: null, label: 'bez obróbki' },
+  { key: null, label: t('bez obróbki') },
   // plate — wpust w tylnej krawędzi pod płytkę montażową (przykręcaną do ściany): szerokość × wysokość, głębokość
   //   (= grubość płytki) — bez niego półka nie dochodzi do ściany
-  { key: 'holes', label: 'otwory w tylnej krawędzi pod pręty (Ø12, gł. 130)', d: 12, depth: 130, plateW: 120, plateH: 16, plateDepth: 5 },
-  { key: 'slot', label: 'frez w spodzie od tyłu pod płaskownik (25 × 150, gł. 6)', w: 25, len: 150, depth: 6 },
+  { key: 'holes', label: t('otwory w tylnej krawędzi pod pręty (Ø12, gł. 130)'), d: 12, depth: 130, plateW: 120, plateH: 16, plateDepth: 5 },
+  { key: 'slot', label: t('frez w spodzie od tyłu pod płaskownik (25 × 150, gł. 6)'), w: 25, len: 150, depth: 6 },
 ];
 const fmtMm = (v) => String(Math.round(v * 10) / 10).replace('.', ',');
 // Wymiary obróbki pod mocowanie ukryte (własne albo typowe). → { kind: 'holes', d, depth } | { kind: 'slot', w, len, depth } | null
@@ -355,11 +356,11 @@ export function describeMountWork(board, thickness) {
     const plate = !w.plate
       ? ''
       : w.plate.long
-        ? `; jeden wpust pod płytkę montażową w tylnej krawędzi na długości ${fmtMm(span[1] - span[0])} mm (od x ${fmtMm(span[0])} do ${fmtMm(span[1])} mm), wys. ${fmtMm(Math.min(w.plate.h, thickness))} mm w osi grubości, gł. ${fmtMm(w.plate.depth)} mm`
-        : `; wpust pod płytkę montażową w tylnej krawędzi: ${fmtMm(w.plate.w)} × ${fmtMm(Math.min(w.plate.h, thickness))} mm (szer. × wys., w osi grubości), gł. ${fmtMm(w.plate.depth)} mm, przy każdym otworze`;
-    return `mocowanie ukryte: ${pts.count} otw. Ø${fmtMm(w.d)} gł. ${fmtMm(w.depth)} mm w tylnej krawędzi, w osi grubości (${fmtMm(thickness / 2)} mm od spodu), x od lewej: ${at} mm${plate}`;
+        ? t('; jeden wpust pod płytkę montażową w tylnej krawędzi na długości {len} mm (od x {from} do {to} mm), wys. {h} mm w osi grubości, gł. {depth} mm', { len: fmtMm(span[1] - span[0]), from: fmtMm(span[0]), to: fmtMm(span[1]), h: fmtMm(Math.min(w.plate.h, thickness)), depth: fmtMm(w.plate.depth) })
+        : t('; wpust pod płytkę montażową w tylnej krawędzi: {w} × {h} mm (szer. × wys., w osi grubości), gł. {depth} mm, przy każdym otworze', { w: fmtMm(w.plate.w), h: fmtMm(Math.min(w.plate.h, thickness)), depth: fmtMm(w.plate.depth) });
+    return t('mocowanie ukryte: {n} otw. Ø{d} gł. {depth} mm w tylnej krawędzi, w osi grubości ({mid} mm od spodu), x od lewej: {at} mm', { n: pts.count, d: fmtMm(w.d), depth: fmtMm(w.depth), mid: fmtMm(thickness / 2), at }) + plate;
   }
-  return `mocowanie ukryte: ${pts.count} frezy w spodzie od tylnej krawędzi ${fmtMm(w.w)} × ${fmtMm(w.len)} mm, gł. ${fmtMm(w.depth)} mm, środek x od lewej: ${at} mm`;
+  return t('mocowanie ukryte: {n} frezy w spodzie od tylnej krawędzi {w} × {len} mm, gł. {depth} mm, środek x od lewej: {at} mm', { n: pts.count, w: fmtMm(w.w), len: fmtMm(w.len), depth: fmtMm(w.depth), at });
 }
 
 // Wpusty pod płytki montażowe (tylna krawędź): [[od, do]] w mm od lewej — przy każdym pręcie osobno albo jeden długi.

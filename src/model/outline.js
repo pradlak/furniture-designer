@@ -2,6 +2,7 @@
 // z — od tylnej ściany do przodu. Brak obrysu (space.outline = null) — zwykły prostokąt width × depth.
 // Obrys mieści się w prostokącie 0..width × 0..depth. Punkty leżące na przodzie (z = depth) tworzą otwarty przód
 // przestrzeni (bez ściany); pozostałe krawędzie to ściany — także skośne i wklęsłe (np. wnęka w kształcie litery L).
+import { t } from '../i18n.js';
 
 const EPS = 0.5;
 
@@ -205,10 +206,10 @@ function isRect(pts, space) {
 
 // Narożniki prostokąta przestrzeni (do gotowych kształtów: skośna ściana, ścięty narożnik).
 export const OUTLINE_CORNERS = [
-  { key: 'backLeft', label: 'lewy tylny', at: (s) => [0, 0] },
-  { key: 'backRight', label: 'prawy tylny', at: (s) => [s.width, 0] },
-  { key: 'frontRight', label: 'prawy przedni', at: (s) => [s.width, s.depth] },
-  { key: 'frontLeft', label: 'lewy przedni', at: (s) => [0, s.depth] },
+  { key: 'backLeft', label: t('lewy tylny'), at: (s) => [0, 0] },
+  { key: 'backRight', label: t('prawy tylny'), at: (s) => [s.width, 0] },
+  { key: 'frontRight', label: t('prawy przedni'), at: (s) => [s.width, s.depth] },
+  { key: 'frontLeft', label: t('lewy przedni'), at: (s) => [0, s.depth] },
 ];
 
 // Ścina narożnik obrysu: punkt narożnika zastępują dwa punkty — dx od narożnika wzdłuż X i dz wzdłuż Z.

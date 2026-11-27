@@ -9,6 +9,7 @@
 // Szuflada przy szufladzie: part.system = { key, model, length (null — auto), color, edges? }.
 // edges — obrzeże dna i pleców: { back: ['top', …], bottom: [] } (strony jak na szkicu: top / bottom / left / right);
 //   bez edges — domyślnie DEFAULT_EDGES (plecy oklejone od góry — widoczna krawędź).
+import { t } from '../i18n.js';
 export const PIECE_SIDES = ['top', 'bottom', 'left', 'right'];
 export const DEFAULT_EDGES = { back: ['top'], bottom: [] };
 const normEdges = (v, def) => (Array.isArray(v) ? PIECE_SIDES.filter((k) => v.includes(k)) : [...def]);
@@ -30,15 +31,15 @@ export const DRAWER_SYSTEMS = [
     rail: { axis: 34, frontHole: 37 },
     lengths: [300, 350, 400, 450, 500, 550],
     colors: [
-      { key: 'P1', label: 'biały P1' },
-      { key: 'P32', label: 'antracyt P32' },
+      { key: 'P1', label: t('biały P1') },
+      { key: 'P32', label: t('antracyt P32') },
     ],
     // sideH — wysokość boku, backH — wysokość pleców (do docięcia), minSpace — min. wolna wysokość w korpusie
     models: [
-      { key: 'PK-1600', label: 'niska H90', sideH: 90, backH: 84, minSpace: 112 },
-      { key: 'PK-1601', label: 'średnia H122', sideH: 122, backH: 116, minSpace: 144 },
-      { key: 'PK-1602', label: 'wysoka H172', sideH: 172, backH: 167, minSpace: 194 },
-      { key: 'PK-1603', label: 'bardzo wysoka H203', sideH: 203, backH: 199, minSpace: 230 },
+      { key: 'PK-1600', label: t('niska H90'), sideH: 90, backH: 84, minSpace: 112 },
+      { key: 'PK-1601', label: t('średnia H122'), sideH: 122, backH: 116, minSpace: 144 },
+      { key: 'PK-1602', label: t('wysoka H172'), sideH: 172, backH: 167, minSpace: 194 },
+      { key: 'PK-1603', label: t('bardzo wysoka H203'), sideH: 203, backH: 199, minSpace: 230 },
     ],
     loadKg: 40,
   },
@@ -75,8 +76,8 @@ export function drawerSystemBox(sel, { LW, LT, height }) {
   const autoLength = fitting.length ? fitting[fitting.length - 1] : s.lengths[0];
   const NL = sel.length ?? autoLength;
   const warnings = [];
-  if (NL + s.depthMargin > LT) warnings.push(`Prowadnice ${NL} mm wymagają głębokości korpusu co najmniej ${NL + s.depthMargin} mm (jest ${Math.round(LT)} mm).`);
-  if (height != null && height + 20 < model.minSpace) warnings.push(`Szuflada ${model.key} potrzebuje co najmniej ${model.minSpace} mm wolnej wysokości (front ma ${Math.round(height)} mm).`);
+  if (NL + s.depthMargin > LT) warnings.push(t('Prowadnice {nl} mm wymagają głębokości korpusu co najmniej {min} mm (jest {is} mm).', { nl: NL, min: NL + s.depthMargin, is: Math.round(LT) }));
+  if (height != null && height + 20 < model.minSpace) warnings.push(t('Szuflada {model} potrzebuje co najmniej {min} mm wolnej wysokości (front ma {h} mm).', { model: model.key, min: model.minSpace, h: Math.round(height) }));
   return {
     system: s,
     model,

@@ -65,6 +65,7 @@ import {
   DEFAULT_FRONT_GAP_V,
   FRONT_PART_MIN,
 } from '../model/furniture.js';
+import { t } from '../i18n.js';
 
 // Inne korpusy o tej samej wysokości i głębokości — do skopiowania półek. Szerokość nie ma znaczenia
 // (półka idzie od boku do boku), np. przy podziale wnęki 2000 mm na trzy korpusy: 666 / 666 / 668.
@@ -81,7 +82,7 @@ import { cabinetSketch, panelSketch } from './objectSketch.js';
 import { addPart, addParts, setPartField, setPartKind, partKindOf, removePart, movePart, fillFreeSpace, freeAround, fitLabel, addDoor, doorFullHeight, canDoorGrow, setDoorField, setDoorHeight, removeDoor, toggleDoorCover, doorCoverOptions } from '../model/frontEdit.js';
 import { attachDragReorder, moveInList, DRAG_HANDLE } from './dragReorder.js';
 import { cabinetMaterials, trimMaterial } from '../model/materials.js';
-import { setEye, materialSelect, colorPicker, readColorInput, syncColorPicker } from './widgets.js';
+import { setEye, materialSelect, colorPicker, readColorInput, syncColorPicker, NEW_MATERIAL_OPTION } from './widgets.js';
 import { sideBlendSummary } from './sideBlends.js';
 import { edgeKeys, EDGE_LABELS, projectSolids, panelEdgeSet, isManualEdgeSet, edgeCounts } from '../model/edges.js';
 
@@ -92,24 +93,24 @@ import { rowOf, createTrim } from '../model/trims.js';
 import { selectedCabinetIds, toggleCabinet } from '../state/selection.js';
 
 const POSITION_FIELDS = [
-  { key: 'x', label: 'X od lewej' },
-  { key: 'y', label: 'Y od podłogi' },
-  { key: 'z', label: 'Z od tyłu' },
+  { key: 'x', label: t('X od lewej') },
+  { key: 'y', label: t('Y od podłogi') },
+  { key: 'z', label: t('Z od tyłu') },
 ];
 const SIZE_FIELDS = [
-  { key: 'width', label: 'Szerokość' },
-  { key: 'height', label: 'Wysokość' },
-  { key: 'depth', label: 'Głębokość' },
+  { key: 'width', label: t('Szerokość') },
+  { key: 'height', label: t('Wysokość') },
+  { key: 'depth', label: t('Głębokość') },
 ];
 
 // Pola elementu korpusu: wymiary i przesunięcia w osiach X/Y/Z.
 const PART_FIELDS = [
-  { key: 'sx', label: 'Wymiar X', prop: 'width', min: 1 },
-  { key: 'sy', label: 'Wymiar Y', prop: 'height', min: 1 },
-  { key: 'sz', label: 'Wymiar Z', prop: 'depth', min: 1 },
-  { key: 'dx', label: 'Przesuń X', min: -CABINET_LIMITS.sizeMax },
-  { key: 'dy', label: 'Przesuń Y', min: -CABINET_LIMITS.sizeMax },
-  { key: 'dz', label: 'Przesuń Z', min: -CABINET_LIMITS.sizeMax },
+  { key: 'sx', label: t('Wymiar X'), prop: 'width', min: 1 },
+  { key: 'sy', label: t('Wymiar Y'), prop: 'height', min: 1 },
+  { key: 'sz', label: t('Wymiar Z'), prop: 'depth', min: 1 },
+  { key: 'dx', label: t('Przesuń X'), min: -CABINET_LIMITS.sizeMax },
+  { key: 'dy', label: t('Przesuń Y'), min: -CABINET_LIMITS.sizeMax },
+  { key: 'dz', label: t('Przesuń Z'), min: -CABINET_LIMITS.sizeMax },
 ];
 
 function jointSelect(label, field, options, value) {
@@ -144,12 +145,16 @@ function partLabels(parts) {
   const labels = [];
   let d = 0;
   let s = 0;
-  for (let i = parts.length - 1; i >= 0; i--) labels[i] = parts[i].type !== 'space' ? `Szuflada ${++d}` : `Wolna przestrzeń ${++s}`;
+  for (let i = parts.length - 1; i >= 0; i--) labels[i] = parts[i].type !== 'space' ? t('Szuflada {n}', { n: ++d }) : t('Wolna przestrzeń {n}', { n: ++s });
   return labels;
 }
 // krótko: „Sz. 1”, „Prz. 1” (wiersze listy i pola „Przykrywa”)
 function partShortLabels(parts) {
-  return partLabels(parts).map((l) => l.replace('Szuflada ', 'Sz. ').replace('Wolna przestrzeń ', 'Prz. '));
+  const labels = [];
+  let d = 0;
+  let s = 0;
+  for (let i = parts.length - 1; i >= 0; i--) labels[i] = parts[i].type !== 'space' ? t('Sz. {n}', { n: ++d }) : t('Prz. {n}', { n: ++s });
+  return labels;
 }
 
 // Lista części wnętrza (od góry): ⠿, rodzaj, wysokość (puste — auto), ✕; przy przykrytych — „za drzwiami N”.
@@ -161,19 +166,19 @@ function frontPartsHtml(st) {
     .map(({ p, i }) => {
       const j = st.doors.findIndex((d) => d.covers.includes(p.id));
       const short = partShortLabels(st.parts)[i];
-      const where = j >= 0 ? `za drzwiami${st.doors.length > 1 ? ` ${j + 1}` : ''}` : p.type === 'drawer' ? 'z frontem' : p.type === 'innerDrawer' ? 'wewnętrzna, bez drzwi' : 'otwarta';
+      const where = j >= 0 ? (st.doors.length > 1 ? t('za drzwiami {n}', { n: j + 1 }) : t('za drzwiami')) : p.type === 'drawer' ? t('z frontem') : p.type === 'innerDrawer' ? t('wewnętrzna, bez drzwi') : t('otwarta');
       return `
       <div class="fp-item fp-${p.type}" data-fpart="${i}">
-        <span class="drag-handle fs-drag" draggable="true" data-fpart-drag title="Przeciągnij, aby przenieść wyżej albo niżej">⠿</span>
+        <span class="drag-handle fs-drag" draggable="true" data-fpart-drag title="${t('Przeciągnij, aby przenieść wyżej albo niżej')}">⠿</span>
         <span class="fp-tag" title="${labels[i]} — ${where}">${short}${j >= 0 ? ' 🚪' : ''}</span>
-        <select data-fpart-f="type" aria-label="Rodzaj części" title="Szuflada — z własnym frontem; Szuflada wewn. — czoło w korpusie (bez frontu); Przestrzeń — wolne miejsce (otwarte albo za drzwiami)"><option value="drawer">Szuflada</option><option value="innerDrawer">Szuflada wewn.</option><option value="space">Przestrzeń</option></select>
-        <label class="fs-height" title="Wysokość (szuflady — jej frontu / czoła). Puste — automatycznie: części bez wysokości dzielą resztę po równo."><input type="number" step="1" min="1" data-fpart-f="height" /><small>mm</small></label>
-        <button type="button" class="icon fp-fill" data-fpart-fill hidden title="Dopasuj wysokość szuflady do miejsca w korpusie">⤢</button>
-        <button type="button" class="icon danger" data-fpart-remove title="Usuń">✕</button>
+        <select data-fpart-f="type" aria-label="${t('Rodzaj części')}" title="${t('Szuflada — z własnym frontem; Szuflada wewn. — czoło w korpusie (bez frontu); Przestrzeń — wolne miejsce (otwarte albo za drzwiami)')}"><option value="drawer">${t('Szuflada')}</option><option value="innerDrawer">${t('Szuflada wewn.')}</option><option value="space">${t('Przestrzeń')}</option></select>
+        <label class="fs-height" title="${t('Wysokość (szuflady — jej frontu / czoła). Puste — automatycznie: części bez wysokości dzielą resztę po równo.')}"><input type="number" step="1" min="1" data-fpart-f="height" /><small>mm</small></label>
+        <button type="button" class="icon fp-fill" data-fpart-fill hidden title="${t('Dopasuj wysokość szuflady do miejsca w korpusie')}">⤢</button>
+        <button type="button" class="icon danger" data-fpart-remove title="${t('Usuń')}">✕</button>
       </div>`;
     })
     .join('');
-  return rows || '<p class="empty">Brak — dodaj szuflady albo wolną przestrzeń.</p>';
+  return rows || `<p class="empty">${t('Brak — dodaj szuflady albo wolną przestrzeń.')}</p>`;
 }
 
 // Lista drzwi: rodzaj, wysokość (jak front szuflady — puste: auto), ✕, zawiasy, „Przykrywa:” — części wnętrza od góry.
@@ -184,13 +189,13 @@ function frontDoorsHtml(st) {
       (d, j) => `
       <div class="fd-item" data-fdoor="${j}">
         <div class="fs-head">
-          <select data-fdoor-f="type" aria-label="Rodzaj drzwi"><option value="door">Pojedyncze</option><option value="doubleDoor">Podwójne</option></select>
-          <label class="fs-height" title="Wysokość drzwi — suma przykrytych części; zmienia się przykryta wolna przestrzeń (albo najwyższa część). Puste — automatycznie."><input type="number" step="1" min="1" data-fdoor-f="height" /><small>mm</small></label>
-          <button type="button" class="icon danger" data-fdoor-remove title="Usuń drzwi (szuflady za nimi dostaną własne fronty)">✕</button>
+          <select data-fdoor-f="type" aria-label="${t('Rodzaj drzwi')}"><option value="door">${t('Pojedyncze')}</option><option value="doubleDoor">${t('Podwójne')}</option></select>
+          <label class="fs-height" title="${t('Wysokość drzwi — suma przykrytych części; zmienia się przykryta wolna przestrzeń (albo najwyższa część). Puste — automatycznie.')}"><input type="number" step="1" min="1" data-fdoor-f="height" /><small>mm</small></label>
+          <button type="button" class="icon danger" data-fdoor-remove title="${t('Usuń drzwi (szuflady za nimi dostaną własne fronty)')}">✕</button>
         </div>
-        ${d.type === 'door' ? '<label class="fs-row"><span>Zawiasy</span><select data-fdoor-f="hingeSide"><option value="left">po lewej</option><option value="right">po prawej</option></select></label>' : ''}
-        <button type="button" class="fd-full" data-fdoor-full title="Drzwi przykrywają też części pod i nad nimi (szuflady wewnętrzne, wolne miejsce) — aż do innych drzwi albo do końca korpusu">⇕ Na całą wysokość</button>
-        <div class="fd-covers"><span>Przykrywa:</span>
+        ${d.type === 'door' ? `<label class="fs-row"><span>${t('Zawiasy')}</span><select data-fdoor-f="hingeSide"><option value="left">${t('po lewej')}</option><option value="right">${t('po prawej')}</option></select></label>` : ''}
+        <button type="button" class="fd-full" data-fdoor-full title="${t('Drzwi przykrywają też części pod i nad nimi (szuflady wewnętrzne, wolne miejsce) — aż do innych drzwi albo do końca korpusu')}">${t('⇕ Na całą wysokość')}</button>
+        <div class="fd-covers"><span>${t('Przykrywa:')}</span>
           ${st.parts
             .map((_, i) => i)
             .reverse()
@@ -200,7 +205,7 @@ function frontDoorsHtml(st) {
       </div>`,
     )
     .join('');
-  return rows || '<p class="empty">Bez drzwi.</p>';
+  return rows || `<p class="empty">${t('Bez drzwi.')}</p>`;
 }
 
 // Rysunek układu frontów korpusu (widok z przodu, w skali): obrys korpusu, drzwi (z linią zawiasów),
@@ -228,7 +233,7 @@ function frontLayoutSvg(cabinet, panels) {
       parts.push(`<polyline points="${hx},${Y(p.y + p.height)} ${ox},${Y(p.y + p.height / 2)} ${hx},${Y(p.y)}" class="fl-swing" />`);
     }
   }
-  return `<svg viewBox="${-pad} ${-pad} ${W + 2 * pad} ${H + 2 * pad}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Układ frontów">${parts.join('')}</svg>`;
+  return `<svg viewBox="${-pad} ${-pad} ${W + 2 * pad} ${H + 2 * pad}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="${t('Układ frontów')}">${parts.join('')}</svg>`;
 }
 
 export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onShowWorktop } = {}) {
@@ -280,7 +285,7 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
     el.classList.toggle('collapsed', isCollapsed);
     const btn = el.querySelector('[data-collapse-card]');
     btn.textContent = isCollapsed ? '▸' : '▾';
-    btn.title = isCollapsed ? 'Rozwiń korpus' : 'Zwiń korpus';
+    btn.title = isCollapsed ? t('Rozwiń korpus') : t('Zwiń korpus');
     btn.setAttribute('aria-expanded', String(!isCollapsed));
   };
   const setCollapsed = (ids, value) => {
@@ -302,26 +307,25 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
 
   function render(project) {
     root.innerHTML = `
-      <p class="hint">Korpus składa się z boków, wieńca górnego i dolnego oraz pleców.
-        Wymiary są zewnętrzne, pozycja to narożnik lewy‑dolny‑tylny.</p>
+      <p class="hint">${t('Korpus składa się z boków, wieńca górnego i dolnego oraz pleców. Wymiary są zewnętrzne, pozycja to narożnik lewy‑dolny‑tylny.')}</p>
       ${
         project.furniture.length || project.boards?.length || project.space.obstacles.length
           ? `<div class="map-window">
-              <div class="map-window-head" title="Przeciągnij, aby przesunąć okienko"><b>Mapka zabudowy</b><button type="button" class="insp-close map-close" data-map-close title="Ukryj mapkę (pokażesz ją przyciskiem „🗺️ Mapka” na górnym pasku)" aria-label="Ukryj mapkę">✕</button></div>
-              <div class="cab-map" title="Mapka zabudowy (widok z przodu): klik — zaznacz korpus, kolejny klik w front — ten front, Ctrl + klik — kilka"></div>
+              <div class="map-window-head" title="${t('Przeciągnij, aby przesunąć okienko')}"><b>${t('Mapka zabudowy')}</b><button type="button" class="insp-close map-close" data-map-close title="${t('Ukryj mapkę (pokażesz ją przyciskiem „🗺️ Mapka” na górnym pasku)')}" aria-label="${t('Ukryj mapkę')}">✕</button></div>
+              <div class="cab-map" title="${t('Mapka zabudowy (widok z przodu): klik — zaznacz korpus, kolejny klik w front — ten front, Ctrl + klik — kilka')}"></div>
             </div>
             <div class="collapse-all">
-              <button type="button" class="icon-btn" data-action="collapse-all" title="Zwiń wszystkie karty korpusów do nagłówków" aria-label="Zwiń wszystkie">${ICON_COLLAPSE}</button>
-              <button type="button" class="icon-btn" data-action="expand-all" title="Rozwiń wszystkie karty korpusów" aria-label="Rozwiń wszystkie">${ICON_EXPAND}</button>
-              <button type="button" class="icon-btn" data-action="sort-cabinets" title="Ułóż karty tak jak na mapce: od lewej do prawej" aria-label="Ułóż od lewej"><small class="sort-ico">1→2</small></button>
+              <button type="button" class="icon-btn" data-action="collapse-all" title="${t('Zwiń wszystkie karty korpusów do nagłówków')}" aria-label="${t('Zwiń wszystkie')}">${ICON_COLLAPSE}</button>
+              <button type="button" class="icon-btn" data-action="expand-all" title="${t('Rozwiń wszystkie karty korpusów')}" aria-label="${t('Rozwiń wszystkie')}">${ICON_EXPAND}</button>
+              <button type="button" class="icon-btn" data-action="sort-cabinets" title="${t('Ułóż karty tak jak na mapce: od lewej do prawej')}" aria-label="${t('Ułóż od lewej')}"><small class="sort-ico">1→2</small></button>
             </div>`
           : ''
       }
       <div class="items">
-        ${project.furniture.map((c) => renderCabinet(c, project)).join('') || '<p class="empty">Brak mebli.</p>'}
+        ${project.furniture.map((c) => renderCabinet(c, project)).join('') || `<p class="empty">${t('Brak mebli.')}</p>`}
       </div>
       <div class="add-row">
-        <button type="button" data-action="add-cabinet" draggable="true" data-dnd="application/x-meble-cabinet" title="Kliknij — nowy korpus pojawi się w widoku 3D i pójdzie za kursorem; kliknij na podłodze, żeby go postawić (Esc — anuluj). Można też przeciągnąć i upuścić.">+ Korpus</button>
+        <button type="button" data-action="add-cabinet" draggable="true" data-dnd="application/x-meble-cabinet" title="${t('Kliknij — nowy korpus pojawi się w widoku 3D i pójdzie za kursorem; kliknij na podłodze, żeby go postawić (Esc — anuluj). Można też przeciągnąć i upuścić.')}">${t('+ Korpus')}</button>
       </div>
 
       <datalist id="leg-heights">${LEG_HEIGHTS.map((h) => `<option value="${h}"></option>`).join('')}</datalist>
@@ -339,7 +343,7 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
     const section = (key, title, body, extraClass = '', headExtra = '') => `
       <details class="section ${extraClass}" data-section="${key}" ${isOpen(c.id, key) ? 'open' : ''}>
         <summary><span class="section-title">${title}</span><span class="section-sum"></span>${headExtra}</summary>
-        <div class="section-body" data-title="${escapeHtml(title)} — ${escapeHtml(c.name)}"><button type="button" class="icon tiny section-close" data-close-section title="Zamknij">✕</button>${body}</div>
+        <div class="section-body" data-title="${escapeHtml(title)} — ${escapeHtml(c.name)}"><button type="button" class="icon tiny section-close" data-close-section title="${t('Zamknij')}">✕</button>${body}</div>
       </details>`;
 
     // Zwijana podsekcja w sekcji (ramka z tytułem); key — do zapamiętania stanu, extraClass — np. do ukrywania.
@@ -352,7 +356,7 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
     const body =
       sub(
         'size',
-        'Wymiary i położenie',
+        t('Wymiary i położenie'),
         `
       <div class="grid-3">
         ${SIZE_FIELDS.map((f) => {
@@ -367,85 +371,85 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
         ).join('')}
       </div>
       <div class="grid-2">
-        <label class="field small" title="Odstęp pleców od tylnej ściany (np. na rury). Front zostaje na miejscu — korpus robi się płytszy, blat się nie zmienia.">
-          <span>Odstęp od tylnej ściany <small>mm</small> ${linkButton('backGap')}</span>
+        <label class="field small" title="${t('Odstęp pleców od tylnej ściany (np. na rury). Front zostaje na miejscu — korpus robi się płytszy, blat się nie zmienia.')}">
+          <span>${t('Odstęp od tylnej ściany')} <small>mm</small> ${linkButton('backGap')}</span>
           <input type="number" step="1" min="0" max="${CABINET_LIMITS.sizeMax}" data-f="backGap" />
         </label>
-        <label class="field small ceiling-gap-field" title="Odstęp korpusu (i blend „do sufitu”) od sufitu — dotyczy korpusów dopasowanych do sufitu. Domyślnie — luz ustawiony w zakładce „Przestrzeń”; wpisana wartość dotyczy tylko tego korpusu.">
-          <span>Luz do sufitu <small>mm</small> <small class="auto-tag">z przestrzeni</small>
-            <button type="button" class="icon tiny" data-reset-ceiling-gap title="Wróć do luzu ustawionego w przestrzeni">↺</button>
+        <label class="field small ceiling-gap-field" title="${t('Odstęp korpusu (i blend „do sufitu”) od sufitu — dotyczy korpusów dopasowanych do sufitu. Domyślnie — luz ustawiony w zakładce „Przestrzeń”; wpisana wartość dotyczy tylko tego korpusu.')}">
+          <span>${t('Luz do sufitu')} <small>mm</small> <small class="auto-tag">${t('z przestrzeni')}</small>
+            <button type="button" class="icon tiny" data-reset-ceiling-gap title="${t('Wróć do luzu ustawionego w przestrzeni')}">↺</button>
           </span>
           <input type="number" step="1" min="0" max="500" data-f="ceilingGap" />
         </label>
       </div>
       <div class="item-row">
-        <span class="hint">Wypełnij całą wnękę jednym korpusem:</span>
-        <button type="button" data-action="fit">Dopasuj do wnęki</button>
+        <span class="hint">${t('Wypełnij całą wnękę jednym korpusem:')}</span>
+        <button type="button" data-action="fit">${t('Dopasuj do wnęki')}</button>
       </div>
       <div class="item-row">
-        <span class="hint">Siedzisko / ławka — góra na wysokości siedziska:</span>
-        <button type="button" data-action="seat" title="Wysokość korpusu tak, żeby jego góra (z nóżkami i blatem na nim) była na wysokości siedziska z ustawień widoku (Pokaż → Linia siedziska)">🪑 Do siedziska</button>
+        <span class="hint">${t('Siedzisko / ławka — góra na wysokości siedziska:')}</span>
+        <button type="button" data-action="seat" title="${t('Wysokość korpusu tak, żeby jego góra (z nóżkami i blatem na nim) była na wysokości siedziska z ustawień widoku (Pokaż → Linia siedziska)')}">${t('🪑 Do siedziska')}</button>
       </div>
-      <div class="slide-row" title="Przesuwa korpus aż do ściany, innego mebla lub przeszkody. Kilka korpusów zaznaczonych Ctrl + klik przesuwa się razem.">
-        <span>Dosuń:</span>
-        <button type="button" data-slide="-x" title="W lewo">←</button>
-        <button type="button" data-slide="+x" title="W prawo">→</button>
-        <button type="button" data-slide="-z" title="Do tyłu">↑ tył</button>
-        <button type="button" data-slide="+z" title="Do przodu">↓ przód</button>
-        <button type="button" data-slide="-y" title="W dół — na podłogę albo na mebel poniżej">⤓ dół</button>
+      <div class="slide-row" title="${t('Przesuwa korpus aż do ściany, innego mebla lub przeszkody. Kilka korpusów zaznaczonych Ctrl + klik przesuwa się razem.')}">
+        <span>${t('Dosuń:')}</span>
+        <button type="button" data-slide="-x" title="${t('W lewo')}">←</button>
+        <button type="button" data-slide="+x" title="${t('W prawo')}">→</button>
+        <button type="button" data-slide="-z" title="${t('Do tyłu')}">${t('↑ tył')}</button>
+        <button type="button" data-slide="+z" title="${t('Do przodu')}">${t('↓ przód')}</button>
+        <button type="button" data-slide="-y" title="${t('W dół — na podłogę albo na mebel poniżej')}">${t('⤓ dół')}</button>
       </div>`,
       ) +
       sub(
         'build',
-        'Konstrukcja i materiały',
+        t('Konstrukcja i materiały'),
         `
       <div class="grid-2">
-        ${materialSelect('Materiał korpusu', 'materialId', project)}
-        ${colorPicker('Kolor korpusu', 'colors.body')}
-        ${materialSelect('Materiał blend', 'blendMaterialId', project)}
-        ${colorPicker('Kolor blend', 'colors.blend')}
-        <label class="field small" title="Wiszący — bez nóżek, na zawieszkach i szynie montażowej; plecy cofnięte (miejsce na szynę)">
-          <span>Montaż</span>
+        ${materialSelect(t('Materiał korpusu'), 'materialId', project)}
+        ${colorPicker(t('Kolor korpusu'), 'colors.body')}
+        ${materialSelect(t('Materiał blend'), 'blendMaterialId', project)}
+        ${colorPicker(t('Kolor blend'), 'colors.blend')}
+        <label class="field small" title="${t('Wiszący — bez nóżek, na zawieszkach i szynie montażowej; plecy cofnięte (miejsce na szynę)')}">
+          <span>${t('Montaż')}</span>
           <select data-f="mount">
             ${MOUNT_TYPES.map((m) => `<option value="${m.key}">${m.label}</option>`).join('')}
           </select>
         </label>
-        <label class="field small back-setback" title="O ile plecy są cofnięte od tylnej krawędzi boków — miejsce na szynę montażową (typowo 16–20 mm)">
-          <span>Cofnięcie pleców <small>mm</small></span>
+        <label class="field small back-setback" title="${t('O ile plecy są cofnięte od tylnej krawędzi boków — miejsce na szynę montażową (typowo 16–20 mm)')}">
+          <span>${t('Cofnięcie pleców')} <small>mm</small></span>
           <input type="number" step="1" min="0" max="100" data-f="backSetback" />
         </label>
         <label class="field small">
-          <span>Plecy</span>
+          <span>${t('Plecy')}</span>
           <select data-f="backType">
             ${BACK_TYPES.map((b) => `<option value="${b.key}">${b.label}</option>`).join('')}
           </select>
         </label>
         <label class="field small">
-          <span>Góra korpusu</span>
+          <span>${t('Góra korpusu')}</span>
           <select data-f="topType">
             ${TOP_TYPES.map((t) => `<option value="${t.key}">${t.label}</option>`).join('')}
           </select>
         </label>
         <label class="field small rail-width">
-          <span>Szerokość trawersów <small>mm</small></span>
+          <span>${t('Szerokość trawersów')} <small>mm</small></span>
           <input type="number" step="1" min="10" max="${CABINET_LIMITS.sizeMax}" data-f="railWidth" />
         </label>
-        ${jointSelect('Wieniec / trawersy górne', 'topJoint', JOINT_TYPES.top, c.topJoint)}
-        ${jointSelect('Wieniec dolny', 'bottomJoint', JOINT_TYPES.bottom, c.bottomJoint)}
+        ${jointSelect(t('Wieniec / trawersy górne'), 'topJoint', JOINT_TYPES.top, c.topJoint)}
+        ${jointSelect(t('Wieniec dolny'), 'bottomJoint', JOINT_TYPES.bottom, c.bottomJoint)}
       </div>
-      <p class="hint">Grubości i kolory materiałów — w zakładce „Materiały”.</p>`,
+      <p class="hint">${t('Grubości i kolory materiałów — w zakładce „Materiały”.')}</p>`,
       ) +
       sub(
         'slope',
-        'Skos',
+        t('Skos'),
         `
         <div class="grid-2">
-          <label class="check" title="Korpus pod skosem dostaje skośną górę: boki i plecy docięte równolegle do skosu, wieniec górny pod kątem">
-            <input type="checkbox" data-f="slopeTop.enabled" /> Góra pod skos
+          <label class="check" title="${t('Korpus pod skosem dostaje skośną górę: boki i plecy docięte równolegle do skosu, wieniec górny pod kątem')}">
+            <input type="checkbox" data-f="slopeTop.enabled" /> ${t('Góra pod skos')}
           </label>
-          <label class="field small slope-gap-field" title="Odstęp między skośną górą korpusu a skosem (prostopadle do skosu). Domyślnie — luz ustawiony przy skosie (Przestrzeń); wpisana wartość dotyczy tylko tego korpusu.">
-            <span>Luz do skosu <small>mm</small> <small class="auto-tag">ze skosu</small>
-              <button type="button" class="icon tiny" data-reset-slope-gap title="Wróć do luzu ustawionego przy skosie">↺</button>
+          <label class="field small slope-gap-field" title="${t('Odstęp między skośną górą korpusu a skosem (prostopadle do skosu). Domyślnie — luz ustawiony przy skosie (Przestrzeń); wpisana wartość dotyczy tylko tego korpusu.')}">
+            <span>${t('Luz do skosu')} <small>mm</small> <small class="auto-tag">${t('ze skosu')}</small>
+              <button type="button" class="icon tiny" data-reset-slope-gap title="${t('Wróć do luzu ustawionego przy skosie')}">↺</button>
             </span>
             <input type="number" step="1" min="0" max="500" data-f="slopeTop.gap" />
           </label>
@@ -455,14 +459,14 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
       ) +
       sub(
         'wallfit',
-        'Skośna ściana',
+        t('Skośna ściana'),
         `
         <div class="grid-2">
-          <label class="check" title="Korpus przysunięty do skośnej ściany dostaje skośny bok równoległy do ściany: wieńce, półki i plecy docięte pod kątem">
-            <input type="checkbox" data-f="wallFit.enabled" /> Bok pod skośną ścianę
+          <label class="check" title="${t('Korpus przysunięty do skośnej ściany dostaje skośny bok równoległy do ściany: wieńce, półki i plecy docięte pod kątem')}">
+            <input type="checkbox" data-f="wallFit.enabled" /> ${t('Bok pod skośną ścianę')}
           </label>
-          <label class="field small" title="Odstęp między skośnym bokiem a ścianą (prostopadle do ściany). Puste — ${WALL_FIT_GAP} mm.">
-            <span>Luz do ściany <small>mm</small></span>
+          <label class="field small" title="${t('Odstęp między skośnym bokiem a ścianą (prostopadle do ściany). Puste — {mm} mm.', { mm: WALL_FIT_GAP })}">
+            <span>${t('Luz do ściany')} <small>mm</small></span>
             <input type="number" step="1" min="0" max="500" data-f="wallFit.gap" placeholder="${WALL_FIT_GAP}" />
           </label>
         </div>
@@ -472,100 +476,97 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
 
     const legs = `
       <div class="grid-2">
-        <label class="check"><input type="checkbox" data-f="legs.enabled" /> Nóżki ${linkButton('legs')}</label>
+        <label class="check"><input type="checkbox" data-f="legs.enabled" /> ${t('Nóżki')} ${linkButton('legs')}</label>
         <label class="field small">
-          <span>Wysokość nóżek <small>mm</small></span>
+          <span>${t('Wysokość nóżek')} <small>mm</small></span>
           <input type="number" list="leg-heights" step="1" min="${LEG_LIMITS.min}" max="${LEG_LIMITS.max}" data-f="legs.height" />
         </label>
       </div>`;
 
     const stiff = `
-      <p class="hint">Pionowe listwy tuż przed plecami, między bokami — usztywniają korpus
-        (np. do zawieszenia szafki). Mieszczą się w korpusie, nie zmieniają jego wymiarów.
-        Nowe poprzeczki rozkładają się równo: jedna — na środku, dwie — dzielą wnętrze na trzy równe części itd.
-        Poprzeczka nie nachodzi na półkę — jeśli trafia na półkę, przesuwa się tuż nad nią albo pod nią.</p>
+      <p class="hint">${t('Pionowe listwy tuż przed plecami, między bokami — usztywniają korpus (np. do zawieszenia szafki). Mieszczą się w korpusie, nie zmieniają jego wymiarów. Nowe poprzeczki rozkładają się równo: jedna — na środku, dwie — dzielą wnętrze na trzy równe części itd. Poprzeczka nie nachodzi na półkę — jeśli trafia na półkę, przesuwa się tuż nad nią albo pod nią.')}</p>
       ${(c.stiffeners ?? [])
         .map(
           (st, i) => `
         <div class="stiff-row">
           <label class="field small">
-            <span>Położenie</span>
+            <span>${t('Położenie')}</span>
             <select data-f="stiffeners.${i}.position">
               ${STIFFENER_POSITIONS.map((p) => `<option value="${p.key}">${p.label}</option>`).join('')}
             </select>
           </label>
           <label class="field small">
-            <span>Szerokość <small>mm</small></span>
+            <span>${t('Szerokość')} <small>mm</small></span>
             <input type="number" step="1" min="1" max="${CABINET_LIMITS.sizeMax}" data-f="stiffeners.${i}.height" />
           </label>
           <label class="field small stiff-y">
-            <span>Od dołu korpusu <small>mm</small></span>
+            <span>${t('Od dołu korpusu')} <small>mm</small></span>
             <input type="number" step="1" min="0" max="${CABINET_LIMITS.sizeMax}" data-f="stiffeners.${i}.y" />
           </label>
-          <button type="button" class="icon danger" data-remove-stiff="${st.id}" title="Usuń poprzeczkę">✕</button>
+          <button type="button" class="icon danger" data-remove-stiff="${st.id}" title="${t('Usuń poprzeczkę')}">✕</button>
           <span class="stiff-note"></span>
         </div>`,
         )
         .join('')}
-      <div class="add-row"><button type="button" data-action="add-stiff">+ poprzeczka</button></div>`;
+      <div class="add-row"><button type="button" data-action="add-stiff">${t('+ poprzeczka')}</button></div>`;
 
     // Fronty nakładane: drzwi pojedyncze / podwójne albo szuflady (równe fronty).
     // Dwie części: „Front” (płyta) i „Uchwyt” (frez uchwytowy albo uchwyt przykręcany).
     const frontsHtml = `
       <details class="subsection" data-section="sub:front" ${isOpen(c.id, 'sub:front') ? 'open' : ''}>
-      <summary class="subsection-title">Front</summary>
+      <summary class="subsection-title">${t('Front')}</summary>
       <div class="subsection-body">
       <div class="front-layout">
-        <div class="front-layout-preview" title="Układ frontów (widok z przodu)"></div>
+        <div class="front-layout-preview" title="${t('Układ frontów (widok z przodu)')}"></div>
         <div class="front-parts-col">
-          <div class="fp-title" title="Części wnętrza od góry do dołu: szuflady i wolne przestrzenie. Szuflada nieprzykryta drzwiami ma własny front, przykryta — chowa się za drzwiami.">Wnętrze <small>(od góry)</small></div>
+          <div class="fp-title" title="${t('Części wnętrza od góry do dołu: szuflady i wolne przestrzenie. Szuflada nieprzykryta drzwiami ma własny front, przykryta — chowa się za drzwiami.')}">${t('Wnętrze')} <small>${t('(od góry)')}</small></div>
           <div class="front-parts"></div>
           <div class="front-parts-add">
-            <button type="button" data-fpart-add="drawer" title="Nowa szuflada z frontem na dole">+ Szuflada</button>
-            <button type="button" data-fpart-add="innerDrawer" title="Nowa szuflada wewnętrzna na dole — czoło w korpusie, bez frontu (drzwi dodaj osobno i zaznacz, co przykrywają)">+ Szuflada wewnętrzna</button>
-            <button type="button" data-fpart-add="space" title="Nowa wolna przestrzeń na górze">+ Wolna przestrzeń</button>
+            <button type="button" data-fpart-add="drawer" title="${t('Nowa szuflada z frontem na dole')}">${t('+ Szuflada')}</button>
+            <button type="button" data-fpart-add="innerDrawer" title="${t('Nowa szuflada wewnętrzna na dole — czoło w korpusie, bez frontu (drzwi dodaj osobno i zaznacz, co przykrywają)')}">${t('+ Szuflada wewnętrzna')}</button>
+            <button type="button" data-fpart-add="space" title="${t('Nowa wolna przestrzeń na górze')}">${t('+ Wolna przestrzeń')}</button>
           </div>
-          <div class="front-bulk" title="Kilka szuflad naraz (na dole); wysokość puste — automatycznie">
-            Dodaj <input type="number" min="1" max="12" step="1" value="3" data-bulk-n /> ×
-            <select data-bulk-type><option value="drawer">szuflada</option><option value="innerDrawer">szuflada wewn.</option></select>
-            po <input type="number" min="20" step="1" placeholder="auto" data-bulk-h /> mm
-            <button type="button" data-bulk-add>Dodaj</button>
+          <div class="front-bulk" title="${t('Kilka szuflad naraz (na dole); wysokość puste — automatycznie')}">
+            ${t('Dodaj')} <input type="number" min="1" max="12" step="1" value="3" data-bulk-n /> ×
+            <select data-bulk-type><option value="drawer">${t('szuflada')}</option><option value="innerDrawer">${t('szuflada wewn.')}</option></select>
+            ${t('po')} <input type="number" min="20" step="1" placeholder="${t('auto')}" data-bulk-h /> mm
+            <button type="button" data-bulk-add>${t('Dodaj')}</button>
           </div>
-          <div class="fp-title" title="Drzwi przykrywają wybrane części wnętrza (ciągły zakres) — szuflady za nimi są wewnętrzne.">Drzwi</div>
+          <div class="fp-title" title="${t('Drzwi przykrywają wybrane części wnętrza (ciągły zakres) — szuflady za nimi są wewnętrzne.')}">${t('Drzwi')}</div>
           <div class="front-doors"></div>
           <div class="front-parts-add">
-            <button type="button" data-fdoor-add="door">+ Drzwi pojedyncze</button>
-            <button type="button" data-fdoor-add="doubleDoor">+ Drzwi podwójne</button>
+            <button type="button" data-fdoor-add="door">${t('+ Drzwi pojedyncze')}</button>
+            <button type="button" data-fdoor-add="doubleDoor">${t('+ Drzwi podwójne')}</button>
           </div>
         </div>
       </div>
-      <label class="check small front-spacers" title="Listwy dystansowe na bokach korpusu pod prowadnice szuflad wewnętrznych: szuflady są węższe o 2 × ${INNER_SPACER} mm i mijają prowadniki zawiasów drzwi">
-        <input type="checkbox" data-f="fronts.innerSpacers" /> Dystanse pod prowadnice szuflad wewnętrznych (szuflady węższe o 2 × ${INNER_SPACER} mm — mijają zawiasy)
+      <label class="check small front-spacers" title="${t('Listwy dystansowe na bokach korpusu pod prowadnice szuflad wewnętrznych: szuflady są węższe o 2 × {mm} mm i mijają prowadniki zawiasów drzwi', { mm: INNER_SPACER })}">
+        <input type="checkbox" data-f="fronts.innerSpacers" /> ${t('Dystanse pod prowadnice szuflad wewnętrznych (szuflady węższe o 2 × {mm} mm — mijają zawiasy)', { mm: INNER_SPACER })}
       </label>
-      <div class="grid-2 inner-grip" title="Szuflada wewnętrzna nie ma uchwytu: żeby ją otworzyć, trzeba ją chwycić od góry. Gdy nad nią jest inna szuflada, potrzebny jest odstęp na palce — chyba że czoło ma frez uchwytowy.">
-        <label class="field small"><span>Uchwyt szuflad wewnętrznych</span>
+      <div class="grid-2 inner-grip" title="${t('Szuflada wewnętrzna nie ma uchwytu: żeby ją otworzyć, trzeba ją chwycić od góry. Gdy nad nią jest inna szuflada, potrzebny jest odstęp na palce — chyba że czoło ma frez uchwytowy.')}">
+        <label class="field small"><span>${t('Uchwyt szuflad wewnętrznych')}</span>
           <select data-f="fronts.innerGrip">
-            <option value="gap">odstęp na palce nad czołem</option>
-            <option value="groove">frez uchwytowy w czole (bez odstępu)</option>
+            <option value="gap">${t('odstęp na palce nad czołem')}</option>
+            <option value="groove">${t('frez uchwytowy w czole (bez odstępu)')}</option>
           </select>
         </label>
-        <label class="field small inner-grip-gap"><span>Odstęp na palce</span><span class="unit-input"><input type="number" step="1" min="0" max="100" data-f="fronts.innerGripGap" /><small>mm</small></span></label>
+        <label class="field small inner-grip-gap"><span>${t('Odstęp na palce')}</span><span class="unit-input"><input type="number" step="1" min="0" max="100" data-f="fronts.innerGripGap" /><small>mm</small></span></label>
       </div>
       <p class="hint front-bottom-info"></p>
       <div class="grid-2">
-        <label class="field small front-opt" title="Szczelina boczna (lewa + prawa razem): po połowie przy każdym boku korpusu (np. 5 mm = 2,5 + 2,5 — sąsiednie korpusy mają między frontami pełne 5 mm), cała między drzwiami podwójnymi">
-          <span>Szczelina boczna <small>(lewa + prawa) mm</small></span>
+        <label class="field small front-opt" title="${t('Szczelina boczna (lewa + prawa razem): po połowie przy każdym boku korpusu (np. 5 mm = 2,5 + 2,5 — sąsiednie korpusy mają między frontami pełne 5 mm), cała między drzwiami podwójnymi')}">
+          <span>${t('Szczelina boczna')} <small>${t('(lewa + prawa) mm')}</small></span>
           <input type="number" step="0.5" min="0" max="${FRONT_LIMITS.gapMax}" data-f="fronts.gap" />
         </label>
-        <label class="field small front-opt" title="Szczelina pionowa (góra + dół razem): cała od góry i między szufladami; od dołu nie ma szczeliny — dolny front równa się z dołem korpusu (chyba że pod korpusem stoi inny korpus — wtedy szczelina dzieli się po połowie)">
-          <span>Szczelina pionowa <small>(góra + dół) mm</small></span>
+        <label class="field small front-opt" title="${t('Szczelina pionowa (góra + dół razem): cała od góry i między szufladami; od dołu nie ma szczeliny — dolny front równa się z dołem korpusu (chyba że pod korpusem stoi inny korpus — wtedy szczelina dzieli się po połowie)')}">
+          <span>${t('Szczelina pionowa')} <small>${t('(góra + dół) mm')}</small></span>
           <input type="number" step="0.5" min="0" max="${FRONT_LIMITS.gapMax}" data-f="fronts.gapV" />
         </label>
-        <span class="front-opt">${materialSelect('Materiał frontów', 'frontMaterialId', project)}</span>
-        <span class="front-opt">${colorPicker('Kolor frontów', 'colors.front')}</span>
-        <div class="front-opt front-decor-row" title="Ozdobne frezowanie lica frontu (zwykle MDF lakierowany)">
+        <span class="front-opt">${materialSelect(t('Materiał frontów'), 'frontMaterialId', project)}</span>
+        <span class="front-opt">${colorPicker(t('Kolor frontów'), 'colors.front')}</span>
+        <div class="front-opt front-decor-row" title="${t('Ozdobne frezowanie lica frontu (zwykle MDF lakierowany)')}">
           <label class="field small">
-            <span>Frez dekoracyjny</span>
+            <span>${t('Frez dekoracyjny')}</span>
             <select data-f="fronts.decor">
               ${FRONT_DECORS.map((d) => `<option value="${d.key}">${d.label}</option>`).join('')}
             </select>
@@ -573,69 +574,69 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
           <span class="front-decor-preview" aria-hidden="true"></span>
         </div>
         <label class="field small front-decor-param" data-decor-field="decorMargin">
-          <span><span class="param-label">Odległość od krawędzi</span> <small>mm</small></span>
+          <span><span class="param-label">${t('Odległość od krawędzi')}</span> <small>mm</small></span>
           <input type="number" step="1" min="${DECOR_LIMITS.min}" max="${DECOR_LIMITS.max}" data-f="fronts.decorMargin" />
         </label>
         <label class="field small front-decor-param" data-decor-field="decorSpacing">
-          <span><span class="param-label">Rozstaw rowków</span> <small>mm</small></span>
+          <span><span class="param-label">${t('Rozstaw rowków')}</span> <small>mm</small></span>
           <input type="number" step="1" min="${DECOR_LIMITS.min}" max="${DECOR_LIMITS.max}" data-f="fronts.decorSpacing" />
         </label>
         <label class="field small front-decor-param" data-decor-field="decorGap">
-          <span><span class="param-label">Odstęp między liniami</span> <small>mm</small></span>
+          <span><span class="param-label">${t('Odstęp między liniami')}</span> <small>mm</small></span>
           <input type="number" step="1" min="${DECOR_GAP_LIMITS.min}" max="${DECOR_GAP_LIMITS.max}" data-f="fronts.decorGap" />
         </label>
       </div>
       </div>
       </details>
       <details class="subsection front-opt" data-section="sub:handle" ${isOpen(c.id, 'sub:handle') ? 'open' : ''}>
-      <summary class="subsection-title">Uchwyt</summary>
+      <summary class="subsection-title">${t('Uchwyt')}</summary>
       <div class="subsection-body">
       <div class="grid-2">
-        <label class="field small" title="Uchwyt wyfrezowany w krawędzi frontu — zamiast uchwytu przykręcanego. Krawędź otwierania: w drzwiach po stronie przeciwnej do zawiasów (w podwójnych — na środku), w szufladach — górna.">
-          <span>Frez uchwytowy</span>
+        <label class="field small" title="${t('Uchwyt wyfrezowany w krawędzi frontu — zamiast uchwytu przykręcanego. Krawędź otwierania: w drzwiach po stronie przeciwnej do zawiasów (w podwójnych — na środku), w szufladach — górna.')}">
+          <span>${t('Frez uchwytowy')}</span>
           <select data-f="fronts.groove">
             ${HANDLE_GROOVES.map((g) => `<option value="${g.key}">${g.label}</option>`).join('')}
           </select>
         </label>
       </div>
       <div class="grid-2 front-handle-box">
-        <label class="field small" title="Uchwyt przykręcany. W drzwiach — pionowo przy krawędzi otwierania, w szufladach — poziomo na środku szerokości.">
-          <span>Uchwyt</span>
+        <label class="field small" title="${t('Uchwyt przykręcany. W drzwiach — pionowo przy krawędzi otwierania, w szufladach — poziomo na środku szerokości.')}">
+          <span>${t('Uchwyt')}</span>
           <select data-f="fronts.handle.type">
             ${HANDLE_TYPES.map((t) => `<option value="${t.key}">${t.label}</option>`).join('')}
           </select>
         </label>
-        <label class="field small handle-spacing" title="Odległość między otworami (osiami śrub) — z opisu uchwytu, np. 128 mm. Wybierz z listy albo wpisz własną.">
-          <span>Rozstaw otworów <small>mm</small></span>
+        <label class="field small handle-spacing" title="${t('Odległość między otworami (osiami śrub) — z opisu uchwytu, np. 128 mm. Wybierz z listy albo wpisz własną.')}">
+          <span>${t('Rozstaw otworów')} <small>mm</small></span>
           <span class="spacing-row">
             <input type="number" step="1" min="${HANDLE_LIMITS.spacingMin}" max="${HANDLE_LIMITS.spacingMax}" data-f="fronts.handle.spacing" />
-            <select data-spacing-preset title="Typowe rozstawy uchwytów">
-              <option value="">typowe ▾</option>
+            <select data-spacing-preset title="${t('Typowe rozstawy uchwytów')}">
+              <option value="">${t('typowe ▾')}</option>
               ${HANDLE_SPACINGS.map((v) => `<option value="${v}">${v} mm</option>`).join('')}
             </select>
           </span>
         </label>
-        <label class="field small handle-opt" title="Średnica otworu pod śrubę uchwytu (zwykle 5 mm pod M4)">
-          <span>Średnica otworu <small>mm</small></span>
+        <label class="field small handle-opt" title="${t('Średnica otworu pod śrubę uchwytu (zwykle 5 mm pod M4)')}">
+          <span>${t('Średnica otworu')} <small>mm</small></span>
           <input type="number" step="0.5" min="${HANDLE_LIMITS.holeMin}" max="${HANDLE_LIMITS.holeMax}" data-f="fronts.handle.hole" />
         </label>
-        <label class="field small handle-opt" title="Położenie uchwytu na wysokości frontu">
-          <span>Położenie</span>
+        <label class="field small handle-opt" title="${t('Położenie uchwytu na wysokości frontu')}">
+          <span>${t('Położenie')}</span>
           <select data-f="fronts.handle.position">
             ${HANDLE_POSITIONS.map((p) => `<option value="${p.key}">${p.label}</option>`).join('')}
           </select>
         </label>
         <label class="field small handle-opt handle-offset-x">
-          <span><span class="param-label">Od krawędzi otwierania</span> <small>mm</small></span>
+          <span><span class="param-label">${t('Od krawędzi otwierania')}</span> <small>mm</small></span>
           <input type="number" step="1" min="-${HANDLE_LIMITS.shiftMax}" max="${HANDLE_LIMITS.shiftMax}" data-f="fronts.handle.offsetX" />
         </label>
         <label class="field small handle-opt handle-offset-y">
-          <span><span class="param-label">Od górnej krawędzi</span> <small>mm</small>
-            <button type="button" class="icon tiny" data-reset-handle title="Przywróć domyślne położenie uchwytu">↺</button>
+          <span><span class="param-label">${t('Od górnej krawędzi')}</span> <small>mm</small>
+            <button type="button" class="icon tiny" data-reset-handle title="${t('Przywróć domyślne położenie uchwytu')}">↺</button>
           </span>
           <input type="number" step="1" min="-${HANDLE_LIMITS.shiftMax}" max="${HANDLE_LIMITS.shiftMax}" data-f="fronts.handle.offsetY" />
         </label>
-        <p class="hint handle-hint handle-opt">Uchwyt możesz też przeciągnąć myszką w widoku 3D.</p>
+        <p class="hint handle-hint handle-opt">${t('Uchwyt możesz też przeciągnąć myszką w widoku 3D.')}</p>
       </div>
       </div>
       </details>
@@ -643,42 +644,46 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
 
     // Półki: wysokość i głębokość — wartości wyliczone (równy rozkład / pełna głębokość) albo wpisane.
     const shelvesHtml = `
-      <p class="hint">Półki rozkładają się równo — jedna dzieli wnętrze na dwa równe prześwity, dwie na trzy itd.
-        Zmiana wysokości jednej półki (wpisanie albo przeciągnięcie w 3D) ustawia półki ręcznie — pozostałe zostają
-        na swoich miejscach; ↺ rozkłada wszystkie półki równo od nowa. Głębokość skraca półkę od przodu.</p>
+      <p class="hint">${t('Półki rozkładają się równo — jedna dzieli wnętrze na dwa równe prześwity, dwie na trzy itd. Zmiana wysokości jednej półki (wpisanie albo przeciągnięcie w 3D) ustawia półki ręcznie — pozostałe zostają na swoich miejscach; ↺ rozkłada wszystkie półki równo od nowa. Głębokość skraca półkę od przodu.')}</p>
+      <label class="field small shelf-material" title="${t('Półki mogą być z innej płyty niż korpus, np. korpus z płyty 18 mm, a półki z 16 mm. Na liście formatek są wtedy w grupie tego materiału (osobny plik dla meble.pl).')}">
+        <span>${t('Materiał półek')}</span>
+        <select data-f="shelfMaterialId">
+          <option value="">${t('jak korpus')}</option>
+          ${project.materials
+            .filter((m) => m.type !== 'hdf' && m.type !== 'worktop')
+            .map((m) => `<option value="${m.id}">${escapeHtml(m.name)} (${m.thickness} mm)</option>`)
+            .join('')}
+          ${NEW_MATERIAL_OPTION}
+        </select>
+      </label>
       ${(c.shelves ?? [])
         .map(
           (s, i) => `
         <div class="shelf-row" data-shelf="${i}">
-          <span class="shelf-name">Półka ${i + 1}</span>
+          <span class="shelf-name">${t('Półka')} ${i + 1}</span>
           <label class="field small">
-            <span>Od dołu korpusu <small>mm</small> <small class="auto-tag">równo</small>
-              <button type="button" class="icon tiny" data-reset-shelf-y title="Rozłóż wszystkie półki równo od nowa">↺</button>
+            <span>${t('Od dołu korpusu')} <small>mm</small> <small class="auto-tag">${t('równo')}</small>
+              <button type="button" class="icon tiny" data-reset-shelf-y title="${t('Rozłóż wszystkie półki równo od nowa')}">↺</button>
             </span>
             <input type="number" step="1" min="0" max="${CABINET_LIMITS.sizeMax}" data-shelf-y />
           </label>
           <label class="field small">
-            <span>Głębokość <small>mm</small> <small class="auto-tag">pełna</small>
-              <button type="button" class="icon tiny" data-reset-shelf-depth title="Pełna głębokość wnętrza">↺</button>
+            <span>${t('Głębokość')} <small>mm</small> <small class="auto-tag">${t('pełna')}</small>
+              <button type="button" class="icon tiny" data-reset-shelf-depth title="${t('Pełna głębokość wnętrza')}">↺</button>
             </span>
             <input type="number" step="1" min="1" max="${CABINET_LIMITS.sizeMax}" data-shelf-depth />
           </label>
-          <button type="button" class="icon danger" data-remove-shelf="${s.id}" title="Usuń półkę">✕</button>
+          <button type="button" class="icon danger" data-remove-shelf="${s.id}" title="${t('Usuń półkę')}">✕</button>
         </div>`,
         )
         .join('')}
       <div class="add-row">
-        <button type="button" data-action="add-shelf">+ półka</button>
-        <button type="button" data-action="copy-shelves" title="Kopiuje półki (położenie i głębokość) do korpusów o tej samej wysokości i głębokości (szerokość może być inna) — ich dotychczasowe półki zostaną zastąpione. Ctrl+Z cofa.">⧉ Kopiuj półki</button>
+        <button type="button" data-action="add-shelf">${t('+ półka')}</button>
+        <button type="button" data-action="copy-shelves" title="${t('Kopiuje półki (położenie i głębokość) do korpusów o tej samej wysokości i głębokości (szerokość może być inna) — ich dotychczasowe półki zostaną zastąpione. Ctrl+Z cofa.')}">${t('⧉ Kopiuj półki')}</button>
       </div>`;
 
     const parts = `
-      <p class="hint">Osie: X — szerokość, Y — wysokość, Z — głębokość korpusu.
-        Elementy są powiązane: zmiana wymiaru płyty zmienia korpus, a pozostałe płyty
-        się dopasowują (np. szerokość boku → głębokość korpusu i wieńców).
-        Zmiana grubości przesuwa sąsiednie płyty.
-        „Niezależny” odłącza płytę — jej wymiary dotyczą tylko jej.
-        Wartości ręczne są wyróżnione, ↺ przywraca automatyczne.</p>
+      <p class="hint">${t('Osie: X — szerokość, Y — wysokość, Z — głębokość korpusu. Elementy są powiązane: zmiana wymiaru płyty zmienia korpus, a pozostałe płyty się dopasowują (np. szerokość boku → głębokość korpusu i wieńców). Zmiana grubości przesuwa sąsiednie płyty. „Niezależny” odłącza płytę — jej wymiary dotyczą tylko jej. Wartości ręczne są wyróżnione, ↺ przywraca automatyczne.')}</p>
       ${cabinetPanels(c, project).map(renderPart).join('')}
       <p class="legs-info"></p>`;
 
@@ -687,31 +692,31 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
         <div class="item-head">
           ${DRAG_HANDLE}
           <button type="button" class="collapse-toggle" data-collapse-card>▾</button>
-          <input type="text" data-f="name" value="${escapeHtml(c.name)}" aria-label="Nazwa mebla" />
+          <input type="text" data-f="name" value="${escapeHtml(c.name)}" aria-label="${t('Nazwa mebla')}" />
           <button type="button" class="eye" data-toggle-hidden="cabinet">👁</button>
-          <button type="button" data-action="duplicate" title="Duplikuj (Ctrl+D)">⧉</button>
-          <button type="button" class="danger" data-remove="${c.id}" title="Usuń korpus (Delete)" aria-label="Usuń korpus">🗑</button>
+          <button type="button" data-action="duplicate" title="${t('Duplikuj (Ctrl+D)')}">⧉</button>
+          <button type="button" class="danger" data-remove="${c.id}" title="${t('Usuń korpus (Delete)')}" aria-label="${t('Usuń korpus')}">🗑</button>
         </div>
-        <div class="card-sum" data-collapse-card title="Kliknij, aby rozwinąć"></div>
+        <div class="card-sum" data-collapse-card title="${t('Kliknij, aby rozwinąć')}"></div>
         <ul class="issues"></ul>
-        <div class="obj-sketch bi-sketch" title="Kliknij, aby powiększyć szkic"></div>
-        ${section('body', 'Korpus', body)}
-        ${section('fronts', 'Fronty / szuflady', frontsHtml, '', '<button type="button" class="icon eye section-eye" data-toggle-fronts-hidden>👁</button>')}
-        ${section('shelves', 'Półki', shelvesHtml)}
-        ${section('stiff', 'Wzmocnienia', stiff)}
-        ${section('legs', 'Nóżki', legs)}
+        <div class="obj-sketch bi-sketch" title="${t('Kliknij, aby powiększyć szkic')}"></div>
+        ${section('body', t('Korpus'), body)}
+        ${section('fronts', t('Fronty / szuflady'), frontsHtml, '', '<button type="button" class="icon eye section-eye" data-toggle-fronts-hidden>👁</button>')}
+        ${section('shelves', t('Półki'), shelvesHtml)}
+        ${section('stiff', t('Wzmocnienia'), stiff)}
+        ${section('legs', t('Nóżki'), legs)}
         <div class="section section-static">
           <div class="section-bar">
-            <span class="section-title">Blendy i blat</span>
+            <span class="section-title">${t('Blendy i blat')}</span>
             <span class="section-sum trims-sum"></span>
             <span class="section-links">
-              <button type="button" class="section-link" data-action="show-trims" title="Blendy boczne tego korpusu — okienko obok">Blendy boczne ◂</button>
-              <button type="button" class="section-link worktop-show" data-action="show-worktop" title="Blat leżący na tym korpusie — jego okienko">Blat →</button>
-              <button type="button" class="section-link worktop-add" data-action="add-worktop" title="Dodaj blat na tym korpusie i sąsiednich w rzędzie (z frezami krawędzi i otworami)">+ Dodaj blat</button>
+              <button type="button" class="section-link" data-action="show-trims" title="${t('Blendy boczne tego korpusu — okienko obok')}">${t('Blendy boczne ◂')}</button>
+              <button type="button" class="section-link worktop-show" data-action="show-worktop" title="${t('Blat leżący na tym korpusie — jego okienko')}">${t('Blat →')}</button>
+              <button type="button" class="section-link worktop-add" data-action="add-worktop" title="${t('Dodaj blat na tym korpusie i sąsiednich w rzędzie (z frezami krawędzi i otworami)')}">${t('+ Dodaj blat')}</button>
             </span>
           </div>
         </div>
-        ${section('parts', 'Elementy', parts, 'parts')}
+        ${section('parts', t('Elementy'), parts, 'parts')}
       </div>`;
   }
 
@@ -722,10 +727,10 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
           <span class="part-name">${p.name}</span>
           <span class="part-cut"></span>
           <button type="button" class="icon eye" data-toggle-part-hidden="${p.key}">👁</button>
-          <label class="check small" title="Płyta nie zmienia korpusu i nie dopasowuje się do niego (poza grubościami sąsiadów)">
-            <input type="checkbox" data-part-free ${p.free ? 'checked' : ''} /> Niezależny
+          <label class="check small" title="${t('Płyta nie zmienia korpusu i nie dopasowuje się do niego (poza grubościami sąsiadów)')}">
+            <input type="checkbox" data-part-free ${p.free ? 'checked' : ''} /> ${t('Niezależny')}
           </label>
-          <button type="button" class="icon" data-reset-part="${p.key}" title="Przywróć wymiary automatyczne">↺</button>
+          <button type="button" class="icon" data-reset-part="${p.key}" title="${t('Przywróć wymiary automatyczne')}">↺</button>
         </div>
         <div class="grid-3">
           ${PART_FIELDS.map(
@@ -736,10 +741,10 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
             </label>`,
           ).join('')}
         </div>
-        <div class="part-edges" title="Krawędzie oklejone obrzeżem. Domyślnie tylko widoczne — schowane przy ścianie, pod blatem albo przy innej płycie są pomijane.">
+        <div class="part-edges" title="${t('Krawędzie oklejone obrzeżem. Domyślnie tylko widoczne — schowane przy ścianie, pod blatem albo przy innej płycie są pomijane.')}">
           <span class="part-material"></span>
-          <span class="edges-label">obrzeże <small class="auto-tag">auto</small>
-            <button type="button" class="icon tiny" data-reset-edges title="Automatycznie: tylko krawędzie widoczne">↺</button>
+          <span class="edges-label">${t('obrzeże')} <small class="auto-tag">auto</small>
+            <button type="button" class="icon tiny" data-reset-edges title="${t('Automatycznie: tylko krawędzie widoczne')}">↺</button>
           </span>
           ${edgeChecks(p.thicknessAxis)}
         </div>
@@ -773,6 +778,8 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
         if (input.type === 'checkbox') input.checked = !!value;
         else if (!input.classList.contains('invalid')) setIfNotFocused(input, value);
       });
+      // materiał półek: brak wyboru (null) — „jak korpus”
+      setIfNotFocused(el.querySelector('select[data-f="shelfMaterialId"]'), c.shelfMaterialId ?? '');
       // szkic — tylko w okienku po prawej
       if (el.classList.contains('in-inspector')) el.querySelector('.obj-sketch').innerHTML = sketchFor(c, project);
 
@@ -784,17 +791,17 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
       el.querySelector('.worktop-add').hidden = hasWorktop;
       const side = sideBlendSummary(c);
       el.querySelector('.trims-sum').textContent =
-        [side && `Blendy boczne: ${side}`, covering.length && `Obejmują go: ${covering.map((t) => t.name).join(', ')}`]
+        [side && t('Blendy boczne: {list}', { list: side }), covering.length && t('Obejmują go: {names}', { names: covering.map((tr) => tr.name).join(', ') })]
           .filter(Boolean)
-          .join(' · ') || 'Bez blend i blatu';
+          .join(' · ') || t('Bez blend i blatu');
       el.classList.toggle('is-hidden', !!c.hidden);
-      setEye(el.querySelector('[data-toggle-hidden="cabinet"]'), c.hidden, 'korpus');
+      setEye(el.querySelector('[data-toggle-hidden="cabinet"]'), c.hidden, t('korpus'));
       el.querySelector('.rail-width').hidden = c.topType !== 'rails';
       el.querySelector('.back-setback').hidden = c.mount !== 'wall';
       // szafka wisząca: plecy wsunięte między boki i cofnięte (miejsce na szynę) — napisy w liście „Plecy”
       const sb = c.backSetback ?? 18;
       const backLabels = c.mount === 'wall'
-        ? { hdf: `HDF (wsunięte, cofnięte o ${sb} mm)`, board: `Z płyty (wsunięte, cofnięte o ${sb} mm)` }
+        ? { hdf: t('HDF (wsunięte, cofnięte o {mm} mm)', { mm: sb }), board: t('Z płyty (wsunięte, cofnięte o {mm} mm)', { mm: sb }) }
         : Object.fromEntries(BACK_TYPES.map((b) => [b.key, b.label]));
       el.querySelectorAll('select[data-f="backType"] option').forEach((o) => {
         if (backLabels[o.value] && o.textContent !== backLabels[o.value]) o.textContent = backLabels[o.value];
@@ -806,13 +813,13 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
       el.querySelector('.wall-fit').hidden = !project.space.outline;
       if (project.space.outline) {
         const cuts = wallFitPlanes(c, project);
-        const SIDE = { left: 'lewy', right: 'prawy' };
+        const SIDE = { left: t('lewy'), right: t('prawy') };
         el.querySelector('.wall-fit-info').textContent =
           c.wallFit?.enabled === false
-            ? 'Wyłączone — korpus zostaje prostopadłościanem (przy skośnej ścianie pojawi się ostrzeżenie).'
+            ? t('Wyłączone — korpus zostaje prostopadłościanem (przy skośnej ścianie pojawi się ostrzeżenie).')
             : cuts.length
-              ? `Korpus sięga skośnej ściany — ${cuts.map((w) => `bok ${SIDE[w.side]} skośny, pod kątem ${Math.round(w.angle * 10) / 10}°`).join('; ')}; wieńce, półki i plecy docięte.`
-              : 'Korpus nie sięga skośnej ściany — zwykłe, proste boki. Przysuń go do ściany, a bok dopasuje się sam.';
+              ? t('Korpus sięga skośnej ściany — {cuts}; wieńce, półki i plecy docięte.', { cuts: cuts.map((w) => t('bok {side} skośny, pod kątem {angle}°', { side: SIDE[w.side], angle: Math.round(w.angle * 10) / 10 })).join('; ') })
+              : t('Korpus nie sięga skośnej ściany — zwykłe, proste boki. Przysuń go do ściany, a bok dopasuje się sam.');
       }
       // Luz do sufitu: własny korpusu albo (pusty) — z przestrzeni; pokazujemy wartość, która obowiązuje.
       const ceilInput = el.querySelector('[data-f="ceilingGap"]');
@@ -823,25 +830,25 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
       el.querySelector('[data-reset-ceiling-gap]').hidden = ceilAuto;
       // Łańcuszki (wysokość, nóżki) — włączone / wyłączone i z iloma korpusami łączą.
       const LINK_TEXT = {
-        height: ['zmiana wysokości zmienia', 'Połącz wysokość z korpusami w rzędzie, które mają tę samą wysokość', 'o tej samej wysokości'],
-        width: ['zmiana szerokości zmienia', 'Połącz szerokość z korpusami w rzędzie, które mają tę samą szerokość', 'o tej samej szerokości (korpusy w rzędzie przesuwają się, żeby dalej stały bok przy boku)'],
-        depth: ['zmiana głębokości zmienia', 'Połącz głębokość z korpusami w rzędzie, które mają tę samą głębokość', 'o tej samej głębokości'],
-        backGap: ['zmiana odstępu od tylnej ściany zmienia', 'Połącz odstęp od tylnej ściany z korpusami w rzędzie, które mają ten sam odstęp', 'z tym samym odstępem'],
-        legs: ['dodanie, usunięcie i zmiana nóżek dotyczy', 'Połącz nóżki z korpusami w rzędzie, które mają takie same nóżki', 'z takimi samymi nóżkami'],
+        height: [t('zmiana wysokości zmienia'), t('Połącz wysokość z korpusami w rzędzie, które mają tę samą wysokość'), t('o tej samej wysokości')],
+        width: [t('zmiana szerokości zmienia'), t('Połącz szerokość z korpusami w rzędzie, które mają tę samą szerokość'), t('o tej samej szerokości (korpusy w rzędzie przesuwają się, żeby dalej stały bok przy boku)')],
+        depth: [t('zmiana głębokości zmienia'), t('Połącz głębokość z korpusami w rzędzie, które mają tę samą głębokość'), t('o tej samej głębokości')],
+        backGap: [t('zmiana odstępu od tylnej ściany zmienia'), t('Połącz odstęp od tylnej ściany z korpusami w rzędzie, które mają ten sam odstęp'), t('z tym samym odstępem')],
+        legs: [t('dodanie, usunięcie i zmiana nóżek dotyczy'), t('Połącz nóżki z korpusami w rzędzie, które mają takie same nóżki'), t('z takimi samymi nóżkami')],
       };
       for (const kind of Object.keys(linked)) {
         const btn = el.querySelector(`[data-link="${kind}"]`);
         const on = linked[kind].has(c.id);
         const n = linkTwins(kind, c, project).length;
         const [what, offText, which] = LINK_TEXT[kind];
-        const cabs = `${n} ${n === 1 ? 'korpus' : n > 1 && n < 5 ? 'korpusy' : 'korpusów'}`;
+        const cabs = `${n} ${n === 1 ? t('korpus') : n > 1 && n < 5 ? t('korpusy') : t('korpusów')}`;
         btn.classList.toggle('on', on);
         btn.setAttribute('aria-pressed', String(on));
         btn.title = !on
-          ? `${offText} (teraz: ${n}).`
+          ? t('{text} (teraz: {n}).', { text: offText, n })
           : selectionGroup(kind, c, project)
-            ? `Połączone z zaznaczonymi korpusami: ${what} też ${cabs} (zaznaczone z Ctrl). Kliknij, żeby rozłączyć.`
-            : `Połączone: ${what} też ${cabs} w rzędzie ${which}. Kliknij, żeby rozłączyć.`;
+            ? t('Połączone z zaznaczonymi korpusami: {what} też {cabs} (zaznaczone z Ctrl). Kliknij, żeby rozłączyć.', { what, cabs })
+            : t('Połączone: {what} też {cabs} w rzędzie {which}. Kliknij, żeby rozłączyć.', { what, cabs, which });
       }
       // Luz: własny korpusu albo (pusty) — ze skosu; pokazujemy wartość, która obowiązuje.
       const gapInput = el.querySelector('[data-f="slopeTop.gap"]');
@@ -855,10 +862,10 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
       el.querySelector('.slope-top-info').textContent = !zSlope
         ? ''
         : c.slopeTop?.enabled === false
-          ? 'Góra prosta — korpus jest prostopadłościanem.'
+          ? t('Góra prosta — korpus jest prostopadłościanem.')
           : slant
-            ? `Korpus sięga skosu — góra docięta pod kątem ${angle}°${c.topType === 'rails' ? ' (zamiast trawersów pełny wieniec skośny)' : ''}.`
-            : 'Korpus nie sięga skosu — zwykła, prosta góra.';
+            ? t('Korpus sięga skosu — góra docięta pod kątem {angle}°', { angle }) + (c.topType === 'rails' ? t(' (zamiast trawersów pełny wieniec skośny)') : '') + '.'
+            : t('Korpus nie sięga skosu — zwykła, prosta góra.');
 
       // Podsumowania w nagłówkach sekcji.
       const mats = cabinetMaterials(c, project);
@@ -867,10 +874,10 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
       syncColorPicker(el, 'colors.body', c.colors?.body, mats.body.color);
       syncColorPicker(el, 'colors.blend', c.colors?.blend, mats.blend.color);
       syncColorPicker(el, 'colors.front', c.colors?.front, mats.front.color);
-      setSummary(el, 'body', `${c.width} × ${c.height} × ${c.depth} mm · ${bodyMat.name}${c.topType === 'rails' ? ' · trawersy' : ''}${c.backGap ? ` · odstęp ${c.backGap}` : ''}`);
-      setSummary(el, 'legs', c.legs?.enabled ? `${c.legs.height} mm` : 'brak');
+      setSummary(el, 'body', `${c.width} × ${c.height} × ${c.depth} mm · ${bodyMat.name}${c.topType === 'rails' ? t(' · trawersy') : ''}${c.backGap ? t(' · odstęp {mm}', { mm: c.backGap }) : ''}`);
+      setSummary(el, 'legs', c.legs?.enabled ? `${c.legs.height} mm` : t('brak'));
       const nStiff = c.stiffeners?.length ?? 0;
-      setSummary(el, 'stiff', nStiff ? `${nStiff} ${nStiff === 1 ? 'poprzeczka' : nStiff < 5 ? 'poprzeczki' : 'poprzeczek'}` : 'brak');
+      setSummary(el, 'stiff', nStiff ? `${nStiff} ${nStiff === 1 ? t('poprzeczka') : nStiff < 5 ? t('poprzeczki') : t('poprzeczek')}` : t('brak'));
       // Fronty: widoczne tylko pola pasujące do rodzaju; podsumowanie z wymiarami frontów.
       const fr = c.fronts ?? { type: 'none' };
       const st = frontParts(fr);
@@ -901,25 +908,25 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
             partsEl.insertAdjacentHTML(
               'beforebegin',
               `<div class="parts-bulk">
-                <div class="parts-bulk-head"><b></b><button type="button" class="icon tiny" data-bulk-clear title="Odznacz">✕</button></div>
+                <div class="parts-bulk-head"><b></b><button type="button" class="icon tiny" data-bulk-clear title="${t('Odznacz')}">✕</button></div>
                 <div class="parts-bulk-row">
-                  <label>wysokość <input type="number" step="1" min="${FRONT_PART_MIN}" data-bulk-height placeholder="mm" /></label>
-                  <button type="button" data-bulk-apply-height title="Ta sama wysokość dla wszystkich zaznaczonych">Ustaw</button>
-                  <button type="button" data-bulk-equal title="Podziel ich łączną wysokość po równo">⇕ Wyrównaj</button>
+                  <label>${t('wysokość')} <input type="number" step="1" min="${FRONT_PART_MIN}" data-bulk-height placeholder="${t('mm')}" /></label>
+                  <button type="button" data-bulk-apply-height title="${t('Ta sama wysokość dla wszystkich zaznaczonych')}">${t('Ustaw')}</button>
+                  <button type="button" data-bulk-equal title="${t('Podziel ich łączną wysokość po równo')}">${t('⇕ Wyrównaj')}</button>
                 </div>
                 <div class="parts-bulk-row">
-                  <select data-bulk-kind aria-label="Rodzaj"><option value="">rodzaj…</option><option value="drawer">Szuflada z frontem</option><option value="innerDrawer">Szuflada wewnętrzna</option><option value="space">Wolna przestrzeń</option></select>
-                  <button type="button" class="danger" data-bulk-remove title="Usuń zaznaczone części">🗑 Usuń zaznaczone</button>
+                  <select data-bulk-kind aria-label="${t('Rodzaj')}"><option value="">${t('rodzaj…')}</option><option value="drawer">${t('Szuflada z frontem')}</option><option value="innerDrawer">${t('Szuflada wewnętrzna')}</option><option value="space">${t('Wolna przestrzeń')}</option></select>
+                  <button type="button" class="danger" data-bulk-remove title="${t('Usuń zaznaczone części')}">${t('🗑 Usuń zaznaczone')}</button>
                 </div>
               </div>`,
             );
             bulk = el.querySelector('.parts-bulk');
           }
           bulk.dataset.parts = pickedParts.join(',');
-          bulk.querySelector('.parts-bulk-head b').textContent = `Zaznaczone szuflady: ${pickedParts.length} (Ctrl + klik — dodaj / odejmij)`;
+          bulk.querySelector('.parts-bulk-head b').textContent = t('Zaznaczone szuflady: {n} (Ctrl + klik — dodaj / odejmij)', { n: pickedParts.length });
           const hs = pickedParts.map((i) => Math.round(ranges[i] ? ranges[i][1] - ranges[i][0] : 0));
           const hIn = bulk.querySelector('[data-bulk-height]');
-          if (document.activeElement !== hIn) hIn.placeholder = new Set(hs).size === 1 ? `${hs[0]}` : 'różne';
+          if (document.activeElement !== hIn) hIn.placeholder = new Set(hs).size === 1 ? `${hs[0]}` : t('różne');
         } else bulk?.remove();
         const set = (root2, sel, v) => {
           const inp = root2.querySelector(sel);
@@ -934,15 +941,15 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
           const actual = ranges[i] ? ranges[i][1] - ranges[i][0] : null;
           const fitted = p.type === 'space' && p.height != null && actual != null && actual < p.height - 0.5;
           const hIn = set(item, '[data-fpart-f="height"]', fitted ? r(actual) : p.height ?? '');
-          hIn.placeholder = ranges[i] ? `${r(ranges[i][1] - ranges[i][0])} (auto)` : 'auto';
+          hIn.placeholder = ranges[i] ? `${r(ranges[i][1] - ranges[i][0])} (${t('auto')})` : t('auto');
           hIn.classList.toggle('overridden', p.height != null);
           hIn.classList.toggle('fitted', fitted);
-          hIn.title = fitted ? `Dopasowana do korpusu (wpisano ${p.height} mm) — wolne przestrzenie zmniejszają się same, gdy części się nie mieszczą` : '';
+          hIn.title = fitted ? t('Dopasowana do korpusu (wpisano {mm} mm) — wolne przestrzenie zmniejszają się same, gdy części się nie mieszczą', { mm: p.height }) : '';
           // szuflada z wolnym miejscem obok — przycisk „wypełnij”
           const fill = item.querySelector('[data-fpart-fill]');
           const gain = freeAround(st, ranges, layAll.frontArea, c.fronts?.gapV ?? DEFAULT_FRONT_GAP_V, i, layAll.frontOverflow).gain;
           fill.hidden = !gain;
-          if (gain) fill.title = `${fitLabel(gain)} — ${gain > 0 ? 'szuflada wypełni wolne miejsce obok' : 'szuflady się nie mieszczą, ta się zmniejszy'}`;
+          if (gain) fill.title = `${fitLabel(gain)} — ${gain > 0 ? t('szuflada wypełni wolne miejsce obok') : t('szuflady się nie mieszczą, ta się zmniejszy')}`;
         });
         st.doors.forEach((d, j) => {
           const item = doorsEl.querySelector(`[data-fdoor="${j}"]`);
@@ -960,7 +967,7 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
           if (span && k < span[0]) k = span[1];
           const fixed = k >= 0 && st.parts[k]?.height != null;
           const hIn = set(item, '[data-fdoor-f="height"]', fixed ? doorH : '');
-          hIn.placeholder = doorH != null ? `${doorH} (auto)` : 'auto';
+          hIn.placeholder = doorH != null ? `${doorH} (${t('auto')})` : t('auto');
           hIn.classList.toggle('overridden', fixed);
           const opts = doorCoverOptions(st, j);
           opts.forEach((o, i) => {
@@ -984,7 +991,7 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
       {
         const parts = [];
         for (const d of layPanels.filter((x) => x.opening?.hinge)) {
-          if (d.hingeClash?.length) parts.push(`⚠ ${d.name}: zawiasy na wysokości ${d.hingeClash.join(', ')} mm (od dołu drzwi) wypadają na szufladach wewnętrznych — włącz dystanse pod prowadnice albo zmień wysokości szuflad.`);
+          if (d.hingeClash?.length) parts.push(t('⚠ {name}: zawiasy na wysokości {ys} mm (od dołu drzwi) wypadają na szufladach wewnętrznych — włącz dystanse pod prowadnice albo zmień wysokości szuflad.', { name: d.name, ys: d.hingeClash.join(', ') }));
         }
         el.querySelector('.front-bottom-info').textContent = parts.join(' ');
       }
@@ -1001,14 +1008,14 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
         // same drzwi (bez szuflad) — uchwyt pionowy przy krawędzi otwierania
         const door = st.doors.length > 0 && !st.parts.some((x) => x.type === 'drawer' && !st.doors.some((d) => d.covers.includes(x.id))); // (bez szuflad z frontem)
         const off = handleOffsets(spec, door);
-        const xLabel = door ? 'Od krawędzi otwierania' : 'Przesunięcie od środka (w prawo +)';
-        const yLabel = { top: 'Od górnej krawędzi', bottom: 'Od dolnej krawędzi', center: 'Przesunięcie od środka (w górę +)' }[spec.position];
+        const xLabel = door ? t('Od krawędzi otwierania') : t('Przesunięcie od środka (w prawo +)');
+        const yLabel = { top: t('Od górnej krawędzi'), bottom: t('Od dolnej krawędzi'), center: t('Przesunięcie od środka (w górę +)') }[spec.position];
         const xEl = el.querySelector('.handle-offset-x');
         const yEl = el.querySelector('.handle-offset-y');
         xEl.querySelector('.param-label').textContent = xLabel;
         yEl.querySelector('.param-label').textContent = yLabel;
-        xEl.title = door ? 'Odległość osi uchwytu od krawędzi drzwi po stronie otwierania' : 'Przesunięcie uchwytu od środka szerokości szuflady';
-        yEl.title = spec.position === 'center' ? 'Przesunięcie środka uchwytu od środka wysokości frontu' : 'Odległość skrajnego otworu od krawędzi frontu';
+        xEl.title = door ? t('Odległość osi uchwytu od krawędzi drzwi po stronie otwierania') : t('Przesunięcie uchwytu od środka szerokości szuflady');
+        yEl.title = spec.position === 'center' ? t('Przesunięcie środka uchwytu od środka wysokości frontu') : t('Odległość skrajnego otworu od krawędzi frontu');
         const xIn = xEl.querySelector('input');
         const yIn = yEl.querySelector('input');
         if (!xIn.classList.contains('invalid')) setIfNotFocused(xIn, off.x);
@@ -1036,35 +1043,40 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
       const nDrawers = st.parts.filter((x) => x.type !== 'space').length;
       const nInner = st.parts.filter((x) => x.type === 'innerDrawer' || (x.type === 'drawer' && st.doors.some((d) => d.covers.includes(x.id)))).length;
       const frontLabel = [
-        nDrawers - nInner ? `${nDrawers - nInner} szufl.` : '',
-        st.doors.length ? `${st.doors.length > 1 ? st.doors.length + ' × ' : ''}drzwi${nInner ? ` (${nInner} wewn.)` : ''}` : '',
+        nDrawers - nInner ? t('{n} szufl.', { n: nDrawers - nInner }) : '',
+        st.doors.length ? `${st.doors.length > 1 ? st.doors.length + ' × ' : ''}${t('drzwi')}${nInner ? t(' ({n} wewn.)', { n: nInner }) : ''}` : '',
       ]
         .filter(Boolean)
         .join(' + ');
-      setSummary(el, 'fronts', !anyFronts ? 'brak' : `${frontLabel} · ${frontPanels.length} × ${sizes.join(' / ')} mm${fr.hidden ? ' · ukryte' : ''}`);
+      setSummary(el, 'fronts', !anyFronts ? t('brak') : `${frontLabel} · ${frontPanels.length} × ${sizes.join(' / ')} mm${fr.hidden ? t(' · ukryte') : ''}`);
       // Oko na pasku „Fronty”: ukrywa / pokazuje fronty tego korpusu w widoku 3D (tylko gdy są fronty).
       const frontsEye = el.querySelector('[data-toggle-fronts-hidden]');
       frontsEye.hidden = !anyFronts;
-      setEye(frontsEye, fr.hidden, 'fronty tego korpusu');
+      setEye(frontsEye, fr.hidden, t('fronty tego korpusu'));
       el.querySelector('.front-info').textContent =
         !anyFronts
-          ? 'Fronty nakładane (przed korpusem). Dodaj szuflady i / albo drzwi.'
-          : `Fronty: ${frontPanels.length} szt. ${sizes.join(' / ')} mm (szer. × wys.)` +
-            (st.parts.some((x) => x.type !== 'space') ? ' · szuflady: skrzynki tylko w widoku 3D (bez formatek).' : '') +
+          ? t('Fronty nakładane (przed korpusem). Dodaj szuflady i / albo drzwi.')
+          : t('Fronty: {n} szt. {sizes} mm (szer. × wys.)', { n: frontPanels.length, sizes: sizes.join(' / ') }) +
+            (st.parts.some((x) => x.type !== 'space') ? t(' · szuflady: skrzynki tylko w widoku 3D (bez formatek).') : '') +
             ((frontPanels[0] && describeMilling(frontPanels[0])) ? ` · ${describeMilling(frontPanels[0])}.` : '') +
-            ' Zawiasy, prowadnice i uchwyty są w liście formatek (CSV) w części „Akcesoria”' +
-            (fr.groove !== 'none' && fr.groove ? ' (fronty z frezem uchwytowym — bez uchwytów).' : '.');
+            t(' Zawiasy, prowadnice i uchwyty są w liście formatek (CSV) w części „Akcesoria”') +
+            (fr.groove !== 'none' && fr.groove ? t(' (fronty z frezem uchwytowym — bez uchwytów).') : '.');
 
       const nShelves = c.shelves?.length ?? 0;
-      setSummary(el, 'shelves', nShelves ? `${nShelves} ${nShelves === 1 ? 'półka' : nShelves < 5 ? 'półki' : 'półek'}` : 'brak');
+      const shelfMat = nShelves && c.shelfMaterialId ? project.materials.find((m) => m.id === c.shelfMaterialId) : null;
+      setSummary(
+        el,
+        'shelves',
+        nShelves ? `${nShelves} ${nShelves === 1 ? t('półka') : nShelves < 5 ? t('półki') : t('półek')}${shelfMat ? ` · ${shelfMat.name}` : ''}` : t('brak'),
+      );
       // Kopiowanie półek: do korpusów o identycznych wymiarach.
       const twins = sameSizeCabinets(c, project);
       const copyBtn = el.querySelector('[data-action="copy-shelves"]');
       copyBtn.hidden = nShelves === 0;
       copyBtn.disabled = twins.length === 0;
       copyBtn.textContent = twins.length
-        ? `⧉ Kopiuj półki do ${twins.length === 1 ? twins[0].name : `${twins.length} korpusów`} o tej samej wysokości i głębokości`
-        : '⧉ Kopiuj półki — brak korpusów o tej samej wysokości i głębokości';
+        ? t('⧉ Kopiuj półki do {target} o tej samej wysokości i głębokości', { target: twins.length === 1 ? twins[0].name : t('{n} korpusów', { n: twins.length }) })
+        : t('⧉ Kopiuj półki — brak korpusów o tej samej wysokości i głębokości');
       el.querySelectorAll('.shelf-row').forEach((row) => {
         const s = c.shelves?.[Number(row.dataset.shelf)];
         if (!s) return;
@@ -1095,26 +1107,26 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
         const wanted = st?.position === 'backAt' ? st.y : null;
         const moved = (c.shelves?.length ?? 0) > 0 && wanted !== null && Math.abs(actual - wanted) > 0.5;
         row.querySelector('.stiff-note').textContent = moved
-          ? `Przesunięta na ${round1(actual)} mm — na ${round1(wanted)} mm nachodziłaby na półkę.`
+          ? t('Przesunięta na {actual} mm — na {wanted} mm nachodziłaby na półkę.', { actual: round1(actual), wanted: round1(wanted) })
           : '';
       });
       const { errors: issues, warnings } = cabinetProblems(c, project);
       el.classList.toggle('has-issues', issues.length > 0);
       // Podsumowanie widoczne w zwiniętej karcie.
       el.querySelector('.card-sum').textContent =
-        `szer. ${c.width} × wys. ${c.height} × gł. ${c.depth} mm` +
-        (issues.length ? ` · ⚠ ${issues.length} ${issues.length === 1 ? 'problem' : issues.length < 5 ? 'problemy' : 'problemów'}` : '') +
-        (warnings.length ? ` · ⓘ ${warnings.length} ${warnings.length === 1 ? 'ostrzeżenie' : warnings.length < 5 ? 'ostrzeżenia' : 'ostrzeżeń'}` : '');
+        t('szer. {w} × wys. {h} × gł. {d} mm', { w: c.width, h: c.height, d: c.depth }) +
+        (issues.length ? ` · ⚠ ${issues.length} ${issues.length === 1 ? t('problem') : issues.length < 5 ? t('problemy') : t('problemów')}` : '') +
+        (warnings.length ? ` · ⓘ ${warnings.length} ${warnings.length === 1 ? t('ostrzeżenie') : warnings.length < 5 ? t('ostrzeżenia') : t('ostrzeżeń')}` : '');
       el.querySelector('.issues').innerHTML =
-        (issues.length ? issues.map((i) => `<li>${escapeHtml(i)}</li>`).join('') : '<li class="ok">Mieści się w przestrzeni.</li>') +
+        (issues.length ? issues.map((i) => `<li>${escapeHtml(i)}</li>`).join('') : `<li class="ok">${t('Mieści się w przestrzeni.')}</li>`) +
         warnings.map((w) => `<li class="warn">ⓘ ${escapeHtml(w)}</li>`).join('');
 
       const panels = cabinetPanels(c, project);
       solids ??= projectSolids(project);
-      setSummary(el, 'parts', `${panels.length} płyt`);
+      setSummary(el, 'parts', t('{n} płyt', { n: panels.length }));
       const legs = cabinetLegs(c, project);
       el.querySelector('.legs-info').textContent = legs.length
-        ? `Nóżki: ${legs.length} szt. × ${legs[0].height} mm (Ø${LEG_DIAMETER} mm)`
+        ? t('Nóżki: {n} szt. × {h} mm (Ø{d} mm)', { n: legs.length, h: legs[0].height, d: LEG_DIAMETER })
         : '';
       for (const p of panels) {
         const partEl = el.querySelector(`[data-part="${p.key}"]`);
@@ -1124,7 +1136,7 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
         partEl.classList.toggle('invalid', !p.valid);
         partEl.querySelector('.part-cut').textContent = p.valid
           ? `${round1(s.length)} × ${round1(s.width)} × ${round1(s.thickness)} mm`
-          : 'błędne wymiary';
+          : t('błędne wymiary');
         // Materiał, obrzeże i wymiar do cięcia (gotowy wymiar pomniejszony o taśmę).
         partEl.querySelector('.part-material').textContent = p.material.name;
         partEl.querySelectorAll('[data-edge-key]').forEach((cb) => {
@@ -1136,11 +1148,11 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
         partEl.querySelector('[data-reset-edges]').hidden = !manualEdges;
         partEl.querySelector('.part-edges').classList.toggle('no-band', !s.band);
         partEl.querySelector('.part-allowance').textContent = s.allowance
-          ? `⚠ Zapas na docięcie +${s.allowance} mm — docięcie na miejscu (wliczony w formatkę)`
+          ? t('⚠ Zapas na docięcie +{mm} mm — docięcie na miejscu (wliczony w formatkę)', { mm: s.allowance })
           : '';
         partEl.querySelector('.part-cutsize').textContent =
           p.valid && s.band && (s.edges.l || s.edges.w)
-            ? `do cięcia: ${round1(s.cutLength)} × ${round1(s.cutWidth)} mm (obrzeże ${s.band} mm: ${edgeSet.map((k) => EDGE_LABELS[k]).join(', ')})`
+            ? t('do cięcia: {size} mm (obrzeże {band} mm: {edges})', { size: `${round1(s.cutLength)} × ${round1(s.cutWidth)}`, band: s.band, edges: edgeSet.map((k) => EDGE_LABELS[k]).join(', ') })
             : '';
         // Płyta docięta pod skos: ścięte rogi i krawędzie cięte pod kątem.
         partEl.querySelector('.part-shape').textContent = p.valid
@@ -1150,7 +1162,7 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
         partEl.querySelector('[data-part-free]').checked = p.free;
         partEl.classList.toggle('free', p.free);
         partEl.classList.toggle('is-hidden', p.hidden);
-        setEye(partEl.querySelector('[data-toggle-part-hidden]'), p.hidden, 'płytę');
+        setEye(partEl.querySelector('[data-toggle-part-hidden]'), p.hidden, t('płytę'));
         for (const f of PART_FIELDS) {
           const input = partEl.querySelector(`[data-pf="${f.key}"]`);
           input.classList.toggle('overridden', p.overridden.includes(f.key));
@@ -1440,6 +1452,7 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
     } else if (input.dataset.type === 'number') {
       value = Number(value);
     }
+    if (field === 'shelfMaterialId' && !value) value = null; // „jak korpus”
     if (field === 'backGap') {
       // Front zostaje na miejscu — zmienia się położenie pleców i głębokość korpusu.
       // Łańcuszek — też w korpusach z rzędu, które mają ten sam odstęp; gdy w którymś się nie da
@@ -1700,7 +1713,7 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
         return parts.reduce((cc, i) => setPartField(cc, i, 'height', each, p), c);
       });
     } else if (b.dataset.bulkRemove !== undefined) {
-      if (!confirm(`Usunąć ${parts.length} zaznaczone części?`)) return;
+      if (!confirm(t('Usunąć {n} zaznaczone części?', { n: parts.length }))) return;
       updateCabinet(id, (c, p) => [...parts].sort((a, b2) => b2 - a).reduce((cc, i) => removePart(cc, i, p), c));
       clearFronts();
     }
@@ -1844,7 +1857,7 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
       const add = (segment) => {
         const res = addCabinetNoResize(store.get(), { segment });
         if (!res) {
-          showNotice('Brak wolnego miejsca na nowy korpus', 'Gotowe korpusy nie zmieniają wymiarów. Przeciągnij „+ Korpus” (z menu „Dodaj”) na wolne miejsce w widoku 3D albo najpierw zmniejsz któryś korpus.');
+          showNotice(t('Brak wolnego miejsca na nowy korpus'), t('Gotowe korpusy nie zmieniają wymiarów. Przeciągnij „+ Korpus” (z menu „Dodaj”) na wolne miejsce w widoku 3D albo najpierw zmniejsz któryś korpus.'));
           return;
         }
         store.set(res.project);
@@ -1918,7 +1931,7 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
       }
       if (toggle) {
         toggle.hidden = !focus;
-        toggle.textContent = partsSec.classList.contains('focus-part') ? 'Pokaż wszystkie elementy korpusu ▾' : 'Pokaż tylko zaznaczony element ▴';
+        toggle.textContent = partsSec.classList.contains('focus-part') ? t('Pokaż wszystkie elementy korpusu ▾') : t('Pokaż tylko zaznaczony element ▴');
       }
       if (!focus) delete partsSec.dataset.showAll;
     }
@@ -1934,7 +1947,7 @@ export function createFurniturePanel(root, store, ui, tabs, { onShowTrims, onSho
       box?.remove();
       box = document.createElement('div');
       box.className = 'obj-sketch part-sketch bi-sketch';
-      box.title = 'Szkic zaznaczonego elementu — kliknij, aby powiększyć';
+      box.title = t('Szkic zaznaczonego elementu — kliknij, aby powiększyć');
       box.dataset.key = key;
       const head = host.querySelector(':scope > .part-head');
       if (head) head.after(box);

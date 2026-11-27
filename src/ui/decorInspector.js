@@ -2,6 +2,7 @@ import { escapeHtml, readNumberInput, setIfNotFocused } from './dom.js';
 import { decorType, centerDecoration } from '../model/decorations.js';
 import { trimBox } from '../model/trims.js';
 import { boardBox } from '../model/boards.js';
+import { t } from '../i18n.js';
 const helpers = { trimBox, boardBox };
 
 // Okienko zaznaczonej dekoracji (lampa, kwiatek, okno, obraz, książki, dywan) po prawej stronie widoku 3D:
@@ -20,27 +21,27 @@ export function createDecorInspector(viewport, store, ui) {
   const num = (label, key, step = 10, title = '') =>
     `<label class="bi-field" ${title ? `title="${title}"` : ''}><span>${label}</span><input type="number" step="${step}" data-dc="${key}" /><small>${key === 'rotation' ? '°' : 'mm'}</small></label>`;
   function render(d) {
-    const t = decorType(d.type);
+    const dt = decorType(d.type);
     root.innerHTML = `
-      <div class="bi-head"><b>${t.icon} <span data-dc-title></span></b>
-        <button type="button" class="icon tiny" data-dc-close title="Zamknij">✕</button></div>
-      <p class="bi-note">${escapeHtml(t.label)} — tylko wygląd (nie trafia do formatek). W 3D: przeciągnij, żeby przesunąć${t.place === 'wall' ? ' po ścianie' : ' (Shift — w pionie)'}.</p>
-      <label class="bi-field wide"><span>Nazwa</span><input type="text" data-dc="name" /></label>
-      <div class="bi-sec">Położenie</div>
-      <div class="bi-grid">${num('Od lewej', 'x')}${num('Od podłogi', 'y')}${num('Od tyłu', 'z')}</div>
+      <div class="bi-head"><b>${dt.icon} <span data-dc-title></span></b>
+        <button type="button" class="icon tiny" data-dc-close title="${t('Zamknij')}">✕</button></div>
+      <p class="bi-note">${escapeHtml(dt.label)} — ${dt.place === 'wall' ? t('tylko wygląd (nie trafia do formatek). W 3D: przeciągnij, żeby przesunąć po ścianie.') : t('tylko wygląd (nie trafia do formatek). W 3D: przeciągnij, żeby przesunąć (Shift — w pionie).')}</p>
+      <label class="bi-field wide"><span>${t('Nazwa')}</span><input type="text" data-dc="name" /></label>
+      <div class="bi-sec">${t('Położenie')}</div>
+      <div class="bi-grid">${num(t('Od lewej'), 'x')}${num(t('Od podłogi'), 'y')}${num(t('Od tyłu'), 'z')}</div>
       <div class="dc-center">
-        <button type="button" data-dc-center="h" title="Na środku między najbliższymi sąsiadami z lewej i z prawej (ściany, meble, inne dekoracje)">⇔ Wyśrodkuj poziomo</button>
-        ${['wall', 'ceiling'].includes(t.place) ? '<button type="button" data-dc-center="v" title="Na środku między tym, co pod spodem (podłoga, blat, korpus), a tym, co nad nią (sufit, szafka, okap)">⇕ Wyśrodkuj pionowo</button>' : ''}
+        <button type="button" data-dc-center="h" title="${t('Na środku między najbliższymi sąsiadami z lewej i z prawej (ściany, meble, inne dekoracje)')}">${t('⇔ Wyśrodkuj poziomo')}</button>
+        ${['wall', 'ceiling'].includes(dt.place) ? `<button type="button" data-dc-center="v" title="${t('Na środku między tym, co pod spodem (podłoga, blat, korpus), a tym, co nad nią (sufit, szafka, okap)')}">${t('⇕ Wyśrodkuj pionowo')}</button>` : ''}
       </div>
-      <div class="bi-sec bi-sec-row">Wymiary
-        <label class="dc-ratio" title="Zmiana jednego wymiaru skaluje pozostałe w tej samej proporcji"><input type="checkbox" data-dc-ratio /> 🔗 zachowaj proporcje</label>
+      <div class="bi-sec bi-sec-row">${t('Wymiary')}
+        <label class="dc-ratio" title="${t('Zmiana jednego wymiaru skaluje pozostałe w tej samej proporcji')}"><input type="checkbox" data-dc-ratio /> ${t('🔗 zachowaj proporcje')}</label>
       </div>
-      <div class="bi-grid">${num('Szerokość', 'width')}${num('Wysokość', 'height')}${num('Głębokość', 'depth')}${t.place === 'wall' ? '' : num('Obrót', 'rotation', 15, 'Obrót wokół pionu (stopnie)')}</div>
-      <div class="bi-sec">Kolor</div>
-      <div class="dc-color"><input type="color" data-dc="color" /> <button type="button" class="icon tiny" data-dc-color-reset title="Kolor domyślny">↺ domyślny</button></div>
+      <div class="bi-grid">${num(t('Szerokość'), 'width')}${num(t('Wysokość'), 'height')}${num(t('Głębokość'), 'depth')}${dt.place === 'wall' ? '' : num(t('Obrót'), 'rotation', 15, t('Obrót wokół pionu (stopnie)'))}</div>
+      <div class="bi-sec">${t('Kolor')}</div>
+      <div class="dc-color"><input type="color" data-dc="color" /> <button type="button" class="icon tiny" data-dc-color-reset title="${t('Kolor domyślny')}">${t('↺ domyślny')}</button></div>
       <div class="bi-actions dc-actions">
-        <button type="button" data-dc-dup>⧉ Duplikuj</button>
-        <button type="button" class="danger" data-dc-del>🗑 Usuń</button>
+        <button type="button" data-dc-dup>${t('⧉ Duplikuj')}</button>
+        <button type="button" class="danger" data-dc-del>${t('🗑 Usuń')}</button>
       </div>`;
   }
   function sync() {
@@ -58,7 +59,7 @@ export function createDecorInspector(viewport, store, ui) {
     root.querySelectorAll('[data-dc-center]').forEach((b) => {
       const c = centerDecoration(store.get(), d.id, b.dataset.dcCenter, helpers);
       b.disabled = !c;
-      b.title = c ? `Wyśrodkuj ${c.label}` : 'Już na środku (albo brak miejsca między sąsiadami)';
+      b.title = c ? t('Wyśrodkuj {label}', { label: c.label }) : t('Już na środku (albo brak miejsca między sąsiadami)');
     });
     root.querySelector('[data-dc-ratio]').checked = d.keepRatio !== false;
     root.querySelectorAll('[data-dc]').forEach((inp) => {
@@ -104,7 +105,7 @@ export function createDecorInspector(viewport, store, ui) {
     else if (e.target.closest('[data-dc-dup]')) {
       const d = current();
       if (!d) return;
-      const copy = { ...structuredClone(d), id: crypto.randomUUID?.() ?? String(Date.now()), x: d.x + 200, name: `${d.name} (kopia)` };
+      const copy = { ...structuredClone(d), id: crypto.randomUUID?.() ?? String(Date.now()), x: d.x + 200, name: t('{name} (kopia)', { name: d.name }) };
       store.set((p) => ({ ...p, decorations: [...p.decorations, copy] }));
       ui.set({ ...ui.get(), selectedBlends: [`decor:${copy.id}`] });
     } else if (e.target.closest('[data-dc-del]')) {

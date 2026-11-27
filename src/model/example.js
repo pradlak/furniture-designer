@@ -1,6 +1,7 @@
 import { createDefaultProject } from './project.js';
 import { createCabinet } from './furniture.js';
 import { createTrim } from './trims.js';
+import { t } from '../i18n.js';
 
 // Przykładowy projekt dla nowych użytkowników: zabudowa wnęki 2000 mm z dwiema szafkami dolnymi
 // na nóżkach, blendą boczną z panelem przy ścianie, panelem bocznym, blendą dolną i blatem.
@@ -8,7 +9,7 @@ export function createExampleProject() {
   let p = createDefaultProject();
   p = {
     ...p,
-    space: { ...p.space, name: 'Przykład: zabudowa wnęki', width: 2000, height: 2500, depth: 650 },
+    space: { ...p.space, name: t('Przykład: zabudowa wnęki'), width: 2000, height: 2500, depth: 650 },
   };
 
   const side = (o) => ({
@@ -28,7 +29,7 @@ export function createExampleProject() {
   const left = {
     ...createCabinet(p),
     ...base,
-    name: 'Szafka lewa',
+    name: t('Szafka lewa'),
     x: 70,
     width: 800,
     sideBlends: { left: side({ type: 'filler', wallPanel: true, flushFront: true }), right: side() },
@@ -37,7 +38,7 @@ export function createExampleProject() {
   const right = {
     ...createCabinet(p),
     ...base,
-    name: 'Szafka prawa',
+    name: t('Szafka prawa'),
     x: 870,
     width: 600,
     sideBlends: { left: side(), right: side({ type: 'full', flushFront: true }) },

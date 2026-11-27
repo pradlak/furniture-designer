@@ -5,6 +5,7 @@ import { trimBox } from '../model/trims.js';
 import { trimMaterial } from '../model/materials.js';
 import { resolveHoles, HOLE_FILLS } from '../model/boardFeatures.js';
 import { cabinetDrawerRails } from '../model/drawerBoxes.js';
+import { t } from '../i18n.js';
 
 // Szkice z wymiarami (SVG) w okienku obiektu po prawej — jak szkic półki (ui/boardInspector.js):
 //  - korpus: widok z przodu (fronty: szuflady, drzwi; nóżki) i z boku (głębokość, nóżki),
@@ -82,7 +83,7 @@ export function cabinetSketch(cabinet, project) {
     c.rect(FX(l.x - l.diameter / 2), FY(y0 + L), l.diameter * s, L * s, 'bi-leg');
   }
   // wymiary: szerokość (pod spodem), wysokości (z lewej): nóżki, korpus, razem
-  c.dimH(FX(x0), FX(x0 + W), FY(y0) + 16, `szer. ${fmt(W)}`);
+  c.dimH(FX(x0), FX(x0 + W), FY(y0) + 16, `${t('szer.')} ${fmt(W)}`);
   const lx = FX(x0) - 10;
   if (L > 0) {
     c.dimV(lx, FY(y0 + L), FY(y0), fmt(L), 'left', 'bi-small');
@@ -102,11 +103,11 @@ export function cabinetSketch(cabinet, project) {
   const frontDepth = fronts.length ? Math.max(...fronts.map((p) => p.z + p.depth)) : cabinet.z + D;
   if (frontDepth > cabinet.z + D + 0.5) c.rect(SX(cabinet.z + D), FY(y0 + total), (frontDepth - cabinet.z - D) * s, H * s, 'bi-front');
   if (L > 0) for (const z of [...new Set(cabinetLegs(cabinet, project).map((l) => Math.round(l.z)))]) c.rect(SX(z) - 1.5, FY(y0 + L), 3, L * s, 'bi-leg');
-  c.dimH(SX(cabinet.z), SX(cabinet.z + D), FY(y0) + 16, `gł. ${fmt(D)}`);
-  c.text(sx0 - 4, FY(y0 + total) - 9, 'ściana', 'bi-small', 'start');
-  c.text(FX(x0), 12, 'z przodu', 'bi-small', 'start');
-  c.text(sx0, 12, 'z boku', 'bi-small', 'start');
-  return svg(VW, VH, c.out.join(''), 'Szkic korpusu');
+  c.dimH(SX(cabinet.z), SX(cabinet.z + D), FY(y0) + 16, `${t('gł.')} ${fmt(D)}`);
+  c.text(sx0 - 4, FY(y0 + total) - 9, t('ściana'), 'bi-small', 'start');
+  c.text(FX(x0), 12, t('z przodu'), 'bi-small', 'start');
+  c.text(sx0, 12, t('z boku'), 'bi-small', 'start');
+  return svg(VW, VH, c.out.join(''), t('Szkic korpusu'));
 }
 
 // --- blat na szafkach (widok z góry) i blendy (widok z przodu) ---
@@ -123,7 +124,7 @@ export function trimSketch(trim, project) {
     const X = (u) => pad.l + u * s;
     const Y = (v) => pad.t + v * s; // v — od tylnej krawędzi
     c.line(pad.l - 10, pad.t - 4, X(box.width) + 10, pad.t - 4, 'bi-wall');
-    c.text(X(box.width) + 12, pad.t - 1, 'ściana', 'bi-small', 'start');
+    c.text(X(box.width) + 12, pad.t - 1, t('ściana'), 'bi-small', 'start');
     c.rect(X(0), Y(0), box.width * s, box.depth * s, 'bi-board');
     // korpusy pod blatem (przerywane)
     for (const id of trim.cabinetIds) {
@@ -142,10 +143,10 @@ export function trimSketch(trim, project) {
         if (label) c.text(X(h.x), cy + 3, label, 'bi-small');
       }
     }
-    c.dimH(X(0), X(box.width), Y(box.depth) + 16, `dł. ${fmt(box.width)}`);
+    c.dimH(X(0), X(box.width), Y(box.depth) + 16, `${t('dł.')} ${fmt(box.width)}`);
     c.dimV(X(box.width) + 14, Y(0), Y(box.depth), `${fmt(box.depth)}`);
-    c.text(X(0), VH - 6, `grubość ${fmt(T)} mm · wierzch ${fmt(box.y + box.height)} mm od podłogi`, 'bi-small', 'start');
-    return svg(VW, VH, c.out.join(''), 'Szkic blatu');
+    c.text(X(0), VH - 6, t('grubość {t} mm · wierzch {top} mm od podłogi', { t: fmt(T), top: fmt(box.y + box.height) }), 'bi-small', 'start');
+    return svg(VW, VH, c.out.join(''), t('Szkic blatu'));
   }
   // blenda — z przodu
   const pad = { l: 26, r: 46, t: 20, b: 34 };
@@ -153,10 +154,10 @@ export function trimSketch(trim, project) {
   const VH = pad.t + box.height * s + pad.b;
   const X = (u) => pad.l + u * s;
   c.rect(X(0), pad.t, box.width * s, box.height * s, 'bi-front');
-  c.dimH(X(0), X(box.width), pad.t + box.height * s + 16, `dł. ${fmt(box.width)}`);
+  c.dimH(X(0), X(box.width), pad.t + box.height * s + 16, `${t('dł.')} ${fmt(box.width)}`);
   c.dimV(X(box.width) + 12, pad.t, pad.t + box.height * s, fmt(box.height));
-  c.text(X(0), 12, `${trim.type === 'plinth' ? 'blenda dolna' : 'blenda górna'} — z przodu · gr. ${fmt(T)} · od podłogi ${fmt(box.y)}`, 'bi-small', 'start');
-  return svg(VW, VH, c.out.join(''), 'Szkic blendy');
+  c.text(X(0), 12, t('{what} — z przodu · gr. {t} · od podłogi {y}', { what: trim.type === 'plinth' ? t('blenda dolna') : t('blenda górna'), t: fmt(T), y: fmt(box.y) }), 'bi-small', 'start');
+  return svg(VW, VH, c.out.join(''), t('Szkic blendy'));
 }
 
 // --- przeszkoda / okap / występ ściany (z przodu, na tle ściany) ---
@@ -176,13 +177,13 @@ export function obstacleSketch(o, space) {
   c.line(X(a) - 6, Y(0), X(b) + 6, Y(0), 'bi-wall');
   c.line(X(a) - 6, Y(space.height), X(b) + 6, Y(space.height), 'bi-wall');
   c.rect(X(o.x), Y(o.y + o.height), o.width * s, o.height * s, 'bi-obstacle');
-  c.dimH(X(o.x), X(o.x + o.width), Y(o.y + o.height) - 6, `szer. ${fmt(o.width)}`);
+  c.dimH(X(o.x), X(o.x + o.width), Y(o.y + o.height) - 6, `${t('szer.')} ${fmt(o.width)}`);
   const rx = X(o.x + o.width) + 12;
-  c.dimV(rx, Y(o.y + o.height), Y(o.y), `wys. ${fmt(o.height)}`);
-  if (o.y > 0.5) c.dimV(X(o.x) - 12, Y(o.y), Y(0), `od podłogi ${fmt(o.y)}`, 'left', 'bi-small');
-  if (space.height - o.y - o.height > 0.5) c.dimV(X(o.x) - 12, Y(space.height), Y(o.y + o.height), `do sufitu ${fmt(space.height - o.y - o.height)}`, 'left', 'bi-small');
-  c.text(X(a), VH - 8, `głębokość ${fmt(o.depth)} mm · od lewej ściany ${fmt(o.x)} mm`, 'bi-small', 'start');
-  return svg(VW, VH, c.out.join(''), 'Szkic przeszkody');
+  c.dimV(rx, Y(o.y + o.height), Y(o.y), `${t('wys.')} ${fmt(o.height)}`);
+  if (o.y > 0.5) c.dimV(X(o.x) - 12, Y(o.y), Y(0), t('od podłogi {y}', { y: fmt(o.y) }), 'left', 'bi-small');
+  if (space.height - o.y - o.height > 0.5) c.dimV(X(o.x) - 12, Y(space.height), Y(o.y + o.height), t('do sufitu {y}', { y: fmt(space.height - o.y - o.height) }), 'left', 'bi-small');
+  c.text(X(a), VH - 8, t('głębokość {d} mm · od lewej ściany {x} mm', { d: fmt(o.depth), x: fmt(o.x) }), 'bi-small', 'start');
+  return svg(VW, VH, c.out.join(''), t('Szkic przeszkody'));
 }
 
 // --- pojedyncza płyta korpusu (bok, wieniec, plecy, półka, front) ---
@@ -190,9 +191,9 @@ export function obstacleSketch(o, space) {
 // na dole), plecy / front — z przodu. Kontur (także skośny pod skos), oklejone krawędzie (gruba linia), otwory pod
 // zawiasy i uchwyt, wymiary; pod spodem wymiar do cięcia, grubość, materiał i obrzeże.
 const VIEW = {
-  x: { u: [0, 0, 1], v: [0, 1, 0], ua: 'z', va: 'y', flipV: false, sides: { left: 'tył', right: 'przód', top: 'góra', bottom: 'dół' } }, // bok
-  y: { u: [1, 0, 0], v: [0, 0, 1], ua: 'x', va: 'z', flipV: true, sides: { left: 'lewo', right: 'prawo', top: 'tył', bottom: 'przód' } }, // wieniec / półka
-  z: { u: [1, 0, 0], v: [0, 1, 0], ua: 'x', va: 'y', flipV: false, sides: { left: 'lewo', right: 'prawo', top: 'góra', bottom: 'dół' } }, // plecy / front
+  x: { u: [0, 0, 1], v: [0, 1, 0], ua: 'z', va: 'y', flipV: false, sides: { left: t('tył'), right: t('przód'), top: t('góra'), bottom: t('dół') } }, // bok
+  y: { u: [1, 0, 0], v: [0, 0, 1], ua: 'x', va: 'z', flipV: true, sides: { left: t('lewo'), right: t('prawo'), top: t('tył'), bottom: t('przód') } }, // wieniec / półka
+  z: { u: [1, 0, 0], v: [0, 1, 0], ua: 'x', va: 'y', flipV: false, sides: { left: t('lewo'), right: t('prawo'), top: t('góra'), bottom: t('dół') } }, // plecy / front
 };
 export function panelSketch(cabinet, panelKey, project) {
   const p = cabinetPanels(cabinet, project).find((x) => x.key === panelKey);
@@ -301,7 +302,7 @@ export function panelSketch(cabinet, panelKey, project) {
   // obrzeże do przełączenia kliknięciem: napis przy każdej krawędzi i niewidoczny pas na krawędzi
   const keyOf = { top: `${view.va}${view.flipV ? 'Min' : 'Max'}`, bottom: `${view.va}${view.flipV ? 'Max' : 'Min'}`, left: `${view.ua}Min`, right: `${view.ua}Max` };
   const on = (k) => edges.includes(k);
-  const tog = (k) => (on(k) ? '✓ obrzeże' : '＋ obrzeże');
+  const tog = (k) => (on(k) ? t('✓ obrzeże') : t('＋ obrzeże'));
   const cls = (k) => `bi-edge-toggle${on(k) ? ' on' : ''}`;
   c.out.push(`<text x="${(X(0) + X(U)) / 2}" y="${yTop - 22}" class="${cls(keyOf.top)}" text-anchor="middle" data-edge-toggle="${keyOf.top}">${tog(keyOf.top)}</text>`);
   c.out.push(`<text x="${(X(0) + X(U)) / 2}" y="${yBot + 44}" class="${cls(keyOf.bottom)}" text-anchor="middle" data-edge-toggle="${keyOf.bottom}">${tog(keyOf.bottom)}</text>`);
@@ -309,32 +310,32 @@ export function panelSketch(cabinet, panelKey, project) {
   c.out.push(`<text x="${X(U) + 58}" y="${(yTop + yBot) / 2}" class="${cls(keyOf.right)}" text-anchor="middle" transform="rotate(90 ${X(U) + 58} ${(yTop + yBot) / 2})" data-edge-toggle="${keyOf.right}">${tog(keyOf.right)}</text>`);
   for (const [side, k] of Object.entries(keyOf)) {
     const seg = { top: [[0, view.flipV ? 0 : V], [U, view.flipV ? 0 : V]], bottom: [[0, view.flipV ? V : 0], [U, view.flipV ? V : 0]], left: [[0, 0], [0, V]], right: [[U, 0], [U, V]] }[side];
-    c.out.push(`<line x1="${X(seg[0][0])}" y1="${Y(seg[0][1])}" x2="${X(seg[1][0])}" y2="${Y(seg[1][1])}" class="bi-edge-hit" data-edge-toggle="${k}"><title>Kliknij — obrzeże: ${on(k) ? 'usuń' : 'dodaj'}</title></line>`);
+    c.out.push(`<line x1="${X(seg[0][0])}" y1="${Y(seg[0][1])}" x2="${X(seg[1][0])}" y2="${Y(seg[1][1])}" class="bi-edge-hit" data-edge-toggle="${k}"><title>${on(k) ? t('Kliknij — obrzeże: usuń') : t('Kliknij — obrzeże: dodaj')}</title></line>`);
   }
   const by = Y(view.flipV ? V : 0) + 62;
-  c.text(pad.l, by, `${escapeText(p.name)} · gr. ${fmt(T)} mm · ${escapeText(p.material?.name ?? '')}`, 'bi-small', 'start');
-  c.text(pad.l, by + 12, `do cięcia: ${fmt(cut.cutLength ?? cut.length)} × ${fmt(cut.cutWidth ?? cut.width)} mm${edges.length ? ` · obrzeże: ${edges.map((k) => EDGE_LABELS[k]).join(', ')}` : ' · bez obrzeża'}`, 'bi-small', 'start');
-  if (p.hinges?.length) c.text(pad.l, by + 24, `${p.hinges.length} × otwór pod zawias Ø${hingeType(p.hingeType).cup} (od wewnątrz) — ${hingeType(p.hingeType).label.toLowerCase()}`, 'bi-small', 'start');
+  c.text(pad.l, by, `${escapeText(p.name)} · ${t('gr.')} ${fmt(T)} mm · ${escapeText(p.material?.name ?? '')}`, 'bi-small', 'start');
+  c.text(pad.l, by + 12, t('do cięcia: {size} mm', { size: `${fmt(cut.cutLength ?? cut.length)} × ${fmt(cut.cutWidth ?? cut.width)}` }) + (edges.length ? t(' · obrzeże: {edges}', { edges: edges.map((k) => EDGE_LABELS[k]).join(', ') }) : t(' · bez obrzeża')), 'bi-small', 'start');
+  if (p.hinges?.length) c.text(pad.l, by + 24, t('{n} × otwór pod zawias Ø{cup} (od wewnątrz) — {type}', { n: p.hinges.length, cup: hingeType(p.hingeType).cup, type: hingeType(p.hingeType).label.toLowerCase() }), 'bi-small', 'start');
   let ry = by + 24 + (p.hinges?.length ? 12 : 0);
   if (rails.length) {
     const list = rails.sort((a, b) => a.y - b.y).map((r) => fmt(r.y) + (r.generic ? '*' : '')).join(', ');
-    c.text(pad.l, ry, '- - - prowadnice szuflad (oś otworów) od dołu boku:', 'bi-small bi-rail-txt', 'start');
+    c.text(pad.l, ry, t('- - - prowadnice szuflad (oś otworów) od dołu boku:'), 'bi-small bi-rail-txt', 'start');
     c.text(pad.l, ry + 12, `${list} mm`, 'bi-small bi-rail-txt', 'start');
-    c.text(pad.l, ry + 24, `1. otwór ${rails[0].hole} mm od przodu${rails.some((r) => r.spacer) ? ' · szuflady wewn. na dystansach' : ''}`, 'bi-small', 'start');
+    c.text(pad.l, ry + 24, t('1. otwór {mm} mm od przodu', { mm: rails[0].hole }) + (rails.some((r) => r.spacer) ? t(' · szuflady wewn. na dystansach') : ''), 'bi-small', 'start');
     ry += 36;
     if (rails.some((r) => r.generic)) {
-      c.text(pad.l, ry, '* szuflada bez systemu — położenie orientacyjne', 'bi-small', 'start');
+      c.text(pad.l, ry, t('* szuflada bez systemu — położenie orientacyjne'), 'bi-small', 'start');
       ry += 12;
     }
   }
   if (plates.length) {
-    c.text(pad.l, ry, '▭ prowadniki zawiasów (środek) od dołu boku:', 'bi-small bi-plate-txt', 'start');
+    c.text(pad.l, ry, t('▭ prowadniki zawiasów (środek) od dołu boku:'), 'bi-small bi-plate-txt', 'start');
     c.text(pad.l, ry + 12, `${plates.sort((a, b) => a - b).map(fmt).join(', ')} mm`, 'bi-small bi-plate-txt', 'start');
-    c.text(pad.l, ry + 24, 'środek 37 mm od przodu, wkręty co 32 mm', 'bi-small', 'start');
+    c.text(pad.l, ry + 24, t('środek 37 mm od przodu, wkręty co 32 mm'), 'bi-small', 'start');
     ry += 36;
   }
   const extra = ry - (by + 24 + (p.hinges?.length ? 12 : 0));
-  return svg(VW, VH + (p.hinges?.length ? 12 : 0) + extra, c.out.join(''), `Szkic płyty: ${escapeText(p.name)}`);
+  return svg(VW, VH + (p.hinges?.length ? 12 : 0) + extra, c.out.join(''), t('Szkic płyty: {name}', { name: escapeText(p.name) }));
 }
 const isFrontKeyLocal = (k) => k.startsWith('front-') || k.startsWith('idrawer-');
 const escapeText = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -362,15 +363,15 @@ export function pieceSketch({ W, H, sides, notes = [], edges = [], toggles = fal
   if (toggles) {
     const on = (k) => edges.includes(k);
     const cls = (k) => `bi-edge-toggle${on(k) ? ' on' : ''}`;
-    const tog = (k) => (on(k) ? '✓ obrzeże' : '＋ obrzeże');
+    const tog = (k) => (on(k) ? t('✓ obrzeże') : t('＋ obrzeże'));
     const my = (Y(H) + Y(0)) / 2;
     c.out.push(`<text x="${(X(0) + X(W)) / 2}" y="${Y(H) - 22}" class="${cls('top')}" text-anchor="middle" data-piece-edge="top">${tog('top')}</text>`);
     c.out.push(`<text x="${(X(0) + X(W)) / 2}" y="${Y(0) + 44}" class="${cls('bottom')}" text-anchor="middle" data-piece-edge="bottom">${tog('bottom')}</text>`);
     c.out.push(`<text x="${X(0) - 24}" y="${my}" class="${cls('left')}" text-anchor="middle" transform="rotate(-90 ${X(0) - 24} ${my})" data-piece-edge="left">${tog('left')}</text>`);
     c.out.push(`<text x="${X(W) + 58}" y="${my}" class="${cls('right')}" text-anchor="middle" transform="rotate(90 ${X(W) + 58} ${my})" data-piece-edge="right">${tog('right')}</text>`);
-    for (const [k, [x1, y1, x2, y2]] of Object.entries(seg)) c.out.push(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" class="bi-edge-hit" data-piece-edge="${k}"><title>Kliknij — obrzeże: ${on(k) ? 'usuń' : 'dodaj'}</title></line>`);
+    for (const [k, [x1, y1, x2, y2]] of Object.entries(seg)) c.out.push(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" class="bi-edge-hit" data-piece-edge="${k}"><title>${on(k) ? t('Kliknij — obrzeże: usuń') : t('Kliknij — obrzeże: dodaj')}</title></line>`);
   }
   const ny = Y(0) + (toggles ? 60 : 46);
   notes.forEach((n, i) => c.text(pad.l, ny + i * 12, n, 'bi-small', 'start'));
-  return svg(VW, VH, c.out.join(''), 'Szkic elementu');
+  return svg(VW, VH, c.out.join(''), t('Szkic elementu'));
 }

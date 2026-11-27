@@ -1,11 +1,12 @@
+import { t } from '../i18n.js';
 // Powiększony szkic obiektu (korpus, blat, blenda, przeszkoda) — okno na środku ekranu po kliknięciu w szkic
 // w okienku obiektu (.obj-sketch). Zamykanie: ✕, Esc, klik w tło.
 export function initSketchZoom() {
   const zoom = document.createElement('div');
   zoom.className = 'bi-zoom';
   zoom.hidden = true;
-  zoom.innerHTML = `<div class="bi-zoom-box" role="dialog" aria-label="Szkic">
-      <div class="bi-zoom-head"><b></b><button type="button" class="icon" data-zoom-close title="Zamknij (Esc)">✕</button></div>
+  zoom.innerHTML = `<div class="bi-zoom-box" role="dialog" aria-label="${t('Szkic')}">
+      <div class="bi-zoom-head"><b></b><button type="button" class="icon" data-zoom-close title="${t('Zamknij (Esc)')}">✕</button></div>
       <div class="bi-zoom-body bi-sketch"></div>
     </div>`;
   document.body.appendChild(zoom);
@@ -25,7 +26,7 @@ export function initSketchZoom() {
     if (!sk || !sk.innerHTML.trim()) return;
     const card = sk.closest('.item');
     const name = card?.querySelector('.item-head input[data-f="name"]')?.value ?? '';
-    zoom.querySelector('.bi-zoom-head b').textContent = `Szkic${name ? `: ${name}` : ''}`;
+    zoom.querySelector('.bi-zoom-head b').textContent = name ? t('Szkic: {name}', { name }) : t('Szkic');
     zoom.querySelector('.bi-zoom-body').innerHTML = sk.innerHTML;
     zoom.hidden = false;
   });

@@ -21,6 +21,7 @@ import {
 } from './furniture.js';
 import { isPointInside, describeOutside } from './space.js';
 import { defaultEdges, normalizeEdges, normalizeHoles } from './boardFeatures.js';
+import { t } from '../i18n.js';
 
 // Blendy wspólne — płyty, które mogą obejmować kilka korpusów:
 //  plinth   — blenda dolna: zasłania nóżki, stoi na podłodze, cofnięta od frontu;
@@ -36,9 +37,9 @@ import { defaultEdges, normalizeEdges, normalizeHoles } from './boardFeatures.js
 //             x, length (długość) i depth (głębokość) mogą być ustawione ręcznie (null = automatycznie).
 
 export const TRIM_TYPES = {
-  plinth: { label: 'Blenda dolna' },
-  topBlend: { label: 'Blenda górna' },
-  countertop: { label: 'Blat' },
+  plinth: { label: t('Blenda dolna') },
+  topBlend: { label: t('Blenda górna') },
+  countertop: { label: t('Blat') },
 };
 
 export const TRIM_DEFAULTS = {
@@ -118,7 +119,7 @@ export function trimAllowance(trim, project) {
 }
 
 // Skąd bierze się zapas z każdej strony — do opisu w panelu, np.
-// left: [{ source: 'blenda boczna Korpus A', value: 20 }, { source: 'dodatkowy', value: 10 }].
+// left: [{ source: 'blenda boczna Korpus A', value: 20 }, { source: t('dodatkowy'), value: 10 }].
 export function trimAllowanceParts(trim, project) {
   const none = { left: [], right: [] };
   if (trim.type !== 'plinth') return none;
@@ -129,7 +130,7 @@ export function trimAllowanceParts(trim, project) {
   const rightmost = cabs.reduce((a, c) => (span(c)[1] > span(a)[1] ? c : a));
   const side = (cabinet, s, own) =>
     [
-      { source: `blenda boczna ${cabinet.name}`, value: fillerAllowance(cabinet, s) },
+      { source: t('blenda boczna {name}', { name: cabinet.name }), value: fillerAllowance(cabinet, s) },
       { source: 'dodatkowy', value: own ?? 0 },
     ].filter((p) => p.value);
   return { left: side(leftmost, 'left', trim.allowanceLeft), right: side(rightmost, 'right', trim.allowanceRight) };
@@ -264,27 +265,27 @@ export function frontHeightsUnder(trim, project) {
 
 export function trimIssues(trim, project) {
   const cabs = trimCabinets(trim, project);
-  if (!cabs.length) return ['Nie obejmuje żadnego korpusu.'];
+  if (!cabs.length) return [t('Nie obejmuje żadnego korpusu.')];
   const issues = [];
   const differ = (f) => new Set(cabs.map(f)).size > 1;
 
   if (trim.type === 'plinth') {
     const h = plinthHeight(trim, project);
     const noLegs = cabs.filter((c) => !legHeight(c)).map((c) => c.name);
-    if (noLegs.length) issues.push(`Korpusy bez nóżek: ${noLegs.join(', ')} — blenda zachodzi na korpus. Włącz nóżki albo odznacz te korpusy.`);
-    else if (differ(legHeight)) issues.push('Objęte korpusy mają różną wysokość nóżek.');
-    else if (h > Math.min(...cabs.map(legHeight))) issues.push('Blenda jest wyższa niż nóżki — nie zmieści się pod korpusem.');
-    if (h <= 0) issues.push('Wysokość blendy musi być większa od zera.');
+    if (noLegs.length) issues.push(t('Korpusy bez nóżek: {names} — blenda zachodzi na korpus. Włącz nóżki albo odznacz te korpusy.', { names: noLegs.join(', ') }));
+    else if (differ(legHeight)) issues.push(t('Objęte korpusy mają różną wysokość nóżek.'));
+    else if (h > Math.min(...cabs.map(legHeight))) issues.push(t('Blenda jest wyższa niż nóżki — nie zmieści się pod korpusem.'));
+    if (h <= 0) issues.push(t('Wysokość blendy musi być większa od zera.'));
   } else if (trim.type === 'topBlend') {
     if (differ((c) => c.y + legHeight(c) + c.height)) {
-      issues.push('Górne krawędzie objętych korpusów nie są w jednej linii.');
+      issues.push(t('Górne krawędzie objętych korpusów nie są w jednej linii.'));
     }
-    if (cabs.some((c) => c.height - trim.height - trim.gap <= 0)) issues.push('Blenda jest wyższa niż korpus.');
+    if (cabs.some((c) => c.height - trim.height - trim.gap <= 0)) issues.push(t('Blenda jest wyższa niż korpus.'));
   }
   if (trim.type === 'countertop' && differ((c) => c.y + legHeight(c) + c.height)) {
-    issues.push('Górne krawędzie objętych korpusów nie są w jednej linii — blat leży na najwyższym.');
+    issues.push(t('Górne krawędzie objętych korpusów nie są w jednej linii — blat leży na najwyższym.'));
   }
-  if (differ((c) => c.z + c.depth)) issues.push('Fronty objętych korpusów nie są w jednej linii.');
+  if (differ((c) => c.z + c.depth)) issues.push(t('Fronty objętych korpusów nie są w jednej linii.'));
 
   const box = trimBox(trim, project);
   if (box && box.height > 0) {
@@ -292,7 +293,7 @@ export function trimIssues(trim, project) {
     const outside = describeOutside(panelVertices(box), project.space, { openFront: true });
     if (outside) issues.push(outside);
     const hit = project.space.obstacles.filter((o) => boxesOverlap(box, o)).map((o) => o.name);
-    if (hit.length) issues.push(`Koliduje z: ${hit.join(', ')}.`);
+    if (hit.length) issues.push(t('Koliduje z: {names}.', { names: hit.join(', ') }));
     // Nachodzenie na płyty korpusów (po podzieleniu blendy na odcinki przy panelach bocznych).
     const segments = trimSegments(trim, project);
     const hitPanels = [];
@@ -301,7 +302,7 @@ export function trimIssues(trim, project) {
         if (p.valid && segments.some((s) => panelsOverlap(s, p))) hitPanels.push(`${p.name} (${c.name})`);
       }
     }
-    if (hitPanels.length) issues.push(`Nachodzi na: ${hitPanels.join(', ')}.`);
+    if (hitPanels.length) issues.push(t('Nachodzi na: {names}.', { names: hitPanels.join(', ') }));
   }
   return issues;
 }

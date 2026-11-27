@@ -37,25 +37,26 @@ import { obstacleSketch } from './objectSketch.js';
 import { updateSpaceRefit, refillRows, refillDepth } from '../model/layout.js';
 import { tileTargets } from '../model/tileTargets.js';
 import { wallList, wallFinishOf, setWallFinish, tilesEstimate, TILE_DEFAULTS, TILE_LAYOUTS, TILE_LIMITS } from '../model/wallFinish.js';
+import { t, isEnglish } from '../i18n.js';
 
 const SPACE_FIELDS = [
-  { key: 'width', label: 'Szerokość' },
-  { key: 'height', label: 'Wysokość' },
-  { key: 'depth', label: 'Głębokość' },
+  { key: 'width', label: t('Szerokość') },
+  { key: 'height', label: t('Wysokość') },
+  { key: 'depth', label: t('Głębokość') },
 ];
 
 const OBSTACLE_FIELDS = [
-  { key: 'x', label: 'X od lewej', min: -LIMITS.spaceMax },
-  { key: 'y', label: 'Y od podłogi', min: -LIMITS.spaceMax },
-  { key: 'z', label: 'Z od tyłu', min: -LIMITS.spaceMax },
-  { key: 'width', label: 'Szerokość', min: LIMITS.obstacleMin },
-  { key: 'height', label: 'Wysokość', min: LIMITS.obstacleMin },
-  { key: 'depth', label: 'Głębokość', min: LIMITS.obstacleMin },
+  { key: 'x', label: t('X od lewej'), min: -LIMITS.spaceMax },
+  { key: 'y', label: t('Y od podłogi'), min: -LIMITS.spaceMax },
+  { key: 'z', label: t('Z od tyłu'), min: -LIMITS.spaceMax },
+  { key: 'width', label: t('Szerokość'), min: LIMITS.obstacleMin },
+  { key: 'height', label: t('Wysokość'), min: LIMITS.obstacleMin },
+  { key: 'depth', label: t('Głębokość'), min: LIMITS.obstacleMin },
 ];
 
 const COLOR_FIELDS = [
-  { key: 'walls', label: 'Ściany, sufit, skosy' },
-  { key: 'floor', label: 'Podłoga' },
+  { key: 'walls', label: t('Ściany, sufit, skosy') },
+  { key: 'floor', label: t('Podłoga') },
 ];
 
 // Listy elementów edytowanych w panelu: data-kind → klucz tablicy w modelu przestrzeni.
@@ -83,9 +84,9 @@ export function createSpacePanel(root, store) {
   function render(project) {
     const { space } = project;
     root.innerHTML = `
-      <div class="space-head"><h2>Przestrzeń</h2><button type="button" class="insp-close" data-space-close title="Zamknij okienko" aria-label="Zamknij okienko">✕</button></div>
+      <div class="space-head"><div class="ui-h2" role="heading" aria-level="2">${t('Przestrzeń')}</div><button type="button" class="insp-close" data-space-close title="${t('Zamknij okienko')}" aria-label="${t('Zamknij okienko')}">✕</button></div>
       <label class="field">
-        <span>Nazwa</span>
+        <span>${t('Nazwa')}</span>
         <input type="text" data-f="name" value="${escapeHtml(space.name)}" />
       </label>
       <div class="grid-3">
@@ -93,13 +94,13 @@ export function createSpacePanel(root, store) {
           numberField(f.label, f.key, space[f.key], { min: LIMITS.spaceMin, max: LIMITS.spaceMax, unit: 'mm' }),
         ).join('')}
       </div>
-      <p class="hint">Wysokość to pełna wysokość pomieszczenia (tam, gdzie nie ma skosu).</p>
-      <div class="grid-3" title="Odstęp mebli od sufitu — korpusy dopasowane do sufitu (np. „Dopasuj do wnęki”) i blendy „do sufitu” kończą się tyle niżej. W karcie korpusu można ustawić wyjątek.">
-        ${numberField('Luz mebli do sufitu', 'ceilingGap', space.ceilingGap ?? 10, { min: 0, max: 500, unit: 'mm' })}
+      <p class="hint">${t('Wysokość to pełna wysokość pomieszczenia (tam, gdzie nie ma skosu).')}</p>
+      <div class="grid-3" title="${t('Odstęp mebli od sufitu — korpusy dopasowane do sufitu (np. „Dopasuj do wnęki”) i blendy „do sufitu” kończą się tyle niżej. W karcie korpusu można ustawić wyjątek.')}">
+        ${numberField(t('Luz mebli do sufitu'), 'ceilingGap', space.ceilingGap ?? 10, { min: 0, max: 500, unit: 'mm' })}
       </div>
       ${space.slopes.length || space.obstacles.length ? COLLAPSE_ALL_BUTTONS : ''}
 
-      <h3>Ściany</h3>
+      <h3>${t('Ściany')}</h3>
       <div class="walls">
         ${WALLS.map(
           (w) => `
@@ -109,9 +110,9 @@ export function createSpacePanel(root, store) {
           </label>`,
         ).join('')}
       </div>
-      <p class="hint">Odznacz ściankę, jeśli z danej strony przestrzeń jest otwarta.</p>
+      <p class="hint">${t('Odznacz ściankę, jeśli z danej strony przestrzeń jest otwarta.')}</p>
 
-      <h3>Kolory</h3>
+      <h3>${t('Kolory')}</h3>
       <div class="colors">
         ${COLOR_FIELDS.map(
           (c) => `
@@ -120,47 +121,47 @@ export function createSpacePanel(root, store) {
             <span>${c.label}</span>
           </label>`,
         ).join('')}
-        <button type="button" data-action="reset-colors">Domyślne</button>
+        <button type="button" data-action="reset-colors">${t('Domyślne')}</button>
       </div>
 
-      <h3>Wykończenie ścian</h3>
-      <p class="hint">Kolor pojedynczej ściany i płytki (np. pas nad blatem) — tylko wygląd w widoku 3D. To samo: prawy klik w ścianę w 3D.</p>
+      <h3>${t('Wykończenie ścian')}</h3>
+      <p class="hint">${t('Kolor pojedynczej ściany i płytki (np. pas nad blatem) — tylko wygląd w widoku 3D. To samo: prawy klik w ścianę w 3D.')}</p>
       <div class="wall-finish">
         ${wallList(space).map((w) => renderWallFinish(space, w)).join('')}
       </div>
 
-      <h3>Skosy</h3>
-      <p class="hint">Np. poddasze. Ścianka kolankowa to wysokość, na której skos zaczyna się przy ścianie.
-        Długość skosu mierzymy w poziomie — od ściany do miejsca, gdzie skos spotyka sufit.</p>
+      <h3>${t('Skosy')}</h3>
+      <p class="hint">${t(`Np. poddasze. Ścianka kolankowa to wysokość, na której skos zaczyna się przy ścianie.
+        Długość skosu mierzymy w poziomie — od ściany do miejsca, gdzie skos spotyka sufit.`)}</p>
       <div class="items">
-        ${space.slopes.map((s) => renderSlope(s, space)).join('') || '<p class="empty">Brak skosów.</p>'}
+        ${space.slopes.map((s) => renderSlope(s, space)).join('') || `<p class="empty">${t('Brak skosów.')}</p>`}
       </div>
       <div class="add-row">
-        <button type="button" data-action="add-slope">+ Skos</button>
+        <button type="button" data-action="add-slope">${t('+ Skos')}</button>
       </div>
 
-      <h3>Kształt ścian</h3>
-      <p class="hint">Ściany nie muszą stać pod kątem prostym. Kształt podłogi (widok z góry) wyznaczają punkty —
+      <h3>${t('Kształt ścian')}</h3>
+      <p class="hint">${t(`Ściany nie muszą stać pod kątem prostym. Kształt podłogi (widok z góry) wyznaczają punkty —
         można je dodawać, przesuwać i usuwać, np. skośna ściana, ścięty narożnik, wnęka w kształcie litery L.
-        Punkty na przodzie (od tyłu = głębokość) tworzą otwarty przód przestrzeni.</p>
-      <p class="hint"><b>Myszką w widoku 3D</b> (gdy ta zakładka jest otwarta): przeciągaj niebieskie kulki (punkty);
+        Punkty na przodzie (od tyłu = głębokość) tworzą otwarty przód przestrzeni.`)}</p>
+      <p class="hint">${t(`<b>Myszką w widoku 3D</b> (gdy ta zakładka jest otwarta): przeciągaj niebieskie kulki (punkty);
         zielona kulka na środku ściany — przeciągnij, żeby dodać tam punkt; <b>fioletowy krążek</b> — przesuwa całą ścianę
         (lewą, prawą, tylną, sufit albo ścianę z punktów; meble zostają na miejscu). Prawy klik w punkt — „Usuń punkt”,
-        w ścianę — „Dodaj punkt tutaj” i gotowe kształty. Alt — bez przyciągania.</p>
-      <div class="plan-preview" title="Rzut z góry: tylna ściana u góry, przód przestrzeni na dole"></div>
+        w ścianę — „Dodaj punkt tutaj” i gotowe kształty. Alt — bez przyciągania.`)}</p>
+      <div class="plan-preview" title="${t('Rzut z góry: tylna ściana u góry, przód przestrzeni na dole')}"></div>
       <div class="outline-points">${renderPoints(space)}</div>
       <div class="add-row">
         ${OUTLINE_PRESETS.map((p) => `<button type="button" data-outline-preset="${p.key}" title="${p.title}">+ ${p.label}</button>`).join('')}
-        <button type="button" data-action="outline-add-point" title="Nowy punkt na środku najdłuższej ściany">+ Punkt</button>
-        ${space.outline ? '<button type="button" data-action="outline-reset">Prostokąt</button>' : ''}
+        <button type="button" data-action="outline-add-point" title="${t('Nowy punkt na środku najdłuższej ściany')}">${t('+ Punkt')}</button>
+        ${space.outline ? `<button type="button" data-action="outline-reset">${t('Prostokąt')}</button>` : ''}
       </div>
 
-      <h3>Przeszkody</h3>
-      <p class="hint">Elementy zajmujące miejsce w przestrzeni: listwy, rury, parapety, gniazdka…
+      <h3>${t('Przeszkody')}</h3>
+      <p class="hint">${t(`Elementy zajmujące miejsce w przestrzeni: listwy, rury, parapety, gniazdka…
         Pozycja to narożnik lewy‑dolny‑tylny przeszkody. <b>Kominek / występ ściany</b> dzieli przestrzeń na wnęki
-        (np. zabudowa po obu stronach kominka) — rysowany jest jak ściana.</p>
+        (np. zabudowa po obu stronach kominka) — rysowany jest jak ściana.`)}</p>
       <div class="items">
-        ${space.obstacles.map(renderObstacle).join('') || '<p class="empty">Brak przeszkód.</p>'}
+        ${space.obstacles.map(renderObstacle).join('') || `<p class="empty">${t('Brak przeszkód.')}</p>`}
       </div>
       <div class="add-row">
         ${OBSTACLE_PRESETS.map((p) => `<button type="button" data-add-obstacle="${p.key}">+ ${p.label}</button>`).join('')}
@@ -179,27 +180,27 @@ export function createSpacePanel(root, store) {
       <div class="item slope" data-kind="slope" data-id="${s.id}">
         <div class="item-head">
           ${COLLAPSE_BUTTON}
-          <select data-f="side" aria-label="Strona skosu">
+          <select data-f="side" aria-label="${t('Strona skosu')}">
             ${SLOPE_SIDES.map((o) => `<option value="${o.key}" ${o.key === s.side ? 'selected' : ''}>${o.label}</option>`).join('')}
           </select>
-          <button type="button" class="danger" data-remove="${s.id}" title="Usuń skos" aria-label="Usuń skos">🗑</button>
+          <button type="button" class="danger" data-remove="${s.id}" title="${t('Usuń skos')}" aria-label="${t('Usuń skos')}">🗑</button>
         </div>
-        <div class="card-sum" data-collapse-card title="Kliknij, aby rozwinąć"></div>
+        <div class="card-sum" data-collapse-card title="${t('Kliknij, aby rozwinąć')}"></div>
         <div class="grid-3">
-          ${numberField('Ścianka kolankowa', 'kneeHeight', s.kneeHeight, { min: 0, max: LIMITS.spaceMax, small: true })}
-          ${numberField('Długość skosu', 'run', s.run, { min: 1, max: LIMITS.spaceMax, small: true })}
-          ${numberField('Kąt [°]', 'angle', angle == null ? '' : round1(angle), { min: 1, max: 89, step: 0.1, small: true })}
+          ${numberField(t('Ścianka kolankowa'), 'kneeHeight', s.kneeHeight, { min: 0, max: LIMITS.spaceMax, small: true })}
+          ${numberField(t('Długość skosu'), 'run', s.run, { min: 1, max: LIMITS.spaceMax, small: true })}
+          ${numberField(t('Kąt [°]'), 'angle', angle == null ? '' : round1(angle), { min: 1, max: 89, step: 0.1, small: true })}
         </div>
-        <div class="grid-3 slope-gap" title="Odstęp mebli od skosu (prostopadle do skosu) — na nierówności ściany. Dotyczy korpusów ze skośną górą; w karcie korpusu można ustawić wyjątek.">
-          ${numberField('Luz mebli do skosu [mm]', 'gap', s.gap, { min: 0, max: 500, small: true })}
+        <div class="grid-3 slope-gap" title="${t('Odstęp mebli od skosu (prostopadle do skosu) — na nierówności ściany. Dotyczy korpusów ze skośną górą; w karcie korpusu można ustawić wyjątek.')}">
+          ${numberField(t('Luz mebli do skosu [mm]'), 'gap', s.gap, { min: 0, max: 500, small: true })}
         </div>
-        <p class="warning" hidden>Ścianka kolankowa jest nie niższa niż pomieszczenie — skos nie działa.</p>
+        <p class="warning" hidden>${t('Ścianka kolankowa jest nie niższa niż pomieszczenie — skos nie działa.')}</p>
       </div>`;
   }
 
   // Lista punktów kształtu podłogi: od lewej (X), od tyłu (Z), długość ściany do następnego punktu, usuń.
   function renderPoints(space) {
-    if (!space.outline) return '<p class="empty">Prostokąt — wszystkie ściany pod kątem prostym.</p>';
+    if (!space.outline) return `<p class="empty">${t('Prostokąt — wszystkie ściany pod kątem prostym.')}</p>`;
     return space.outline
       .map(
         ([x, z], i) => `
@@ -208,7 +209,7 @@ export function createSpacePanel(root, store) {
           <label>X <input type="number" data-pt-x="${i}" value="${x}" min="0" max="${space.width}" step="1" /></label>
           <label>Z <input type="number" data-pt-z="${i}" value="${z}" min="0" max="${space.depth}" step="1" /></label>
           <small class="pt-len"></small>
-          <button type="button" class="icon danger" data-pt-remove="${i}" title="Usuń punkt">✕</button>
+          <button type="button" class="icon danger" data-pt-remove="${i}" title="${t('Usuń punkt')}">✕</button>
         </div>`,
       )
       .join('');
@@ -238,9 +239,9 @@ export function createSpacePanel(root, store) {
       : '';
     const r = Math.max(W, D) * 0.012;
     const dots = space.outline
-      ? outline.map(([x, z], i) => `<circle cx="${x}" cy="${z}" r="${r}" class="plan-pt"><title>Punkt ${i + 1}</title></circle>`).join('')
+      ? outline.map(([x, z], i) => `<circle cx="${x}" cy="${z}" r="${r}" class="plan-pt"><title>${t('Punkt {n}', { n: i + 1 })}</title></circle>`).join('')
       : '';
-    return `<svg viewBox="${-pad} ${-pad} ${W + 2 * pad} ${D + 2 * pad}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Rzut z góry">
+    return `<svg viewBox="${-pad} ${-pad} ${W + 2 * pad} ${D + 2 * pad}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="${t('Rzut z góry')}">
       <rect x="0" y="0" width="${W}" height="${D}" class="plan-box" />
       <polygon points="${pts}" class="plan-floor" />${walls}${cabs}${cutLines}${dots}
       <line x1="0" y1="${D}" x2="${W}" y2="${D}" class="plan-front" />
@@ -249,29 +250,29 @@ export function createSpacePanel(root, store) {
 
   function renderWallFinish(space, w) {
     const f = wallFinishOf(space, w.tag);
-    const t = f.tiles;
-    const tf = (label, key, min, max) => `<label class="field small"><span>${label}</span><input type="number" step="1" min="${min}" max="${max}" data-wf-tile="${key}" value="${t[key]}" /></label>`;
+    const tl = f.tiles;
+    const tf = (label, key, min, max) => `<label class="field small"><span>${label}</span><input type="number" step="1" min="${min}" max="${max}" data-wf-tile="${key}" value="${tl[key]}" /></label>`;
     return `
       <div class="wf-item" data-wf="${w.tag}">
         <div class="wf-head">
           <b>${escapeHtml(w.label)}</b>
-          <label class="color-field" title="Kolor tej ściany"><input type="color" data-wf-color value="${f.color ?? space.colors.walls}" /></label>
-          <button type="button" class="icon tiny" data-wf-reset title="Kolor jak pozostałe ściany" ${f.color ? '' : 'hidden'}>↺</button>
-          <label class="check small"><input type="checkbox" data-wf-tiles ${t ? 'checked' : ''} /> płytki</label>
+          <label class="color-field" title="${t('Kolor tej ściany')}"><input type="color" data-wf-color value="${f.color ?? space.colors.walls}" /></label>
+          <button type="button" class="icon tiny" data-wf-reset title="${t('Kolor jak pozostałe ściany')}" ${f.color ? '' : 'hidden'}>↺</button>
+          <label class="check small"><input type="checkbox" data-wf-tiles ${tl ? 'checked' : ''} /> ${t('płytki')}</label>
         </div>
-        ${t ? `
+        ${tl ? `
           <div class="grid-3">
-            ${tf('Od wysokości', 'from', 0, 20000)}
-            ${tf('Do wysokości', 'to', 0, 20000)}
-            ${tf('Fuga', 'grout', 0, TILE_LIMITS.groutMax)}
-            ${tf('Płytka — szer.', 'width', TILE_LIMITS.sizeMin, TILE_LIMITS.sizeMax)}
-            ${tf('Płytka — wys.', 'height', TILE_LIMITS.sizeMin, TILE_LIMITS.sizeMax)}
+            ${tf(t('Od wysokości'), 'from', 0, 20000)}
+            ${tf(t('Do wysokości'), 'to', 0, 20000)}
+            ${tf(t('Fuga'), 'grout', 0, TILE_LIMITS.groutMax)}
+            ${tf(t('Płytka — szer.'), 'width', TILE_LIMITS.sizeMin, TILE_LIMITS.sizeMax)}
+            ${tf(t('Płytka — wys.'), 'height', TILE_LIMITS.sizeMin, TILE_LIMITS.sizeMax)}
             <div class="wf-quick">${tileTargets(store.get()).map((q) => `<button type="button" data-wf-quick="${q.key}" title="${escapeHtml(q.label)}">${q.icon} ${escapeHtml(q.label.replace(/ \(.*\)$/, ''))}</button>`).join('')}</div>
-            <label class="field small"><span>Układ</span><select data-wf-tile="layout">${TILE_LAYOUTS.map((l) => `<option value="${l.key}" ${l.key === t.layout ? 'selected' : ''}>${l.label}</option>`).join('')}</select></label>
+            <label class="field small"><span>${t('Układ')}</span><select data-wf-tile="layout">${TILE_LAYOUTS.map((l) => `<option value="${l.key}" ${l.key === tl.layout ? 'selected' : ''}>${l.label}</option>`).join('')}</select></label>
           </div>
           <div class="wf-colors">
-            <label class="color-field"><input type="color" data-wf-tile="color" value="${t.color}" /><span>płytki</span></label>
-            <label class="color-field"><input type="color" data-wf-tile="groutColor" value="${t.groutColor}" /><span>fuga</span></label>
+            <label class="color-field"><input type="color" data-wf-tile="color" value="${tl.color}" /><span>${t('płytki')}</span></label>
+            <label class="color-field"><input type="color" data-wf-tile="groutColor" value="${tl.groutColor}" /><span>${t('fuga')}</span></label>
             <small class="wf-est"></small>
           </div>` : ''}
       </div>`;
@@ -282,26 +283,26 @@ export function createSpacePanel(root, store) {
       <div class="item obstacle" data-kind="obstacle" data-id="${o.id}">
         <div class="item-head">
           ${COLLAPSE_BUTTON}
-          <input type="text" data-f="name" value="${escapeHtml(o.name)}" aria-label="Nazwa przeszkody" />
-          <select data-f="kind" class="obstacle-kind" aria-label="Rodzaj" title="Występ ściany (kominek, filar) wygląda jak ściana i dzieli przestrzeń na osobne wnęki — „Dopasuj do wnęki” i „+ Korpus” wypełniają wnękę po jednej stronie">
+          <input type="text" data-f="name" value="${escapeHtml(o.name)}" aria-label="${t('Nazwa przeszkody')}" />
+          <select data-f="kind" class="obstacle-kind" aria-label="${t('Rodzaj')}" title="${t('Występ ściany (kominek, filar) wygląda jak ściana i dzieli przestrzeń na osobne wnęki — „Dopasuj do wnęki” i „+ Korpus” wypełniają wnękę po jednej stronie')}">
             ${OBSTACLE_KINDS.map((k) => `<option value="${k.key}" ${k.key === o.kind ? 'selected' : ''}>${k.label}</option>`).join('')}
           </select>
-          <button type="button" class="danger" data-remove="${o.id}" title="Usuń przeszkodę" aria-label="Usuń przeszkodę">🗑</button>
+          <button type="button" class="danger" data-remove="${o.id}" title="${t('Usuń przeszkodę')}" aria-label="${t('Usuń przeszkodę')}">🗑</button>
         </div>
-        <div class="card-sum" data-collapse-card title="Kliknij, aby rozwinąć"></div>
-        <div class="obj-sketch bi-sketch" title="Kliknij, aby powiększyć szkic"></div>
+        <div class="card-sum" data-collapse-card title="${t('Kliknij, aby rozwinąć')}"></div>
+        <div class="obj-sketch bi-sketch" title="${t('Kliknij, aby powiększyć szkic')}"></div>
         <div class="grid-3">
           ${OBSTACLE_FIELDS.map((f) => numberField(f.label, f.key, o[f.key], { min: f.min, small: true })).join('')}
         </div>
-        <label class="field small obstacle-decor" title="Tylko wygląd w widoku 3D — nie zmienia formatek ani wymiarów">
-          <span>Wygląd (na przedniej ścianie)</span>
+        <label class="field small obstacle-decor" title="${t('Tylko wygląd w widoku 3D — nie zmienia formatek ani wymiarów')}">
+          <span>${t('Wygląd (na przedniej ścianie)')}</span>
           <select data-f="decor">
             ${WALL_DECORS.map((d) => `<option data-for="wall" value="${d.key ?? ''}" ${d.key === (o.decor ?? null) ? 'selected' : ''}>${d.label}</option>`).join('')}
             ${HOOD_DECORS.filter((d) => d.key).map((d) => `<option data-for="hood" value="${d.key}" ${d.key === (o.decor ?? null) ? 'selected' : ''}>${d.label}</option>`).join('')}
           </select>
         </label>
-        ${colorPicker('Kolor (tylko wygląd w 3D)', 'color', { resetLabel: 'domyślny (jak ściany)' })}
-        <p class="warning" hidden>Przeszkoda wystaje poza przestrzeń.</p>
+        ${colorPicker(t('Kolor (tylko wygląd w 3D)'), 'color', { resetLabel: t('domyślny (jak ściany)') })}
+        <p class="warning" hidden>${t('Przeszkoda wystaje poza przestrzeń.')}</p>
       </div>`;
   }
 
@@ -320,9 +321,9 @@ export function createSpacePanel(root, store) {
         setIfNotFocused(zInput, z);
         const front = isFrontPoint([x, z], space);
         zInput.disabled = front;
-        zInput.title = front ? 'Punkt na przodzie przestrzeni (otwarty przód)' : '';
+        zInput.title = front ? t('Punkt na przodzie przestrzeni (otwarty przód)') : '';
         const e = edges[i];
-        row.querySelector('.pt-len').textContent = e.open ? 'przód' : `ściana ${Math.round(edgeLength(e))} mm`;
+        row.querySelector('.pt-len').textContent = e.open ? t('przód') : t('ściana {mm} mm', { mm: Math.round(edgeLength(e)) });
         row.querySelector('[data-pt-remove]').disabled = !canRemovePoint(space, i);
       });
     }
@@ -336,7 +337,7 @@ export function createSpacePanel(root, store) {
       if (!f.tiles) continue;
       el.querySelectorAll('[data-wf-tile]').forEach((inp) => !inp.classList.contains('invalid') && setIfNotFocused(inp, f.tiles[inp.dataset.wfTile]));
       const est = tilesEstimate(space, w.tag);
-      el.querySelector('.wf-est').textContent = est ? `ok. ${est.area.toFixed(2).replace('.', ',')} m² · ok. ${est.count} płytek (z 10% zapasu)` : '';
+      el.querySelector('.wf-est').textContent = est ? t('ok. {area} m² · ok. {count} płytek (z 10% zapasu)', { area: isEnglish() ? est.area.toFixed(2) : est.area.toFixed(2).replace('.', ','), count: est.count }) : '';
     }
     for (const o of space.obstacles) {
       const el = itemEl('obstacle', o.id);
@@ -346,15 +347,15 @@ export function createSpacePanel(root, store) {
       el.querySelector('.warning').hidden = !outside;
       // Podsumowanie widoczne w zwiniętej karcie.
       el.querySelector('.card-sum').textContent =
-        `${o.width} × ${o.height} × ${o.depth} mm · od lewej ${o.x}, od podłogi ${o.y}, od tyłu ${o.z}` +
-        (outside ? ' · ⚠ wystaje poza przestrzeń' : '');
+        `${o.width} × ${o.height} × ${o.depth} mm · ` + t('od lewej {x}, od podłogi {y}, od tyłu {z}', { x: o.x, y: o.y, z: o.z }) +
+        (outside ? ' · ⚠ ' + t('wystaje poza przestrzeń') : '');
       el.classList.toggle('has-issues', outside);
       el.classList.toggle('wall-part', isWallLike(o));
       // okap: przyczepiony do sufitu — „od podłogi” wynika z wysokości
       const yIn = el.querySelector('[data-f="y"]');
       if (yIn) {
         yIn.disabled = isHoodObstacle(o);
-        yIn.title = isHoodObstacle(o) ? 'Okap jest przyczepiony do sufitu — zmień jego wysokość (od sufitu w dół)' : '';
+        yIn.title = isHoodObstacle(o) ? t('Okap jest przyczepiony do sufitu — zmień jego wysokość (od sufitu w dół)') : '';
       }
       el.querySelector('[data-f="kind"]').value = o.kind;
       el.querySelector('.obstacle-decor').hidden = !isWallObstacle(o) && !isHoodObstacle(o);
@@ -362,7 +363,7 @@ export function createSpacePanel(root, store) {
       el.querySelectorAll('.obstacle-decor option').forEach((opt) => {
         const forKind = opt.dataset.for;
         opt.hidden = opt.value ? forKind !== o.kind : false;
-        if (!opt.value) opt.textContent = isHoodObstacle(o) ? 'Sama zabudowa (bez okapu)' : 'Sama ściana';
+        if (!opt.value) opt.textContent = isHoodObstacle(o) ? t('Sama zabudowa (bez okapu)') : t('Sama ściana');
       });
       el.querySelector('[data-f="decor"]').value = o.decor ?? '';
       syncColorPicker(el, 'color', o.color, isWallLike(o) ? space.colors.walls : '#f59e0b');
@@ -373,9 +374,9 @@ export function createSpacePanel(root, store) {
       const angle = slopeAngle(s, space);
       el.querySelector('.warning').hidden = angle != null;
       el.querySelector('.card-sum').textContent =
-        `ścianka ${s.kneeHeight} mm · długość ${s.run} mm` +
-        (angle == null ? ' · ⚠ skos nie działa' : ` · ${round1(angle)}°`) +
-        (s.side === 'back' || s.side === 'front' ? ` · luz ${s.gap} mm` : '');
+        t('ścianka {knee} mm · długość {run} mm', { knee: s.kneeHeight, run: s.run }) +
+        (angle == null ? ' · ⚠ ' + t('skos nie działa') : ` · ${round1(angle)}°`) +
+        (s.side === 'back' || s.side === 'front' ? ' · ' + t('luz {gap} mm', { gap: s.gap }) : '');
       // Luz dotyczy skośnej góry korpusów — na razie tylko skosy z tyłu i z przodu.
       el.querySelector('.slope-gap').hidden = !(s.side === 'back' || s.side === 'front');
       el.classList.toggle('has-issues', angle == null);
@@ -519,7 +520,7 @@ export function createSpacePanel(root, store) {
     } else if (outlinePreset) {
       const outline = applyOutlinePreset(space, outlinePreset);
       if (outline) updateSpace((s) => ({ ...s, outline }));
-      else alert('Ten narożnik ma już zmieniony kształt — przesuń jego punkty albo zacznij od prostokąta.');
+      else alert(t('Ten narożnik ma już zmieniony kształt — przesuń jego punkty albo zacznij od prostokąta.'));
     } else if (action === 'outline-add-point') {
       // na środku najdłuższej ściany (bez przodu)
       const longest = outlineEdges(space)

@@ -6,6 +6,7 @@ import { buildXlsx } from './xlsx.js';
 import { describeEdges, describeHoles } from './boardFeatures.js';
 import { boardBox, boardMaterial, mountPoints, mountInfo, describeMountWork } from './boards.js';
 import { cabinetDrawerBoxes } from './drawerBoxes.js';
+import { t } from '../i18n.js';
 
 // Płyta na dno i plecy szuflad z systemu: płyta meblowa projektu o grubości systemu (np. 16 mm) albo pierwsza płyta
 // meblowa w tej grubości (nazwa z dopiskiem grubości).
@@ -13,7 +14,7 @@ function drawerBoardMaterial(project, thickness) {
   const chip = (project.materials ?? []).filter((m) => m.type === 'chipboard');
   const same = chip.find((m) => m.thickness === thickness);
   if (same) return same;
-  const base = chip[0] ?? { name: 'Płyta meblowa', type: 'chipboard', edgeBanding: 0 };
+  const base = chip[0] ?? { name: t('Płyta meblowa'), type: 'chipboard', edgeBanding: 0 };
   return { ...base, thickness, name: `${base.name.replace(/\s*\d+(?:[.,]\d+)?\s*(mm)?$/, '')} ${thickness} mm`, edgeBanding: 0 };
 }
 
@@ -27,11 +28,11 @@ const round = (v) => Math.round(v * 10) / 10;
 //  body — korpusy (boki, wieńce, półki, wzmocnienia, plecy z płyty), hdf — plecy HDF, front — fronty,
 //  blend — blendy (boczne, panele boczne, cokoły boczne, blendy dolne i górne), countertop — blaty.
 export const CUT_LIST_PARTS = [
-  { key: 'body', label: 'Korpusy', hint: 'boki, wieńce, półki, wzmocnienia' },
-  { key: 'hdf', label: 'Plecy HDF' },
-  { key: 'front', label: 'Fronty', hint: 'drzwi, szuflady — z frezami i otworami pod uchwyty' },
-  { key: 'blend', label: 'Blendy', hint: 'boczne, panele boczne, dolne, górne' },
-  { key: 'countertop', label: 'Blaty' },
+  { key: 'body', label: t('Korpusy'), hint: t('boki, wieńce, półki, wzmocnienia') },
+  { key: 'hdf', label: t('Plecy HDF') },
+  { key: 'front', label: t('Fronty'), hint: t('drzwi, szuflady — z frezami i otworami pod uchwyty') },
+  { key: 'blend', label: t('Blendy'), hint: t('boczne, panele boczne, dolne, górne') },
+  { key: 'countertop', label: t('Blaty') },
 ];
 export const ALL_PARTS = new Set(CUT_LIST_PARTS.map((p) => p.key));
 
@@ -96,7 +97,7 @@ function collectRows(project, parts, filter) {
     // szuflady z systemu (np. ATM Futura): dno i plecy z płyty do docięcia (wymiary z katalogu)
     for (const b of cabinetDrawerBoxes(c, project)) {
       const mat = drawerBoardMaterial(project, b.system.boardThickness);
-      const label = `${b.system.brand} ${b.system.name} ${b.model.key}, prowadnice ${b.NL}`;
+      const label = `${b.system.brand} ${b.system.name} ${b.model.key}, ` + t('prowadnice {nl}', { nl: b.NL });
       // w — wymiar wzdłuż krawędzi top/bottom, h — wzdłuż left/right; sides — oklejone strony
       const piece = (w, h, sides) => {
         const band = sides.length ? mat.edgeBanding || 1 : 0;
@@ -108,25 +109,26 @@ function collectRows(project, parts, filter) {
         return { length, width, thickness: b.system.boardThickness, cutLength: length - edges.w * band, cutWidth: width - edges.l * band, band, edges, allowance: 0, cuts: [] };
       };
       const names = (sides, labels) => sides.map((k) => labels[k]);
-      const who = b.name.replace(/^(Front|Czoło)\s+/, ''); // „szuflady 2”, „szuflady wewnętrznej 1”
-      add('body', `Dno ${who}`, c.name, mat, piece(b.bottom.width, b.bottom.length, b.bottom.edges), names(b.bottom.edges, { top: 'tył', bottom: 'przód', left: 'lewa', right: 'prawa' }), label, [c.id]);
-      add('body', `Plecy ${who}`, c.name, mat, piece(b.back.width, b.back.height, b.back.edges), names(b.back.edges, { top: 'góra', bottom: 'dół', left: 'lewa', right: 'prawa' }), label, [c.id]);
+      // „szuflady 2”, „szuflady wewnętrznej 1” (EN: „drawer 2”, „internal drawer 1”)
+      const who = isEnglish() ? b.name.replace(/\s*\bfront\b/i, '').replace(/^./, (ch) => ch.toLowerCase()) : b.name.replace(/^(Front|Czoło)\s+/, '');
+      add('body', t('Dno {who}', { who }), c.name, mat, piece(b.bottom.width, b.bottom.length, b.bottom.edges), names(b.bottom.edges, { top: t('tył'), bottom: t('przód'), left: t('lewa'), right: t('prawa') }), label, [c.id]);
+      add('body', t('Plecy {who}', { who }), c.name, mat, piece(b.back.width, b.back.height, b.back.edges), names(b.back.edges, { top: t('góra'), bottom: t('dół'), left: t('lewa'), right: t('prawa') }), label, [c.id]);
     }
   }
 
-  for (const t of project.trims ?? []) {
-    if (!parts.has(t.type === 'countertop' ? 'countertop' : 'blend')) continue;
-    if (trimIds ? !trimIds.has(t.id) : cabinetIds && !t.cabinetIds.some((id) => cabinetIds.has(id))) continue;
-    const material = trimMaterial(t, project);
-    const a = trimAllowance(t, project);
-    const segments = trimSegments(t, project);
+  for (const tr of project.trims ?? []) {
+    if (!parts.has(tr.type === 'countertop' ? 'countertop' : 'blend')) continue;
+    if (trimIds ? !trimIds.has(tr.id) : cabinetIds && !tr.cabinetIds.some((id) => cabinetIds.has(id))) continue;
+    const material = trimMaterial(tr, project);
+    const a = trimAllowance(tr, project);
+    const segments = trimSegments(tr, project);
     segments.forEach((seg, i) => {
       const box = { ...seg, allowanceMin: i === 0 ? a.min : 0, allowanceMax: i === segments.length - 1 ? a.max : 0 };
-      const set = trimEdgeSet(t, seg, i, solids);
-      const cut = panelCutSize({ ...box, material, edges: edgeCounts(box, TRIM_THICKNESS_AXIS[t.type], set) });
+      const set = trimEdgeSet(tr, seg, i, solids);
+      const cut = panelCutSize({ ...box, material, edges: edgeCounts(box, TRIM_THICKNESS_AXIS[tr.type], set) });
       // blat: frezy krawędzi i otwory (zlew, płyta grzewcza, przepusty…)
-      const work = t.type === 'countertop' ? [describeEdges(t.edges), describeHoles(t.holes, seg.width, seg.depth)].filter(Boolean).join('; ') : '';
-      add(t.type === 'countertop' ? 'countertop' : 'blend', t.name || TRIM_TYPES[t.type].label, 'wspólne', material, cut, set, work, t.cabinetIds);
+      const work = tr.type === 'countertop' ? [describeEdges(tr.edges), describeHoles(tr.holes, seg.width, seg.depth)].filter(Boolean).join('; ') : '';
+      add(tr.type === 'countertop' ? 'countertop' : 'blend', tr.name || TRIM_TYPES[tr.type].label, t('wspólne'), material, cut, set, work, tr.cabinetIds);
     });
   }
 
@@ -136,7 +138,7 @@ function collectRows(project, parts, filter) {
     const box = boardBox(b, project);
     const cut = panelCutSize({ ...box, material, edges: { l: 0, w: 0 } });
     const work = [describeEdges(b.edges), describeHoles(b.holes, box.width, box.depth), describeMountWork(b, box.height)].filter(Boolean).join('; ');
-    add(b.kind === 'worktop' ? 'countertop' : 'body', b.name, b.kind === 'worktop' ? 'blat samodzielny' : 'półka samodzielna', material, cut, [], work, [BOARDS_KEY]);
+    add(b.kind === 'worktop' ? 'countertop' : 'body', b.name, b.kind === 'worktop' ? t('blat samodzielny') : t('półka samodzielna'), material, cut, [], work, [BOARDS_KEY]);
   }
   return rows;
 }
@@ -167,7 +169,7 @@ function mountAccessories(project, boardIds = null) {
     if (b.hidden || (boardIds && !boardIds.has(b.id))) continue;
     const pts = mountPoints(b);
     if (!pts.type) continue;
-    const item = mountInfo(pts.type).item + (pts.type === 'cleat' ? `, dł. ok. ${Math.max(100, b.width - 20)} mm` : '');
+    const item = mountInfo(pts.type).item + (pts.type === 'cleat' ? t(', dł. ok. {len} mm', { len: Math.max(100, b.width - 20) }) : '');
     byItem.set(item, (byItem.get(item) ?? 0) + pts.count);
   }
   return [...byItem.entries()].map(([name, qty]) => ({ name, qty }));
@@ -202,24 +204,24 @@ export function buildAccessories(project, cabinetIds, boardIds = null) {
     // szuflady z systemu — komplet szuflady (prowadnice, boki, mocowania) zamiast samych prowadnic
     const boxes = cabinetDrawerBoxes(c, project);
     for (const b of boxes) {
-      const name = `Szuflada ${b.system.brand} ${b.system.name} ${b.model.key} ${b.model.label.split(' ').pop()}, L-${b.NL}, ${b.color.label} (komplet)`;
+      const name = t('Szuflada {system}, L-{nl}, {color} (komplet)', { system: `${b.system.brand} ${b.system.name} ${b.model.key} ${b.model.label.split(' ').pop()}`, nl: b.NL, color: b.color.label });
       drawerSets.set(name, (drawerSets.get(name) ?? 0) + 1);
     }
     slides += panels.filter((p) => p.opening?.drawer).length - boxes.length;
     // uchwyty: według rodzaju i rozstawu (front z frezem uchwytowym nie ma uchwytu)
     for (const p of fronts) {
       if (!p.handle) continue;
-      const name = p.handle.type === 'knob' ? 'Gałka meblowa' : `Uchwyt meblowy, rozstaw ${p.handle.spacing} mm`;
+      const name = p.handle.type === 'knob' ? t('Gałka meblowa') : t('Uchwyt meblowy, rozstaw {s} mm', { s: p.handle.spacing });
       handles.set(name, (handles.get(name) ?? 0) + 1);
     }
   }
   return [
-    ...[...legs.entries()].map(([height, qty]) => ({ name: `Nóżka meblowa ${height} mm`, qty })),
+    ...[...legs.entries()].map(([height, qty]) => ({ name: t('Nóżka meblowa {h} mm', { h: height }), qty })),
     ...[...hinges.entries()].map(([name, qty]) => ({ name, qty })),
-    ...(hangerPairs ? [{ name: 'Zawieszka meblowa regulowana do szafek wiszących (para L+P)', qty: hangerPairs }] : []),
-    ...(rails.length ? [{ name: `Szyna montażowa do zawieszek (stalowa) — łącznie ${rails.reduce((a, b) => a + b, 0)} mm (${rails.join(' + ')} mm; można jedną na cały rząd)`, qty: rails.length }] : []),
-    ...(hangerPairs ? [{ name: 'Kołki rozporowe + wkręty do szyny montażowej (co ok. 30 cm)', qty: Math.max(2, Math.ceil(rails.reduce((a, b) => a + b, 0) / 300) + 1) }] : []),
-    ...(slides ? [{ name: 'Prowadnice do szuflad (komplet na szufladę)', qty: slides }] : []),
+    ...(hangerPairs ? [{ name: t('Zawieszka meblowa regulowana do szafek wiszących (para L+P)'), qty: hangerPairs }] : []),
+    ...(rails.length ? [{ name: t('Szyna montażowa do zawieszek (stalowa) — łącznie {total} mm ({list} mm; można jedną na cały rząd)', { total: rails.reduce((a, b) => a + b, 0), list: rails.join(' + ') }), qty: rails.length }] : []),
+    ...(hangerPairs ? [{ name: t('Kołki rozporowe + wkręty do szyny montażowej (co ok. 30 cm)'), qty: Math.max(2, Math.ceil(rails.reduce((a, b) => a + b, 0) / 300) + 1) }] : []),
+    ...(slides ? [{ name: t('Prowadnice do szuflad (komplet na szufladę)'), qty: slides }] : []),
     ...[...drawerSets.entries()].map(([name, qty]) => ({ name, qty })),
     ...[...handles.entries()].map(([name, qty]) => ({ name, qty })),
     // mocowanie samodzielnych półek / blatów do ściany (tylko przy wydruku wszystkiego, nie dla wybranych korpusów)
@@ -232,29 +234,29 @@ export function buildAccessories(project, cabinetIds, boardIds = null) {
 // Liczby zostają liczbami (w XLSX — prawdziwe liczby, w CSV — z przecinkiem dziesiętnym).
 export const CUT_LIST_COLUMNS = [
   { key: 'lp', title: 'Lp.', width: 5 },
-  { key: 'material', title: 'Materiał', width: 30 },
-  { key: 'thickness', title: 'Grubość [mm]', width: 9 },
-  { key: 'cutLength', title: 'Długość do cięcia [mm]', width: 12 },
-  { key: 'cutWidth', title: 'Szerokość do cięcia [mm]', width: 12 },
-  { key: 'qty', title: 'Ilość [szt.]', width: 8 },
-  { key: 'edgesL', title: 'Okleina na długości [szt.]', width: 12 },
-  { key: 'edgesW', title: 'Okleina na szerokości [szt.]', width: 12 },
-  { key: 'band', title: 'Grubość okleiny [mm]', width: 10 },
-  { key: 'edgeNames', title: 'Oklejone krawędzie', width: 30 },
-  { key: 'length', title: 'Długość gotowa [mm]', width: 11 },
-  { key: 'width', title: 'Szerokość gotowa [mm]', width: 11 },
-  { key: 'allowance', title: 'Zapas na docięcie [mm] (wliczony)', width: 13 },
-  { key: 'names', title: 'Element', width: 34 },
-  { key: 'owners', title: 'Mebel', width: 20 },
-  { key: 'shape', title: 'Obróbka (cięcia skośne, frezy, otwory)', width: 60 },
+  { key: 'material', title: t('Materiał'), width: 30 },
+  { key: 'thickness', title: t('Grubość [mm]'), width: 9 },
+  { key: 'cutLength', title: t('Długość do cięcia [mm]'), width: 12 },
+  { key: 'cutWidth', title: t('Szerokość do cięcia [mm]'), width: 12 },
+  { key: 'qty', title: t('Ilość [szt.]'), width: 8 },
+  { key: 'edgesL', title: t('Okleina na długości [szt.]'), width: 12 },
+  { key: 'edgesW', title: t('Okleina na szerokości [szt.]'), width: 12 },
+  { key: 'band', title: t('Grubość okleiny [mm]'), width: 10 },
+  { key: 'edgeNames', title: t('Oklejone krawędzie'), width: 30 },
+  { key: 'length', title: t('Długość gotowa [mm]'), width: 11 },
+  { key: 'width', title: t('Szerokość gotowa [mm]'), width: 11 },
+  { key: 'allowance', title: t('Zapas na docięcie [mm] (wliczony)'), width: 13 },
+  { key: 'names', title: t('Element'), width: 34 },
+  { key: 'owners', title: t('Mebel'), width: 20 },
+  { key: 'shape', title: t('Obróbka (cięcia skośne, frezy, otwory)'), width: 60 },
 ];
 
 export const CUT_LIST_NOTES = [
-  'Wymiary w mm.',
-  '„Do cięcia” — wymiar formatki do zamówienia (pomniejszony o grubość okleiny); „gotowa” — wymiar po oklejeniu.',
-  'Okleina na długości / szerokości — ile krawędzi danego boku trzeba okleić (0, 1 albo 2).',
-  'Płyty pod skos: wymiar to prostokąt, z którego wycina się formatkę; „ścięty róg A × B” — odcinany trójkąt, A wzdłuż długości, B wzdłuż szerokości.',
-  'Otwory pod uchwyty: współrzędne (poziomo; pionowo) środków otworów w mm od lewego dolnego narożnika frontu, patrząc na front od przodu.',
+  t('Wymiary w mm.'),
+  t('„Do cięcia” — wymiar formatki do zamówienia (pomniejszony o grubość okleiny); „gotowa” — wymiar po oklejeniu.'),
+  t('Okleina na długości / szerokości — ile krawędzi danego boku trzeba okleić (0, 1 albo 2).'),
+  t('Płyty pod skos: wymiar to prostokąt, z którego wycina się formatkę; „ścięty róg A × B” — odcinany trójkąt, A wzdłuż długości, B wzdłuż szerokości.'),
+  t('Otwory pod uchwyty: współrzędne (poziomo; pionowo) środków otworów w mm od lewego dolnego narożnika frontu, patrząc na front od przodu.'),
 ];
 
 // Wiersze tabeli formatek: obiekty z kluczami jak w CUT_LIST_COLUMNS (puste komórki — '').
@@ -298,7 +300,7 @@ export function cutListCsv(project, { parts = ALL_PARTS, accessories: withAccess
   const accessories = withAccessories ? buildAccessories(project, filter.cabinetIds, filter.boardIds) : [];
   if (accessories.length) {
     if (lines.length) lines.push('');
-    lines.push(row(['Akcesoria', 'Ilość [szt.]']), ...accessories.map((a) => row([a.name, a.qty])));
+    lines.push(row([t('Akcesoria'), t('Ilość [szt.]')]), ...accessories.map((a) => row([a.name, a.qty])));
   }
   lines.push('', ...CUT_LIST_NOTES.map((n) => row([n])));
   return utf16le('\uFEFF' + lines.join('\r\n'));
@@ -319,12 +321,12 @@ function utf16le(text) {
 export function cutListXlsx(project, { parts = ALL_PARTS, accessories: withAccessories = true, filter = {} } = {}) {
   const header = CUT_LIST_COLUMNS.map((c) => c.title);
   const rows = cutListRows(project, parts, filter).map((r) => CUT_LIST_COLUMNS.map((c) => r[c.key]));
-  const sheets = rows.length ? [{ name: 'Formatki', header, rows, widths: CUT_LIST_COLUMNS.map((c) => c.width) }] : [];
+  const sheets = rows.length ? [{ name: t('Formatki'), header, rows, widths: CUT_LIST_COLUMNS.map((c) => c.width) }] : [];
   const accessories = withAccessories ? buildAccessories(project, filter.cabinetIds, filter.boardIds) : [];
   if (accessories.length) {
-    sheets.push({ name: 'Akcesoria', header: ['Akcesoria', 'Ilość [szt.]'], rows: accessories.map((a) => [a.name, a.qty]), widths: [50, 12] });
+    sheets.push({ name: t('Akcesoria'), header: [t('Akcesoria'), t('Ilość [szt.]')], rows: accessories.map((a) => [a.name, a.qty]), widths: [50, 12] });
   }
-  sheets.push({ name: 'Objaśnienia', header: ['Objaśnienia'], rows: CUT_LIST_NOTES.map((n) => [n]), widths: [140] });
+  sheets.push({ name: t('Objaśnienia'), header: [t('Objaśnienia')], rows: CUT_LIST_NOTES.map((n) => [n]), widths: [140] });
   return buildXlsx(sheets);
 }
 
@@ -344,8 +346,8 @@ export const MEBLEPL_LIMITS = { minLong: 240, minShort: 100, maxLong: 2500, maxS
 
 // Gdzie na meble.pl wczytać plik danego rodzaju płyty.
 export const MEBLEPL_CUTTING = {
-  chipboard: { label: 'Płyty meblowe', url: 'https://www.meble.pl/rozkroj,plyty-meblowe' },
-  hdf: { label: 'Płyty budowlane (HDF)', url: 'https://www.meble.pl/rozkroj,plyty' },
+  chipboard: { label: t('Płyty meblowe'), url: 'https://www.meble.pl/rozkroj,plyty-meblowe' },
+  hdf: { label: t('Płyty budowlane (HDF)'), url: 'https://www.meble.pl/rozkroj,plyty' },
 };
 
 // → [{ material, type, csv: Uint8Array, count, outOfRange: [opis formatki] }] — po jednym na materiał.

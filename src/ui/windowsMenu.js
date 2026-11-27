@@ -1,4 +1,5 @@
 import { escapeHtml } from './dom.js';
+import { t } from '../i18n.js';
 import { selectedCabinetIds } from '../state/selection.js';
 
 // Przyciski na górnym pasku do otwierania okienek po prawej:
@@ -9,12 +10,12 @@ export function initWindowsMenu(toolbar, store, ui, { openSpace }) {
   const group = document.createElement('div');
   group.className = 'group windows-group';
   group.innerHTML = `
-    <button type="button" class="win-btn" data-win-space title="Okienko przestrzeni: wymiary pokoju, ściany, skosy, kolory, przeszkody">🏠 Przestrzeń</button>
-    <button type="button" class="win-btn" data-map-toggle title="Pokaż / ukryj mapkę zabudowy">🗺️ Mapka</button>
-    <button type="button" class="win-btn" data-win-open="materials" title="Materiały projektu: płyty, blaty, okleiny (okienko po prawej)">🎨 Materiały</button>
-    <button type="button" class="win-btn" data-win-open="notes" title="Notatki projektu (okienko po prawej)">📝 Notatki</button>
+    <button type="button" class="win-btn" data-win-space title="${t('Okienko przestrzeni: wymiary pokoju, ściany, skosy, kolory, przeszkody')}">${t('🏠 Przestrzeń')}</button>
+    <button type="button" class="win-btn" data-map-toggle title="${t('Pokaż / ukryj mapkę zabudowy')}">${t('🗺️ Mapka')}</button>
+    <button type="button" class="win-btn" data-win-open="materials" title="${t('Materiały projektu: płyty, blaty, okleiny (okienko po prawej)')}">${t('🎨 Materiały')}</button>
+    <button type="button" class="win-btn" data-win-open="notes" title="${t('Notatki projektu (okienko po prawej)')}">${t('📝 Notatki')}</button>
     <details class="win-menu">
-      <summary class="win-btn" title="Lista obiektów — klik otwiera okienko obiektu">🗂️ Obiekty ▾</summary>
+      <summary class="win-btn" title="${t('Lista obiektów — klik otwiera okienko obiektu')}">${t('🗂️ Obiekty ▾')}</summary>
       <div class="win-menu-list"></div>
     </details>`;
   anchor?.after(group);
@@ -26,9 +27,9 @@ export function initWindowsMenu(toolbar, store, ui, { openSpace }) {
   ui.subscribe(sync);
   sync();
   const TRIM_GROUPS = [
-    ['countertop', 'Blaty na szafkach'],
-    ['topBlend', 'Blendy górne'],
-    ['plinth', 'Blendy dolne'],
+    ['countertop', t('Blaty na szafkach')],
+    ['topBlend', t('Blendy górne')],
+    ['plinth', t('Blendy dolne')],
   ];
   menu.addEventListener('toggle', () => {
     if (!menu.open) return;
@@ -41,11 +42,11 @@ export function initWindowsMenu(toolbar, store, ui, { openSpace }) {
     const group = (title, items, add = '') => (items.length || add ? `<div class="win-group">${title}</div>${items.join('')}${add}` : '');
     const dims = (o) => `${Math.round(o.width)} × ${Math.round(o.height ?? 0)} × ${Math.round(o.depth)} mm`;
     list.innerHTML = [
-      group('Korpusy', p.furniture.map((c) => item('data-win-cab', c.id, c.name, dims(c), sel.has(c.id))), '<button type="button" class="win-add" data-win-add>+ Korpus</button>'),
+      group(t('Korpusy'), p.furniture.map((c) => item('data-win-cab', c.id, c.name, dims(c), sel.has(c.id))), `<button type="button" class="win-add" data-win-add>${t('+ Korpus')}</button>`),
       ...TRIM_GROUPS.map(([type, title]) => group(title, p.trims.filter((t) => t.type === type).map((t) => item('data-win-trim', t.id, t.name, '', picked.has(`trim:${t.id}`))))),
-      group('Samodzielne blaty i półki', (p.boards ?? []).map((b) => item('data-win-board', b.id, b.name, `${b.width} × ${b.depth} mm`, picked.has(`board:${b.id}`)))),
-      group('Przeszkody', p.space.obstacles.map((o) => item('data-win-obstacle', o.id, o.name || 'Przeszkoda', dims(o), st.selectedObstacle === o.id))),
-      group('Dekoracje', (p.decorations ?? []).map((d) => item('data-win-decor', d.id, d.name, '', picked.has(`decor:${d.id}`)))),
+      group(t('Samodzielne blaty i półki'), (p.boards ?? []).map((b) => item('data-win-board', b.id, b.name, `${b.width} × ${b.depth} mm`, picked.has(`board:${b.id}`)))),
+      group(t('Przeszkody'), p.space.obstacles.map((o) => item('data-win-obstacle', o.id, o.name || t('Przeszkoda'), dims(o), st.selectedObstacle === o.id))),
+      group(t('Dekoracje'), (p.decorations ?? []).map((d) => item('data-win-decor', d.id, d.name, '', picked.has(`decor:${d.id}`)))),
     ].join('');
   });
   const select = (patch) => ({ ...ui.get(), selectedId: null, selectedIds: [], selectedFronts: [], selectedBlends: [], selectedHole: null, selectedObstacle: null, spaceOpen: false, ...patch });

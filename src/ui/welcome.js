@@ -1,4 +1,5 @@
 import { PICTURES } from './pictures.js';
+import { t, localPath } from '../i18n.js';
 
 const STORAGE_KEY = 'furnitureDesigner.welcomeSeen';
 
@@ -13,40 +14,39 @@ export function createWelcome(store, { onNew, onStart, onExamples } = {}) {
   overlay.hidden = true;
   overlay.innerHTML = `
     <div class="welcome" role="dialog" aria-modal="true" aria-labelledby="welcome-title">
-      <h2 id="welcome-title">Meble Samemu — jak zacząć</h2>
-      <p>Zaprojektuj szafkę albo całą zabudowę w 3D i pobierz listę formatek do rozkroju. Za darmo, bez rejestracji.</p>
+      <div class="ui-h2" role="heading" aria-level="2" id="welcome-title">${t('Meble Samemu — jak zacząć')}</div>
+      <p>${t('Zaprojektuj szafkę albo całą zabudowę w 3D i pobierz listę formatek do rozkroju. Za darmo, bez rejestracji.')}</p>
       <ol>
-        <li><b>Przestrzeń</b> — wpisz wymiary wnęki lub pokoju, zaznacz ściany, dodaj skosy i przeszkody (rury, listwy).</li>
-        <li><b>Meble</b> — dodaj korpus, ustaw wymiary, nóżki i wzmocnienia. Korpus przesuniesz też myszką w podglądzie 3D.</li>
-        <li><b>Blendy</b> — blendy boczne, blenda dolna (cokół) i blenda górna.</li>
-        <li><b>Blaty i półki</b> — blat na szafkach albo samodzielny blat lub półka, z frezami krawędzi i otworami.</li>
-        <li><b>Materiały</b> — płyty, grubości, kolory i obrzeże.</li>
-        <li><b>💾 Formatki…</b> na górnym pasku — lista płyt do zamówienia rozkroju: Excel, CSV albo plik do rozkroju na meble.pl.</li>
+        <li>${t('<b>Przestrzeń</b> — wpisz wymiary wnęki lub pokoju, zaznacz ściany, dodaj skosy i przeszkody (rury, listwy).')}</li>
+        <li>${t('<b>Meble</b> — dodaj korpus, ustaw wymiary, nóżki i wzmocnienia. Korpus przesuniesz też myszką w podglądzie 3D.')}</li>
+        <li>${t('<b>Blendy</b> — blendy boczne, blenda dolna (cokół) i blenda górna.')}</li>
+        <li>${t('<b>Blaty i półki</b> — blat na szafkach albo samodzielny blat lub półka, z frezami krawędzi i otworami.')}</li>
+        <li>${t('<b>Materiały</b> — płyty, grubości, kolory i obrzeże.')}</li>
+        <li>${t('<b>💾 Formatki…</b> na górnym pasku — lista płyt do zamówienia rozkroju: Excel, CSV albo plik do rozkroju na meble.pl.')}</li>
       </ol>
-      <p class="welcome-note">Krok po kroku: <a href="/poradniki/szafa-do-wneki" target="_blank" rel="noopener">jak zaprojektować szafę do wnęki</a>
-        · <a href="/poradniki/" target="_blank" rel="noopener">wszystkie poradniki</a>.</p>
-      <p class="welcome-note">Projekt zapisuje się automatycznie w tej przeglądarce. Żeby go zachować na dłużej
-        albo przenieść na inny komputer, użyj <b>Eksportuj</b> i <b>Importuj</b>.</p>
-      <h3 class="welcome-choices-title">Od czego zaczynasz?</h3>
+      <p class="welcome-note">${t('Krok po kroku:')} <a href="${localPath('/poradniki/szafa-do-wneki')}" target="_blank" rel="noopener">${t('jak zaprojektować szafę do wnęki')}</a>
+        · <a href="${localPath('/poradniki/')}" target="_blank" rel="noopener">${t('wszystkie poradniki')}</a>.</p>
+      <p class="welcome-note">${t('Projekt zapisuje się automatycznie w tej przeglądarce. Żeby go zachować na dłużej albo przenieść na inny komputer, użyj <b>Eksportuj</b> i <b>Importuj</b>.')}</p>
+      <h3 class="welcome-choices-title">${t('Od czego zaczynasz?')}</h3>
       <div class="welcome-choices">
         <button type="button" class="choice-card" data-welcome="new" data-template="niche">
           ${PICTURES.niche}
-          <b>Wnęka prostokątna</b>
-          <small>Szafa albo zabudowa między ścianami</small>
+          <b>${t('Wnęka prostokątna')}</b>
+          <small>${t('Szafa albo zabudowa między ścianami')}</small>
         </button>
         <button type="button" class="choice-card" data-welcome="new" data-template="attic">
           ${PICTURES.attic}
-          <b>Poddasze ze skosem</b>
-          <small>Zabudowa pod skosem — korpusy ze skośną górą</small>
+          <b>${t('Poddasze ze skosem')}</b>
+          <small>${t('Zabudowa pod skosem — korpusy ze skośną górą')}</small>
         </button>
         <button type="button" class="choice-card" data-welcome="example">
           ${PICTURES.kitchen}
-          <b>Przykładowe projekty</b>
-          <small>Kuchnia, szafa, poddasze, regał, komoda — do obejrzenia i zmian</small>
+          <b>${t('Przykładowe projekty')}</b>
+          <small>${t('Kuchnia, szafa, poddasze, regał, komoda — do obejrzenia i zmian')}</small>
         </button>
       </div>
       <div class="welcome-actions">
-        <button type="button" class="primary" data-welcome="close">Zaczynam</button>
+        <button type="button" class="primary" data-welcome="close">${t('Zaczynam')}</button>
       </div>
     </div>`;
   document.body.appendChild(overlay);

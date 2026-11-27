@@ -1,3 +1,4 @@
+import { t } from '../i18n.js';
 // Zwijany lewy panel: zwinięty — wąski pasek z ikonkami zakładek (widok 3D prawie na cały ekran); klik w ikonkę
 // wysuwa panel z tą zakładką, klik w aktywną zakładkę albo « — chowa go. Stan zapamiętany w przeglądarce
 // (domyślnie zwinięty). Okienka obiektów po prawej działają niezależnie od panelu.
@@ -19,8 +20,8 @@ export function initPanelCollapse(panel, tabs) {
     // przycisk zwijania / rozwijania: zwinięty — „»” (rozwiń), rozwinięty — „«” (zwiń)
     const btn = nav.querySelector('.tabs-collapse');
     if (btn) {
-      btn.innerHTML = collapsed ? '<span aria-hidden="true">»</span>' : '<span aria-hidden="true">«</span><span class="tabs-collapse-label">Zwiń</span>';
-      btn.title = collapsed ? 'Rozwiń panel' : 'Zwiń panel (więcej miejsca na widok 3D)';
+      btn.innerHTML = collapsed ? '<span aria-hidden="true">»</span>' : `<span aria-hidden="true">«</span><span class="tabs-collapse-label">${t('Zwiń')}</span>`;
+      btn.title = collapsed ? t('Rozwiń panel') : t('Zwiń panel (więcej miejsca na widok 3D)');
       btn.setAttribute('aria-label', btn.title);
     }
     try {

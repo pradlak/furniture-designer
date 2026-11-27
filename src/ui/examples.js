@@ -1,6 +1,7 @@
 import { EXAMPLES } from '../model/examples.js';
 import { PICTURES } from './pictures.js';
 import { escapeHtml } from './dom.js';
+import { t } from '../i18n.js';
 
 // Okienko „Przykładowe projekty”: karty z obrazkami; kliknięcie wczytuje przykład (zastępuje bieżący projekt).
 export function createExamplesDialog(store) {
@@ -9,8 +10,8 @@ export function createExamplesDialog(store) {
   overlay.hidden = true;
   overlay.innerHTML = `
     <div class="welcome examples" role="dialog" aria-modal="true" aria-labelledby="examples-title">
-      <h2 id="examples-title">Przykładowe projekty</h2>
-      <p class="welcome-note">Wybierz przykład — możesz go potem dowolnie zmieniać: wymiary, korpusy, fronty, półki, materiały.</p>
+      <div class="ui-h2" role="heading" aria-level="2" id="examples-title">${t('Przykładowe projekty')}</div>
+      <p class="welcome-note">${t('Wybierz przykład — możesz go potem dowolnie zmieniać: wymiary, korpusy, fronty, półki, materiały.')}</p>
       <div class="welcome-choices examples-grid">
         ${EXAMPLES.map(
           (ex) => `
@@ -21,9 +22,9 @@ export function createExamplesDialog(store) {
           </button>`,
         ).join('')}
       </div>
-      <p class="warning examples-replace" hidden>Bieżący projekt zostanie zastąpiony — jeśli chcesz go zachować, najpierw użyj „Eksportuj”.</p>
+      <p class="warning examples-replace" hidden>${t('Bieżący projekt zostanie zastąpiony — jeśli chcesz go zachować, najpierw użyj „Eksportuj”.')}</p>
       <div class="welcome-actions">
-        <button type="button" data-examples="cancel">Anuluj</button>
+        <button type="button" data-examples="cancel">${t('Anuluj')}</button>
       </div>
     </div>`;
   document.body.appendChild(overlay);

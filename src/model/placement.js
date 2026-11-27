@@ -2,6 +2,7 @@ import { cabinetBounds, cabinetIssues, newId, sideBlendWidth } from './furniture
 import { freeWidth, backLimit, straightenSlantedSides } from './outline.js';
 import { trimBox } from './trims.js';
 import { boardBox } from './boards.js';
+import { t } from '../i18n.js';
 
 // Ustawianie mebli: przyciąganie, dosuwanie, duplikowanie.
 // Wszystko liczone na prostopadłościanach obejmujących meble (cabinetBounds) i przeszkody.
@@ -42,8 +43,8 @@ export function snapCabinet(project, cabinetId, pos, axes, { threshold = 30, hol
   }
   const range = (a, p = pos) => [p[a] + off[a][0], p[a] + off[a][1]];
   const others = [
-    ...project.furniture.filter((c) => c.id !== cabinetId).map((c) => ({ box: cabinetBounds(c, project), label: `korpusu „${c.name}”` })),
-    ...space.obstacles.map((o) => ({ box: o, label: `„${o.name || 'przeszkody'}”` })),
+    ...project.furniture.filter((c) => c.id !== cabinetId).map((c) => ({ box: cabinetBounds(c, project), label: t('korpusu „{name}”', { name: c.name }) })),
+    ...space.obstacles.map((o) => ({ box: o, label: `„${o.name || t('przeszkody')}”` })),
   ];
   const result = { ...pos };
   const snaps = {};
@@ -56,29 +57,29 @@ export function snapCabinet(project, cabinetId, pos, axes, { threshold = 30, hol
     const targets = [];
     const wall = (value, edge, label) => targets.push({ value, edge, label, weight: 0.8 });
     if (axis === 'x') {
-      wall(0, 'lo', 'lewej ściany');
-      wall(space.width, 'hi', 'prawej ściany');
+      wall(0, 'lo', t('lewej ściany'));
+      wall(space.width, 'hi', t('prawej ściany'));
       if (space.outline) {
         // ściany z kształtu podłogi na głębokości korpusu (skośne boczne — jak proste, bo korpus dostaje skośny bok)
         const shape = cabinet.wallFit?.enabled === false ? space : { ...space, outline: straightenSlantedSides(space) };
         const [z0, z1] = range('z', result);
         const [L, R] = freeWidth(shape, Math.max(0, z0), Math.min(space.depth, z1), 0, space.width);
         if (R > L) {
-          wall(L, 'lo', 'ściany');
-          wall(R, 'hi', 'ściany');
+          wall(L, 'lo', t('ściany'));
+          wall(R, 'hi', t('ściany'));
         }
       }
     } else if (axis === 'z') {
-      wall(cabinet.backGap ?? 0, 'lo', 'tylnej ściany');
-      wall(space.depth, 'hi', 'przodu przestrzeni');
+      wall(cabinet.backGap ?? 0, 'lo', t('tylnej ściany'));
+      wall(space.depth, 'hi', t('przodu przestrzeni'));
       if (space.outline) {
         const [x0, x1] = range('x', result);
         const back = backLimit(space, Math.max(0, x0), Math.min(space.width, x1));
-        if (back > 0) wall(back + (cabinet.backGap ?? 0), 'lo', 'tylnej ściany');
+        if (back > 0) wall(back + (cabinet.backGap ?? 0), 'lo', t('tylnej ściany'));
       }
     } else {
-      wall(0, 'lo', 'podłogi');
-      wall(space.height, 'hi', 'sufitu'); // szafki wiszące — górą do sufitu
+      wall(0, 'lo', t('podłogi'));
+      wall(space.height, 'hi', t('sufitu')); // szafki wiszące — górą do sufitu
     }
     const perp = AXES.filter((a) => a !== axis);
     for (const { box, label } of others) {
@@ -92,8 +93,8 @@ export function snapCabinet(project, cabinetId, pos, axes, { threshold = 30, hol
       const a1 = box[axis] + box[dim];
       targets.push({ value: a1, edge: 'lo', label, weight: 1 }); // dosunięcie: lewy bok do prawego boku sąsiada…
       targets.push({ value: a0, edge: 'hi', label, weight: 1 });
-      targets.push({ value: a0, edge: 'lo', label: `wyrównany z ${label}`, weight: 1.6 }); // wyrównanie krawędzi
-      targets.push({ value: a1, edge: 'hi', label: `wyrównany z ${label}`, weight: 1.6 });
+      targets.push({ value: a0, edge: 'lo', label: t('wyrównany z {label}', { label }), weight: 1.6 }); // wyrównanie krawędzi
+      targets.push({ value: a1, edge: 'hi', label: t('wyrównany z {label}', { label }), weight: 1.6 });
     }
 
     // poprzedni cel trzyma, dopóki korpus nie odjedzie dalej niż HOLD_FACTOR × threshold
@@ -189,7 +190,7 @@ export function slideCabinets(project, cabinetIds, direction) {
 // Dokąd dojedzie korpus (albo grupa korpusów) w danym kierunku ('-x', '+x', '-y', '+y', '-z', '+z'):
 // → { delta — przesunięcie w mm (ze znakiem), label — co go zatrzyma: „ściany”, „podłogi”, „korpusu „Korpus 2””,
 //     „„Kominek”” } albo null (brak korpusów). Dla grupy — najmniejsze z przesunięć jej korpusów.
-const WALL_LABELS = { '-x': 'ściany', '+x': 'ściany', '-z': 'tylnej ściany', '+z': 'krawędzi przestrzeni', '-y': 'podłogi', '+y': 'sufitu' };
+const WALL_LABELS = { '-x': t('ściany'), '+x': t('ściany'), '-z': t('tylnej ściany'), '+z': t('krawędzi przestrzeni'), '-y': t('podłogi'), '+y': t('sufitu') };
 export function slideTarget(project, cabinetIds, direction) {
   const ids = new Set(cabinetIds);
   const group = project.furniture.filter((c) => ids.has(c.id));
@@ -198,10 +199,10 @@ export function slideTarget(project, cabinetIds, direction) {
   const dim = DIM[axis];
   const perp = AXES.filter((a) => a !== axis);
   const eps = 0.01;
-  const names = new Map(project.furniture.map((c) => [c.id, `korpusu „${c.name}”`]));
+  const names = new Map(project.furniture.map((c) => [c.id, t('korpusu „{name}”', { name: c.name })]));
   const others = [
     ...project.furniture.filter((c) => !ids.has(c.id)).map((c) => ({ ...cabinetBounds(c, project), label: names.get(c.id) })),
-    ...project.space.obstacles.map((o) => ({ ...o, label: `„${o.name || 'przeszkody'}”` })),
+    ...project.space.obstacles.map((o) => ({ ...o, label: `„${o.name || t('przeszkody')}”` })),
   ];
   const minus = direction[0] === '-';
 
@@ -246,18 +247,18 @@ export function obstacleNeighbour(project, obstacleId, side) {
   const eps = 0.01;
   const inBand = (b) => b.y < o.y + o.height - eps && b.y + b.height > o.y + eps && b.z < o.z + o.depth - eps && b.z + b.depth > o.z + eps;
   const boxes = [
-    ...project.furniture.map((c) => ({ ...cabinetBounds(c, project), label: `korpusu „${c.name}”` })),
+    ...project.furniture.map((c) => ({ ...cabinetBounds(c, project), label: t('korpusu „{name}”', { name: c.name }) })),
     ...project.space.obstacles.filter((x) => x.id !== o.id).map((x) => ({ ...x, label: `„${x.name}”` })),
     // samodzielne półki i blaty (np. okap rozszerzony do półki obok)
     ...(project.boards ?? []).filter((b) => !b.hidden).map((b) => ({ ...boardBox(b, project), label: `„${b.name}”` })),
   ].filter(inBand);
   const { walls, width } = project.space;
   if (side === 'left') {
-    let best = { x: 0, label: walls.left ? 'ściany' : 'krawędzi przestrzeni' };
+    let best = { x: 0, label: walls.left ? t('ściany') : t('krawędzi przestrzeni') };
     for (const b of boxes) if (b.x + b.width <= o.x + eps && b.x + b.width > best.x) best = { x: b.x + b.width, label: b.label };
     return { ...best, gap: Math.max(0, o.x - best.x) };
   }
-  let best = { x: width, label: walls.right ? 'ściany' : 'krawędzi przestrzeni' };
+  let best = { x: width, label: walls.right ? t('ściany') : t('krawędzi przestrzeni') };
   for (const b of boxes) if (b.x >= o.x + o.width - eps && b.x < best.x) best = { x: b.x, label: b.label };
   return { ...best, gap: Math.max(0, best.x - (o.x + o.width)) };
 }
@@ -326,15 +327,15 @@ export function snapObstacleEdge(project, obstacleId, x, threshold = 30) {
 // i samodzielnych płyt (półek, blatów — np. półka, do której dosuwa się okap). → { v, label } albo null.
 export function obstacleEdgeTarget(project, obstacleId, x, threshold = 30) {
   const targets = [
-    { v: 0, label: 'lewej ściany' },
-    { v: project.space.width, label: 'prawej ściany' },
+    { v: 0, label: t('lewej ściany') },
+    { v: project.space.width, label: t('prawej ściany') },
     ...project.furniture.flatMap((c) => {
       const b = cabinetBounds(c, project);
-      return [{ v: b.x, label: `korpusu „${c.name}”` }, { v: b.x + b.width, label: `korpusu „${c.name}”` }];
+      return [{ v: b.x, label: t('korpusu „{name}”', { name: c.name }) }, { v: b.x + b.width, label: t('korpusu „{name}”', { name: c.name }) }];
     }),
     ...project.space.obstacles
       .filter((o) => o.id !== obstacleId)
-      .flatMap((o) => [{ v: o.x, label: `„${o.name || 'przeszkody'}”` }, { v: o.x + o.width, label: `„${o.name || 'przeszkody'}”` }]),
+      .flatMap((o) => [{ v: o.x, label: `„${o.name || t('przeszkody')}”` }, { v: o.x + o.width, label: `„${o.name || t('przeszkody')}”` }]),
     ...(project.boards ?? []).flatMap((b) => [{ v: b.x, label: `„${b.name}”` }, { v: b.x + b.width, label: `„${b.name}”` }]),
   ];
   let best = null;

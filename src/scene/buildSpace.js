@@ -3,6 +3,7 @@ import { MM, toScene } from './units.js';
 import { createDimension } from './dimensions.js';
 import { buildWallDecor, buildHoodDecor } from './wallDecor.js';
 import { formatLength, getSettings } from '../state/settings.js';
+import { t } from '../i18n.js';
 import { boxPolyhedron, clipPolyhedron, facesToPositions, facesToEdgePositions, prismPolyhedron, clipPolygon, orientedFace } from './polyhedron.js';
 import { isObstacleOutside, isWallObstacle, isWallLike, isHoodObstacle, slopePlanes, wallSegments } from '../model/space.js';
 import { spaceOutline, outlineEdges, edgeLength, edgeOutward } from '../model/outline.js';
@@ -109,7 +110,7 @@ export function buildSpace(space, view = { showWalls: true }, { selectedObstacle
   // Wymiary.
   const gap = Math.max(0.12, Math.max(w, h, d) * 0.06);
   const v = (x, y, z) => new THREE.Vector3(x, y, z);
-  group.add(createDimension(v(0, 0, 0), v(w, 0, 0), v(0, 0, gap), `przestrzeń ${formatLength(space.width)}`));
+  group.add(createDimension(v(0, 0, 0), v(w, 0, 0), v(0, 0, gap), t('przestrzeń {v}', { v: formatLength(space.width) })));
   // Przy występach ścian (np. kominku) — także szerokości poszczególnych wnęk i występów, bliżej przestrzeni.
   const segments = wallSegments(space, [0, space.height]); // (z okapem — jego szerokość i wnęki obok)
   if (segments.length > 1 || (segments.length === 1 && (segments[0][0] > 0 || segments[0][1] < space.width))) {
@@ -134,8 +135,8 @@ export function buildSpace(space, view = { showWalls: true }, { selectedObstacle
       group.add(createDimension(v(ax, ay, az), v(bx, by, bz), v(out[0], 0, out[1]).multiplyScalar(gap * 0.35), formatLength(Math.round(len))));
     }
   }
-  group.add(createDimension(v(0, 0, 0), v(0, h, 0), v(-gap, 0, 0), `przestrzeń ${formatLength(space.height)}`));
-  group.add(createDimension(v(w, 0, 0), v(w, 0, -d), v(gap, 0, 0), `przestrzeń ${formatLength(space.depth)}`));
+  group.add(createDimension(v(0, 0, 0), v(0, h, 0), v(-gap, 0, 0), t('przestrzeń {v}', { v: formatLength(space.height) })));
+  group.add(createDimension(v(w, 0, 0), v(w, 0, -d), v(gap, 0, 0), t('przestrzeń {v}', { v: formatLength(space.depth) })));
 
   return group;
 }

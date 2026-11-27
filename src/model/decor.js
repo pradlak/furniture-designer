@@ -6,34 +6,35 @@
 //  margin  — odległość frezu od krawędzi frontu,
 //  spacing — rozstaw rowków (poziomych / pionowych),
 //  gap     — odstęp między liniami ramki podwójnej / potrójnej, ścięcie albo promień narożnika.
+import { t } from '../i18n.js';
 
 export const DECOR_LIMITS = { min: 10, max: 500 };
 export const DECOR_GAP_LIMITS = { min: 5, max: 200 };
 export const DECOR_DEFAULTS = { margin: 60, spacing: 100, gap: 20 };
 
 const P = {
-  margin: { field: 'decorMargin', label: 'Odległość od krawędzi' },
-  spacing: { field: 'decorSpacing', label: 'Rozstaw rowków' },
-  gapFrames: { field: 'decorGap', label: 'Odstęp między liniami' },
-  gapChamfer: { field: 'decorGap', label: 'Ścięcie narożnika' },
-  gapRadius: { field: 'decorGap', label: 'Promień narożnika' },
+  margin: { field: 'decorMargin', label: t('Odległość od krawędzi') },
+  spacing: { field: 'decorSpacing', label: t('Rozstaw rowków') },
+  gapFrames: { field: 'decorGap', label: t('Odstęp między liniami') },
+  gapChamfer: { field: 'decorGap', label: t('Ścięcie narożnika') },
+  gapRadius: { field: 'decorGap', label: t('Promień narożnika') },
 };
 
 // key — zapisywany w projekcie; params — pola do ustawienia (kolejność w panelu).
 export const FRONT_DECORS = [
-  { key: 'none', label: 'Brak', params: [] },
-  { key: 'frame', label: 'Ramka', params: [P.margin] },
-  { key: 'doubleFrame', label: 'Ramka podwójna', params: [P.margin, P.gapFrames] },
-  { key: 'tripleFrame', label: 'Ramka potrójna', params: [P.margin, P.gapFrames] },
-  { key: 'chamferFrame', label: 'Ramka ze ściętymi narożnikami', params: [P.margin, P.gapChamfer] },
-  { key: 'roundFrame', label: 'Ramka z zaokrąglonymi narożnikami', params: [P.margin, P.gapRadius] },
-  { key: 'frameVertical', label: 'Ramka z pionowymi rowkami', params: [P.margin, P.spacing] },
-  { key: 'boards', label: 'Deski (pionowe rowki między poziomymi liniami)', params: [P.margin, P.spacing] },
-  { key: 'archVertical', label: 'Łuk u góry z pionowymi rowkami', params: [P.margin, P.spacing] },
-  { key: 'diamonds', label: 'Ramka z rombami na środku', params: [P.margin] },
-  { key: 'bands', label: 'Linie poziome u góry i u dołu', params: [P.margin] },
-  { key: 'verticalLines', label: 'Pionowe rowki', params: [P.spacing] },
-  { key: 'lines', label: 'Poziome rowki', params: [P.spacing] },
+  { key: 'none', label: t('Brak'), params: [] },
+  { key: 'frame', label: t('Ramka'), params: [P.margin] },
+  { key: 'doubleFrame', label: t('Ramka podwójna'), params: [P.margin, P.gapFrames] },
+  { key: 'tripleFrame', label: t('Ramka potrójna'), params: [P.margin, P.gapFrames] },
+  { key: 'chamferFrame', label: t('Ramka ze ściętymi narożnikami'), params: [P.margin, P.gapChamfer] },
+  { key: 'roundFrame', label: t('Ramka z zaokrąglonymi narożnikami'), params: [P.margin, P.gapRadius] },
+  { key: 'frameVertical', label: t('Ramka z pionowymi rowkami'), params: [P.margin, P.spacing] },
+  { key: 'boards', label: t('Deski (pionowe rowki między poziomymi liniami)'), params: [P.margin, P.spacing] },
+  { key: 'archVertical', label: t('Łuk u góry z pionowymi rowkami'), params: [P.margin, P.spacing] },
+  { key: 'diamonds', label: t('Ramka z rombami na środku'), params: [P.margin] },
+  { key: 'bands', label: t('Linie poziome u góry i u dołu'), params: [P.margin] },
+  { key: 'verticalLines', label: t('Pionowe rowki'), params: [P.spacing] },
+  { key: 'lines', label: t('Poziome rowki'), params: [P.spacing] },
 ];
 
 export const decorInfo = (key) => FRONT_DECORS.find((d) => d.key === key) ?? FRONT_DECORS[0];
@@ -165,7 +166,7 @@ export function describeDecor(m) {
   const info = decorInfo(m.decor);
   const values = { decorMargin: m.decorMargin, decorSpacing: m.decorSpacing, decorGap: m.decorGap };
   const parts = info.params.map((p) => `${p.label.toLowerCase()} ${values[p.field]} mm`);
-  return `frez dekoracyjny: ${info.label.toLowerCase()}${parts.length ? `, ${parts.join(', ')}` : ''}`;
+  return t('frez dekoracyjny: {name}', { name: info.label.toLowerCase() }) + (parts.length ? `, ${parts.join(', ')}` : '');
 }
 
 // Mały podgląd wzoru (SVG) — front proporcji w × h przeskalowany do wysokości `size` px.

@@ -1,4 +1,5 @@
 import { outlineEdges, edgeLength } from './outline.js';
+import { t } from '../i18n.js';
 
 // Wykończenie pojedynczych ścian (tylko wygląd w 3D i orientacyjna liczba płytek):
 // space.wallFinish = { [znacznik ściany]: { color: '#rrggbb' | null, tiles: null | {...} } }
@@ -10,8 +11,8 @@ import { outlineEdges, edgeLength } from './outline.js';
 
 export const TILE_LIMITS = { sizeMin: 20, sizeMax: 3000, groutMax: 20 };
 export const TILE_LAYOUTS = [
-  { key: 'grid', label: 'Prosto (siatka)' },
-  { key: 'brick', label: 'Cegiełka (co pół płytki)' },
+  { key: 'grid', label: t('Prosto (siatka)') },
+  { key: 'brick', label: t('Cegiełka (co pół płytki)') },
 ];
 // pas nad blatem kuchennym (typowo 90–150 cm), płytka 30 × 10 cm, biała, cegiełka
 export const TILE_DEFAULTS = { from: 900, to: 1500, width: 300, height: 100, grout: 3, layout: 'brick', color: '#ffffff', groutColor: '#dedede' };
@@ -64,20 +65,20 @@ export function setWallFinish(space, tag, patch) {
 }
 
 // Ściany do wykończenia (zamknięte, widoczne): [{ tag, label, length }] — długość łączna odcinków ze znacznikiem.
-const NAMES = { left: 'Ściana lewa', back: 'Ściana tylna', right: 'Ściana prawa' };
+const NAMES = { left: t('Ściana lewa'), back: t('Ściana tylna'), right: t('Ściana prawa') };
 export function wallList(space) {
   const map = new Map();
   let n = 0;
   for (const e of outlineEdges(space)) {
     if (e.open) continue;
     if (NAMES[e.tag] && space.walls?.[e.tag] === false) continue;
-    const w = map.get(e.tag) ?? { tag: e.tag, label: NAMES[e.tag] ?? `Ściana skośna ${++n}`, length: 0 };
+    const w = map.get(e.tag) ?? { tag: e.tag, label: NAMES[e.tag] ?? t('Ściana skośna {n}', { n: ++n }), length: 0 };
     w.length += edgeLength(e);
     map.set(e.tag, w);
   }
   return [...map.values()];
 }
-export const wallLabel = (space, tag) => wallList(space).find((w) => w.tag === tag)?.label ?? 'Ściana';
+export const wallLabel = (space, tag) => wallList(space).find((w) => w.tag === tag)?.label ?? t('Ściana');
 
 // Orientacyjna ilość płytek na ścianie: powierzchnia pasa (m²) i liczba płytek z 10% zapasu na docinki.
 export function tilesEstimate(space, tag) {

@@ -5,19 +5,21 @@
 //  highlight — kolor zaznaczonych elementów w 3D (korpus, front, blenda, nóżki),
 //  units     — jednostki w wymiarach na widoku 3D (mm / cm / m).
 
+import { t } from '../i18n.js';
+
 const STORAGE_KEY = 'furnitureDesigner.settings';
 
 export const HIGHLIGHT_PRESETS = [
-  { hex: '#22c55e', name: 'zielony' },
-  { hex: '#3b82f6', name: 'niebieski' },
-  { hex: '#a855f7', name: 'fioletowy' },
-  { hex: '#eab308', name: 'żółty' },
-  { hex: '#f97316', name: 'pomarańczowy' },
+  { hex: '#22c55e', name: t('zielony') },
+  { hex: '#3b82f6', name: t('niebieski') },
+  { hex: '#a855f7', name: t('fioletowy') },
+  { hex: '#eab308', name: t('żółty') },
+  { hex: '#f97316', name: t('pomarańczowy') },
 ];
 export const UNITS = [
-  { key: 'mm', label: 'milimetry (mm)' },
-  { key: 'cm', label: 'centymetry (cm)' },
-  { key: 'm', label: 'metry (m)' },
+  { key: 'mm', label: t('milimetry (mm)') },
+  { key: 'cm', label: t('centymetry (cm)') },
+  { key: 'm', label: t('metry (m)') },
 ];
 export const DEFAULT_SETTINGS = { highlight: '#22c55e', units: 'mm' };
 

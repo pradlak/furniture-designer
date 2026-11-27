@@ -4,6 +4,7 @@ import { freeWidth, backLimit, frontLimit, outlineEdges, edgeOutward, straighten
 import { FRONT_DECORS, DECOR_LIMITS, DECOR_GAP_LIMITS, describeDecor } from './decor.js';
 import { cabinetMaterials, trimMaterial, normalizeColor, withColor } from './materials.js';
 import { boxSolid, clipSolid, isClippedBy, solidBounds, extentAlong, solidsOverlap, vertices, outline2d } from './solid.js';
+import { t } from '../i18n.js';
 
 // Mebel (na razie: prosty korpus) — wymiary w mm, w układzie współrzędnych przestrzeni.
 // Pozycja (x, y, z) to narożnik lewy‑dolny‑tylny całego mebla (z = odległość pleców od tylnej ściany).
@@ -24,17 +25,17 @@ export const HDF_BACK_INSET = 5;
 // na zawieszkach regulowanych (w górnych narożnikach, od środka) na szynie montażowej przykręconej do ściany;
 // plecy cofnięte o backSetback mm od tylnej krawędzi boków (miejsce na szynę — zawieszka chowa się za plecami).
 export const MOUNT_TYPES = [
-  { key: 'floor', label: 'Stojący (na podłodze / nóżkach)' },
-  { key: 'wall', label: 'Wiszący na ścianie' },
+  { key: 'floor', label: t('Stojący (na podłodze / nóżkach)') },
+  { key: 'wall', label: t('Wiszący na ścianie') },
 ];
 export const DEFAULT_BACK_SETBACK = 18; // mm — typowo 16–20 mm (szyna montażowa ok. 13–15 mm + luz)
 export const DEFAULT_HANG_HEIGHT = 1400; // mm — spód szafki wiszącej nad podłogą (kuchnia: blat 900 + ok. 500)
 export const isWallMounted = (cabinet) => cabinet?.mount === 'wall';
 
 export const BACK_TYPES = [
-  { key: 'hdf', label: 'HDF (nakładane)' },
-  { key: 'board', label: 'Z płyty (wpuszczane)' },
-  { key: 'none', label: 'Brak' },
+  { key: 'hdf', label: t('HDF (nakładane)') },
+  { key: 'board', label: t('Z płyty (wpuszczane)') },
+  { key: 'none', label: t('Brak') },
 ];
 
 // Sposób łączenia wieńca z bokami.
@@ -42,19 +43,19 @@ export const BACK_TYPES = [
 //  overlay — wieniec na całą szerokość korpusu; boki stoją na wieńcu dolnym / wieniec górny leży na bokach.
 export const JOINT_TYPES = {
   bottom: [
-    { key: 'inset', label: 'Między bokami' },
-    { key: 'overlay', label: 'Pod bokami (boki stoją na wieńcu)' },
+    { key: 'inset', label: t('Między bokami') },
+    { key: 'overlay', label: t('Pod bokami (boki stoją na wieńcu)') },
   ],
   top: [
-    { key: 'inset', label: 'Między bokami' },
-    { key: 'overlay', label: 'Na bokach (leży na bokach)' },
+    { key: 'inset', label: t('Między bokami') },
+    { key: 'overlay', label: t('Na bokach (leży na bokach)') },
   ],
 };
 
 // Góra korpusu: pełny wieniec albo dwa trawersy (poprzeczki pod blat) o zadanej szerokości.
 export const TOP_TYPES = [
-  { key: 'full', label: 'Pełny wieniec' },
-  { key: 'rails', label: 'Dwa trawersy (pod blat)' },
+  { key: 'full', label: t('Pełny wieniec') },
+  { key: 'rails', label: t('Dwa trawersy (pod blat)') },
 ];
 export const DEFAULT_RAIL_WIDTH = 120;
 
@@ -63,10 +64,10 @@ export const DEFAULT_RAIL_WIDTH = 120;
 // „Równo rozłożone” (even) — domyślne: wszystkie takie poprzeczki dzielą wnętrze na równe części
 // i rozstawiają się na nowo po dodaniu / usunięciu poprzeczki albo zmianie wysokości korpusu.
 export const STIFFENER_POSITIONS = [
-  { key: 'even', label: 'Tył – równo rozłożone' },
-  { key: 'backTop', label: 'Tył – pod górą' },
-  { key: 'backBottom', label: 'Tył – nad dołem' },
-  { key: 'backAt', label: 'Tył – na wysokości…' },
+  { key: 'even', label: t('Tył – równo rozłożone') },
+  { key: 'backTop', label: t('Tył – pod górą') },
+  { key: 'backBottom', label: t('Tył – nad dołem') },
+  { key: 'backAt', label: t('Tył – na wysokości…') },
 ];
 export const DEFAULT_STIFFENER_HEIGHT = 100;
 
@@ -108,10 +109,10 @@ function sameColumn(o, cabinet) {
   );
 }
 export const FRONT_TYPES = [
-  { key: 'none', label: 'Brak' },
-  { key: 'door', label: 'Drzwi pojedyncze' },
-  { key: 'doubleDoor', label: 'Drzwi podwójne' },
-  { key: 'drawers', label: 'Szuflady' },
+  { key: 'none', label: t('Brak') },
+  { key: 'door', label: t('Drzwi pojedyncze') },
+  { key: 'doubleDoor', label: t('Drzwi podwójne') },
+  { key: 'drawers', label: t('Szuflady') },
 ];
 export const FRONT_LIMITS = { drawersMax: 10, gapMax: 20 };
 export const DEFAULT_FRONT_GAP = 5; // szczelina boczna (lewa + prawa)
@@ -120,10 +121,10 @@ export const DEFAULT_FRONT_GAP_V = 3; // szczelina pionowa (góra + dół)
 // Frez uchwytowy (uchwyt wyfrezowany w krawędzi frontu — zamiast uchwytu przykręcanego):
 // krawędź górna, dolna albo krawędź otwierania drzwi (przeciwna do zawiasów; w szufladach — górna).
 export const HANDLE_GROOVES = [
-  { key: 'none', label: 'Brak (uchwyt przykręcany)' },
-  { key: 'top', label: 'Górna krawędź' },
-  { key: 'bottom', label: 'Dolna krawędź' },
-  { key: 'opening', label: 'Krawędź otwierania' },
+  { key: 'none', label: t('Brak (uchwyt przykręcany)') },
+  { key: 'top', label: t('Górna krawędź') },
+  { key: 'bottom', label: t('Dolna krawędź') },
+  { key: 'opening', label: t('Krawędź otwierania') },
 ];
 export const HANDLE_GROOVE_SIZE = 20; // mm — szerokość frezu od krawędzi (do widoku)
 
@@ -138,14 +139,14 @@ export { FRONT_DECORS, DECOR_LIMITS, DECOR_GAP_LIMITS } from './decor.js';
 //            od środka wysokości (w górę +).
 // edgeOffset — dawny jeden wymiar (domyślna odległość od krawędzi), zostaje jako wartość domyślna.
 export const HANDLE_TYPES = [
-  { key: 'none', label: 'Brak' },
-  { key: 'bar', label: 'Uchwyt listwowy (2 otwory)' },
-  { key: 'knob', label: 'Gałka (1 otwór)' },
+  { key: 'none', label: t('Brak') },
+  { key: 'bar', label: t('Uchwyt listwowy (2 otwory)') },
+  { key: 'knob', label: t('Gałka (1 otwór)') },
 ];
 export const HANDLE_POSITIONS = [
-  { key: 'top', label: 'Góra' },
-  { key: 'center', label: 'Środek' },
-  { key: 'bottom', label: 'Dół' },
+  { key: 'top', label: t('Góra') },
+  { key: 'center', label: t('Środek') },
+  { key: 'bottom', label: t('Dół') },
 ];
 // Standardowe rozstawy otworów uchwytów meblowych (mm).
 export const HANDLE_SPACINGS = [32, 64, 96, 128, 160, 192, 224, 256, 288, 320, 352, 416, 448, 480, 512, 640, 800];
@@ -199,13 +200,13 @@ export const defaultFronts = () => ({
 //  - fronts.type — nad szufladami: 'none' (otwarte), 'door', 'doubleDoor'. (Dawny rodzaj 'drawers' — same
 //    szuflady na całą wysokość — to 'none' + szuflady bez wysokości; patrz frontLayout.)
 export const BOTTOM_DRAWER_KINDS = [
-  { key: 'external', label: 'zewnętrzne (front w linii)' },
-  { key: 'internal', label: 'wewnętrzne (za drzwiami)' },
+  { key: 'external', label: t('zewnętrzne (front w linii)') },
+  { key: 'internal', label: t('wewnętrzne (za drzwiami)') },
 ];
 export const UPPER_FRONTS = [
-  { key: 'none', label: 'Brak (otwarte)' },
-  { key: 'door', label: 'Drzwi pojedyncze' },
-  { key: 'doubleDoor', label: 'Drzwi podwójne' },
+  { key: 'none', label: t('Brak (otwarte)') },
+  { key: 'door', label: t('Drzwi pojedyncze') },
+  { key: 'doubleDoor', label: t('Drzwi podwójne') },
 ];
 export const DRAWER_FRONT_DEFAULT = 180;
 export const FIRST_DRAWER_HEIGHT = 250; // nowa sekcja szuflad — wysokość frontu pierwszej szuflady
@@ -300,8 +301,8 @@ export function describeHandle(panel) {
   if (!hd) return '';
   const r = (v) => Math.round(v * 10) / 10;
   const pts = hd.holes.map((p) => `(${r(p.x - panel.x)}; ${r(p.y - panel.y)})`).join(', ');
-  const what = hd.type === 'knob' ? 'otwór pod gałkę' : `otwory pod uchwyt (rozstaw ${hd.spacing} mm)`;
-  return `${what}: ${hd.holes.length} × Ø${hd.hole} mm — ${pts} mm od lewego dolnego narożnika`;
+  const what = hd.type === 'knob' ? t('otwór pod gałkę') : t('otwory pod uchwyt (rozstaw {s} mm)', { s: hd.spacing });
+  return t('{what}: {n} × Ø{d} mm — {pts} mm od lewego dolnego narożnika', { what, n: hd.holes.length, d: hd.hole, pts });
 }
 
 // Krawędź frontu (jak w obrzeżu: xMin / xMax / yMin / yMax), na której jest frez uchwytowy.
@@ -317,9 +318,9 @@ function grooveEdge(groove, frontKind) {
 export function describeMilling(panel) {
   const m = panel.milling;
   if (!m) return '';
-  const edge = { yMax: 'górna krawędź', yMin: 'dolna krawędź', xMin: 'lewa krawędź', xMax: 'prawa krawędź' }[m.groove];
+  const edge = { yMax: t('górna krawędź'), yMin: t('dolna krawędź'), xMin: t('lewa krawędź'), xMax: t('prawa krawędź') }[m.groove];
   return [
-    edge && `frez uchwytowy: ${edge}`,
+    edge && t('frez uchwytowy: {edge}', { edge }),
     describeDecor(m),
   ]
     .filter(Boolean)
@@ -338,10 +339,10 @@ export const frontKey = (i) => `front-${i}`;
 //    po DRAWER_FRONT_DEFAULT na szufladę), heights } — za drzwiami; zawiasy tych drzwi je omijają.
 // Starsze zapisy (fronts.type + bottomDrawers, dawny rodzaj „Szuflady”) — przeliczane w frontSections.
 export const SECTION_TYPES = [
-  { key: 'drawers', label: 'Szuflady' },
-  { key: 'door', label: 'Drzwi pojedyncze' },
-  { key: 'doubleDoor', label: 'Drzwi podwójne' },
-  { key: 'open', label: 'Otwarte (bez frontu)' },
+  { key: 'drawers', label: t('Szuflady') },
+  { key: 'door', label: t('Drzwi pojedyncze') },
+  { key: 'doubleDoor', label: t('Drzwi podwójne') },
+  { key: 'open', label: t('Otwarte (bez frontu)') },
 ];
 export const SECTION_LIMITS = { sections: 12, drawers: 10, minHeight: 1 };
 const fitList = (list, count) => Array.from({ length: count }, (_, i) => (list?.[i] == null || !Number.isFinite(Number(list[i])) ? null : Math.max(SECTION_LIMITS.minHeight, Number(list[i]))));
@@ -388,9 +389,9 @@ export function frontSections(fr) {
 //   zawiasy ją omijają), nieprzykryta — ma własny front; wolna przestrzeń nieprzykryta — korpus tam jest otwarty.
 // Starsze zapisy (sekcje, fronts.type + bottomDrawers, dawny rodzaj „Szuflady”) — przeliczane w frontParts.
 export const PART_TYPES = [
-  { key: 'drawer', label: 'Szuflada (z frontem)' },
-  { key: 'innerDrawer', label: 'Szuflada wewnętrzna' },
-  { key: 'space', label: 'Wolna przestrzeń' },
+  { key: 'drawer', label: t('Szuflada (z frontem)') },
+  { key: 'innerDrawer', label: t('Szuflada wewnętrzna') },
+  { key: 'space', label: t('Wolna przestrzeń') },
 ];
 export const PART_LIMITS = { parts: 16, doors: 6, minHeight: 1 };
 export const FRONT_PART_MIN = 40; // najmniejsza szuflada / część przy zmianie wysokości myszką
@@ -554,8 +555,8 @@ export function setFrontType(cabinet, type, project) {
 // Rodzaje zawiasów puszkowych (do wyboru w okienku „Zawias”). cup — średnica puszki (mm), angle — kąt otwarcia.
 // Później: marka / producent / model (door.hinges.brand, .model).
 export const HINGE_TYPES = [
-  { key: 'overlay', label: 'Zawias nakładany (110°)', cup: 35, angle: 110, accessory: 'Zawias puszkowy Ø35 nakładany 110°' },
-  { key: 'zero155', label: 'Zawias z zerowym uskokiem (155°)', cup: 35, angle: 155, accessory: 'Zawias puszkowy Ø35 z zerowym uskokiem 155°' },
+  { key: 'overlay', label: t('Zawias nakładany (110°)'), cup: 35, angle: 110, accessory: t('Zawias puszkowy Ø35 nakładany 110°') },
+  { key: 'zero155', label: t('Zawias z zerowym uskokiem (155°)'), cup: 35, angle: 155, accessory: t('Zawias puszkowy Ø35 z zerowym uskokiem 155°') },
 ];
 export const DEFAULT_HINGE_TYPE = 'overlay';
 export const hingeType = (key) => HINGE_TYPES.find((t) => t.key === key) ?? HINGE_TYPES[0];
@@ -640,8 +641,10 @@ export function describeHinges(panel) {
   const { depth } = HINGE_CUP;
   const ht = hingeType(panel.hingeType);
   const diameter = ht.cup;
-  const side = panel.opening?.hinge === 'right' ? 'prawej' : 'lewej';
-  return `otwory pod zawiasy (od tyłu, ${ht.label.toLowerCase()}): ${panel.hinges.length} × Ø${diameter} mm, gł. ${depth} mm, przy ${side} krawędzi (od przodu), odległość od krawędzi standardowa — wysokości od dołu: ${ys} mm`;
+  const v = { type: ht.label.toLowerCase(), n: panel.hinges.length, d: diameter, depth, ys };
+  return panel.opening?.hinge === 'right'
+    ? t('otwory pod zawiasy (od tyłu, {type}): {n} × Ø{d} mm, gł. {depth} mm, przy prawej krawędzi (od przodu), odległość od krawędzi standardowa — wysokości od dołu: {ys} mm', v)
+    : t('otwory pod zawiasy (od tyłu, {type}): {n} × Ø{d} mm, gł. {depth} mm, przy lewej krawędzi (od przodu), odległość od krawędzi standardowa — wysokości od dołu: {ys} mm', v);
 }
 
 // Półki: position 'even' — równo rozłożone (domyślnie), 'at' — na wysokości y (od dołu korpusu);
@@ -714,7 +717,18 @@ export function stiffenerY(cabinet, st, project) {
   return panel ? panel.y - cabinet.y - legHeight(cabinet) : (st.y ?? 0);
 }
 const stiffenerName = (s) =>
-  `Poprzeczka ${{ backTop: 'tylna górna', backBottom: 'tylna dolna', backAt: 'tylna', even: 'tylna' }[s.position]}`;
+  ({ backTop: t('Poprzeczka tylna górna'), backBottom: t('Poprzeczka tylna dolna'), backAt: t('Poprzeczka tylna'), even: t('Poprzeczka tylna') })[s.position] ?? t('Poprzeczka tylna');
+
+// Nazwy płyt i frontów liczone w cabinetPanels (tam „t” to grubość płyty — stąd funkcje na zewnątrz).
+const SHELF_NAME = () => t('Półka');
+const doorFrontName = (m, d, part) =>
+  d.type === 'door'
+    ? d.hingeSide === 'right' ? t('Front drzwi{m} (zawiasy prawe)', { m }) : t('Front drzwi{m} (zawiasy lewe)', { m })
+    : part === 'left' ? t('Front drzwi{m} lewy', { m }) : t('Front drzwi{m} prawy', { m });
+const drawerFrontName = (n) => t('Front szuflady {n}', { n });
+const innerDrawerFrontName = (n) => t('Czoło szuflady wewnętrznej {n}', { n });
+const wallName = (side) => (side === 'left' ? t('ściana lewa') : t('ściana prawa'));
+const obstacleName = () => t('przeszkoda');
 
 // Blendy boczne (osobno dla lewej i prawej strony).
 //  plinth — cokół boczny: płyta pod korpusem w płaszczyźnie boku, zasłania nóżki z boku,
@@ -723,29 +737,29 @@ const stiffenerName = (s) =>
 //           opcjonalnie (wallPanel) z panelem na pełną wysokość po zewnętrznej stronie blendy,
 //           przylegającym do ściany: korpus → blenda boczna → panel → ściana.
 export const SIDE_BLEND_TYPES = [
-  { key: 'none', label: 'Brak' },
-  { key: 'plinth', label: 'Cokół boczny (pod korpusem)' },
-  { key: 'full', label: 'Panel na pełną wysokość' },
-  { key: 'filler', label: 'Blenda boczna' },
+  { key: 'none', label: t('Brak') },
+  { key: 'plinth', label: t('Cokół boczny (pod korpusem)') },
+  { key: 'full', label: t('Panel na pełną wysokość') },
+  { key: 'filler', label: t('Blenda boczna') },
 ];
 
 // Elementy korpusu. `thicknessAxis` — oś, wzdłuż której mierzymy grubość płyty
 // (dla listwy przy ścianie grubość jest w osi Z — patrz cabinetPanels).
 export const PANEL_DEFS = [
-  { key: 'left', name: 'Bok lewy', thicknessAxis: 'x' },
-  { key: 'right', name: 'Bok prawy', thicknessAxis: 'x' },
-  { key: 'bottom', name: 'Wieniec dolny', thicknessAxis: 'y' },
-  { key: 'top', name: 'Wieniec górny', thicknessAxis: 'y' },
-  { key: 'topSlope', name: 'Wieniec górny skośny', thicknessAxis: 'y' },
-  { key: 'sideSlopeLeft', name: 'Bok lewy skośny', thicknessAxis: 'x' },
-  { key: 'sideSlopeRight', name: 'Bok prawy skośny', thicknessAxis: 'x' },
-  { key: 'railFront', name: 'Trawers przedni', thicknessAxis: 'y' },
-  { key: 'railBack', name: 'Trawers tylny', thicknessAxis: 'y' },
-  { key: 'back', name: 'Plecy', thicknessAxis: 'z' },
-  { key: 'blendLeft', name: 'Blenda lewa', thicknessAxis: 'x' },
-  { key: 'blendRight', name: 'Blenda prawa', thicknessAxis: 'x' },
-  { key: 'wallPanelLeft', name: 'Panel lewy (przy ścianie)', thicknessAxis: 'x' },
-  { key: 'wallPanelRight', name: 'Panel prawy (przy ścianie)', thicknessAxis: 'x' },
+  { key: 'left', name: t('Bok lewy'), thicknessAxis: 'x' },
+  { key: 'right', name: t('Bok prawy'), thicknessAxis: 'x' },
+  { key: 'bottom', name: t('Wieniec dolny'), thicknessAxis: 'y' },
+  { key: 'top', name: t('Wieniec górny'), thicknessAxis: 'y' },
+  { key: 'topSlope', name: t('Wieniec górny skośny'), thicknessAxis: 'y' },
+  { key: 'sideSlopeLeft', name: t('Bok lewy skośny'), thicknessAxis: 'x' },
+  { key: 'sideSlopeRight', name: t('Bok prawy skośny'), thicknessAxis: 'x' },
+  { key: 'railFront', name: t('Trawers przedni'), thicknessAxis: 'y' },
+  { key: 'railBack', name: t('Trawers tylny'), thicknessAxis: 'y' },
+  { key: 'back', name: t('Plecy'), thicknessAxis: 'z' },
+  { key: 'blendLeft', name: t('Blenda lewa'), thicknessAxis: 'x' },
+  { key: 'blendRight', name: t('Blenda prawa'), thicknessAxis: 'x' },
+  { key: 'wallPanelLeft', name: t('Panel lewy (przy ścianie)'), thicknessAxis: 'x' },
+  { key: 'wallPanelRight', name: t('Panel prawy (przy ścianie)'), thicknessAxis: 'x' },
 ];
 
 // Ręczne zmiany elementu: wymiary (sx, sy, sz) i przesunięcia (dx, dy, dz) w osiach X/Y/Z.
@@ -983,7 +997,7 @@ export function createCabinet(project, overrides = {}) {
 
   return {
     id: newId(),
-    name: `Korpus ${furniture.length + 1}`,
+    name: t('Korpus {n}', { n: furniture.length + 1 }),
     x,
     y: 0,
     z: 0,
@@ -991,6 +1005,7 @@ export function createCabinet(project, overrides = {}) {
     height: Math.max(CABINET_LIMITS.sizeMin, height),
     depth,
     materialId: project.materials?.find((m) => m.type === 'chipboard')?.id ?? null,
+    shelfMaterialId: null, // półki z tego samego materiału co korpus (inny — w sekcji „Półki”)
     blendMaterialId: project.materials?.find((m) => m.type === 'mdf')?.id ?? null,
     // fronty domyślnie z tego samego materiału co korpus (inny — do wybrania w sekcji „Fronty”)
     frontMaterialId: project.materials?.find((m) => m.type === 'chipboard')?.id ?? null,
@@ -1341,7 +1356,7 @@ export function cabinetPanels(cabinet, project) {
   // jedna — dwa równe prześwity, dwie — trzy itd. Pod skośną górą liczymy wnętrze z przodu,
   // a półki sięgające skosu są docinane pod jego kąt.
   const shelves = cabinet.shelves ?? [];
-  const shelfT = (s) => thickAt(shelfKey(s), 'y');
+  const shelfT = (s) => thickAt(shelfKey(s), 'y', mats.shelf.thickness); // grubość z materiału półek
   const evenShelves = shelves.filter((s) => s.position === 'even');
   const innerTop = slant ? Math.min(H - tT, planeTopAt(inner, D)) : H - tT;
   const clear = (innerTop - tB - evenShelves.reduce((sum, s) => sum + shelfT(s), 0)) / (evenShelves.length + 1);
@@ -1359,7 +1374,7 @@ export function cabinetPanels(cabinet, project) {
     const depth = Math.min(s.depth ?? D - zInner, D - zInner);
     const y = s.position === 'even' ? evenPos.get(s.id) : s.y;
     base[key] = [tL, y, zInner, W - tL - tR, shelfT(s), depth];
-    shelfDefs.push({ key, name: 'Półka', thicknessAxis: 'y', shelf: s });
+    shelfDefs.push({ key, name: SHELF_NAME(), thicknessAxis: 'y', shelf: s });
     occupied.push([y, y + shelfT(s)]);
   }
 
@@ -1543,8 +1558,7 @@ export function cabinetPanels(cabinet, project) {
     const doorName = (j, part) => {
       const d = fp.doors[j];
       const m = doorOrder.length > 1 ? ` ${doorOrder.indexOf(j) + 1}` : '';
-      if (d.type === 'door') return `Front drzwi${m} (zawiasy ${d.hingeSide === 'right' ? 'prawe' : 'lewe'})`;
-      return `Front drzwi${m} ${part === 'left' ? 'lewy' : 'prawy'}`;
+      return doorFrontName(m, d, part);
     };
     let drawerNo = 0;
     for (const slot of slots.fronts) {
@@ -1560,7 +1574,7 @@ export function cabinetPanels(cabinet, project) {
       } else {
         const [py0, py1] = ranges[slot.index];
         drawerNo += 1; // numeracja od góry: szuflada 1 — najwyżej
-        add(`Front szuflady ${drawerNo}`, x0, py0, x1 - x0, py1 - py0, 'drawer', { part: slot.index });
+        add(drawerFrontName(drawerNo), x0, py0, x1 - x0, py1 - py0, 'drawer', { part: slot.index });
       }
     }
     // czoła szuflad przykrytych drzwiami (między bokami, za drzwiami); najniższe stoją na wieńcu dolnym
@@ -1581,7 +1595,7 @@ export function cabinetPanels(cabinet, project) {
       const sp = fr.innerSpacers ? INNER_SPACER : 0; // dystanse pod prowadnice — czoło węższe
       base[key] = [tL + INTERNAL_DRAWER.sideGap + sp, yy, D - INTERNAL_DRAWER.setback - tb, W - tL - tR - 2 * (INTERNAL_DRAWER.sideGap + sp), h, tb];
       const gripMilling = grip === 'groove' ? { groove: 'yMax', decor: 'none' } : null; // frez uchwytowy w górnej krawędzi
-      internalDefs.push({ key, name: `Czoło szuflady wewnętrznej ${n + 1}`, thicknessAxis: 'z', milling: gripMilling, opening: { drawer: true }, handleSpec: null, part: slot.index, door: slot.door, gripGap: lower });
+      internalDefs.push({ key, name: innerDrawerFrontName(n + 1), thicknessAxis: 'z', milling: gripMilling, opening: { drawer: true }, handleSpec: null, part: slot.index, door: slot.door, gripGap: lower });
       if (slot.door != null) hingeBands.push({ door: slot.door, range: [cabinet.y + yy - HINGE_DRAWER_CLEAR, cabinet.y + yy + h + HINGE_DRAWER_CLEAR] });
     });
     frontDefs.push(...internalDefs);
@@ -1628,7 +1642,13 @@ export function cabinetPanels(cabinet, project) {
           : 'body';
     // front / blenda boczna z własnym kolorem (panelOverrides[klucz].color) — materiał w tym kolorze
     const material =
-      o.color && group === 'front' ? withColor(mats.frontBase, o.color) : o.color && group === 'blend' ? withColor(mats.blendBase, o.color) : mats[group];
+      o.color && group === 'front'
+        ? withColor(mats.frontBase, o.color)
+        : o.color && group === 'blend'
+          ? withColor(mats.blendBase, o.color)
+          : def.key.startsWith('shelf-')
+            ? mats.shelf // półki mogą być z innej płyty niż korpus (cabinet.shelfMaterialId)
+            : mats[group];
     const panel = {
       key: def.key,
       name: def.name,
@@ -1932,8 +1952,8 @@ export function panelCutSize(panel) {
 export function describeCuts({ cuts = [], bevels = [] }) {
   const r = (v) => Math.round(v * 10) / 10;
   return [
-    ...cuts.map((c) => `ścięty róg ${r(c.alongLength)} × ${r(c.alongWidth)} mm (dł. × szer.), kąt ${r(c.angle)}°`),
-    ...bevels.map((a) => `krawędź cięta pod kątem ${a}°`),
+    ...cuts.map((c) => t('ścięty róg {a} × {b} mm (dł. × szer.), kąt {angle}°', { a: r(c.alongLength), b: r(c.alongWidth), angle: r(c.angle) })),
+    ...bevels.map((a) => t('krawędź cięta pod kątem {a}°', { a })),
   ].join('; ');
 }
 
@@ -2006,10 +2026,10 @@ export function doorOpenLimit(panel, project) {
       const z = zp + t + u * sn + (v - t) * c;
       const eps = 0.5;
       if (z < space.depth - eps && z > eps) {
-        if (x < -eps) return 'ściana lewa';
-        if (x > space.width + eps) return 'ściana prawa';
+        if (x < -eps) return wallName('left');
+        if (x > space.width + eps) return wallName('right');
       }
-      for (const o of near) if (x > o.x + eps && x < o.x + o.width - eps && z > o.z + eps && z < o.z + o.depth - eps) return o.name || 'przeszkoda';
+      for (const o of near) if (x > o.x + eps && x < o.x + o.width - eps && z > o.z + eps && z < o.z + o.depth - eps) return o.name || obstacleName();
     }
     return null;
   };
@@ -2033,24 +2053,24 @@ export function cabinetProblems(cabinet, project) {
     (side) => cabinet.sideBlends?.[side]?.type === 'filler' && sideBlendWidth(cabinet, side, project) <= 0,
   );
   for (const side of noRoom) {
-    issues.push(`Brak miejsca na blendę boczną ${side === 'left' ? 'lewą' : 'prawą'} — korpus stoi przy ścianie lub sąsiednim elemencie.`);
+    issues.push(side === 'left' ? t('Brak miejsca na blendę boczną lewą — korpus stoi przy ścianie lub sąsiednim elemencie.') : t('Brak miejsca na blendę boczną prawą — korpus stoi przy ścianie lub sąsiednim elemencie.'));
   }
   const noRoomKeys = noRoom.map((s) => (s === 'left' ? 'blendLeft' : 'blendRight'));
   const invalid = panels.filter((p) => !p.valid && !noRoomKeys.includes(p.key)).map((p) => p.name);
-  if (invalid.length) issues.push(`Za mały korpus albo za grube płyty: ${invalid.join(', ')}.`);
+  if (invalid.length) issues.push(t('Za mały korpus albo za grube płyty: {names}.', { names: invalid.join(', ') }));
 
   const valid = panels.filter((p) => p.valid);
   const overlapping = [];
   for (let i = 0; i < valid.length; i++)
     for (let j = i + 1; j < valid.length; j++)
-      if (panelsOverlap(valid[i], valid[j])) overlapping.push(`${valid[i].name} i ${valid[j].name}`);
-  if (overlapping.length) issues.push(`Elementy nachodzą na siebie: ${overlapping.join('; ')}.`);
+      if (panelsOverlap(valid[i], valid[j])) overlapping.push(t('{a} i {b}', { a: valid[i].name, b: valid[j].name }));
+  if (overlapping.length) issues.push(t('Elementy nachodzą na siebie: {list}.', { list: overlapping.join('; ') }));
   const tooSmallDrawers = panels.filter((p) => p.opening?.drawer && p.height < 40).map((p) => p.name);
-  if (tooSmallDrawers.length) issues.push(`Szuflady nie mieszczą się w strefie szuflad (${tooSmallDrawers.join(', ')}) — zmniejsz wpisane wysokości innych części wnętrza.`);
+  if (tooSmallDrawers.length) issues.push(t('Szuflady nie mieszczą się w strefie szuflad ({names}) — zmniejsz wpisane wysokości innych części wnętrza.', { names: tooSmallDrawers.join(', ') }));
   const hingeClash = valid.filter((p) => p.hingeClash?.length);
   if (hingeClash.length) {
     issues.push(
-      `Zawiasy wypadają na szufladach wewnętrznych (${hingeClash.map((p) => `${p.name}: ${p.hingeClash.join(', ')} mm od dołu`).join('; ')}) — włącz „Dystanse pod prowadnice szuflad wewnętrznych” (sekcja Fronty) albo zmień wysokości szuflad.`,
+      t('Zawiasy wypadają na szufladach wewnętrznych ({list}) — włącz „Dystanse pod prowadnice szuflad wewnętrznych” (sekcja Fronty) albo zmień wysokości szuflad.', { list: hingeClash.map((p) => t('{name}: {ys} mm od dołu', { name: p.name, ys: p.hingeClash.join(', ') })).join('; ') }),
     );
   }
   // drzwi szersze niż ok. 600 mm — za ciężkie na zawiasy, mogą opadać
@@ -2059,7 +2079,7 @@ export function cabinetProblems(cabinet, project) {
   if (wide.length) {
     const single = wide.some((p) => st.doors[p.door]?.type === 'door');
     warnings.push(
-      `Drzwi szersze niż zalecane ok. ${DOOR_MAX_WIDTH} mm (${wide.map((p) => `${p.name}: ${Math.round(p.width)} mm`).join('; ')}) — ${single ? 'użyj drzwi podwójnych' : 'rozważ podział na dwa korpusy'}.`,
+      (single ? t('Drzwi szersze niż zalecane ok. {max} mm ({list}) — użyj drzwi podwójnych.', { max: DOOR_MAX_WIDTH, list: wide.map((p) => `${p.name}: ${Math.round(p.width)} mm`).join('; ') }) : t('Drzwi szersze niż zalecane ok. {max} mm ({list}) — rozważ podział na dwa korpusy.', { max: DOOR_MAX_WIDTH, list: wide.map((p) => `${p.name}: ${Math.round(p.width)} mm`).join('; ') })),
     );
   }
   // drzwi, które nie otworzą się na pełny kąt zawiasu (ściana, przeszkoda)
@@ -2069,20 +2089,22 @@ export function cabinetProblems(cabinet, project) {
     const ht = hingeType(p.hingeType);
     const hint =
       lim.angle > 110 && lim.max >= 110
-        ? 'wybierz zawias 110° (okienko „Zawias”), dodaj blendę boczną albo odsuń korpus od ściany'
-        : 'dodaj blendę boczną (odsunie drzwi od ściany), odsuń korpus albo zmień stronę zawiasów';
+        ? t('wybierz zawias 110° (okienko „Zawias”), dodaj blendę boczną albo odsuń korpus od ściany')
+        : t('dodaj blendę boczną (odsunie drzwi od ściany), odsuń korpus albo zmień stronę zawiasów');
     warnings.push(
-      `${p.name}: drzwi otworzą się tylko na ok. ${lim.max}° zamiast ${lim.angle}° (${ht.label.toLowerCase()}) — przeszkadza ${lim.blocked}${lim.max < 90 ? ', nie otworzą się nawet do 90°' : ''}. Rozwiązanie: ${hint}.`,
+      (lim.max < 90
+        ? t('{name}: drzwi otworzą się tylko na ok. {max}° zamiast {angle}° ({type}) — przeszkadza {blocked}, nie otworzą się nawet do 90°. Rozwiązanie: {hint}.', { name: p.name, max: lim.max, angle: lim.angle, type: ht.label.toLowerCase(), blocked: lim.blocked, hint })
+        : t('{name}: drzwi otworzą się tylko na ok. {max}° zamiast {angle}° ({type}) — przeszkadza {blocked}. Rozwiązanie: {hint}.', { name: p.name, max: lim.max, angle: lim.angle, type: ht.label.toLowerCase(), blocked: lim.blocked, hint })),
     );
   }
   if (panels.frontOverflow > 0.5) {
-    issues.push(`Szuflady i części wnętrza nie mieszczą się w korpusie (o ${Math.round(panels.frontOverflow)} mm za dużo) — zmniejsz wysokości albo liczbę szuflad (na rysunku są zmniejszone).`);
+    issues.push(t('Szuflady i części wnętrza nie mieszczą się w korpusie (o {mm} mm za dużo) — zmniejsz wysokości albo liczbę szuflad (na rysunku są zmniejszone).', { mm: Math.round(panels.frontOverflow) }));
   }
   const shortDoors = valid.filter((p) => p.opening?.hinge && p.height < 150 && frontParts(cabinet.fronts).parts.length > 1).map((p) => p.name);
-  if (shortDoors.length) issues.push(`Za mało miejsca na drzwi (${shortDoors.join(', ')}) — zmniejsz wysokość innych sekcji frontu albo liczbę szuflad.`);
+  if (shortDoors.length) issues.push(t('Za mało miejsca na drzwi ({names}) — zmniejsz wysokość innych sekcji frontu albo liczbę szuflad.', { names: shortDoors.join(', ') }));
   const noRoomHandles = valid.filter((p) => p.handle && !p.handle.fits).map((p) => p.name);
   if (noRoomHandles.length) {
-    issues.push(`Uchwyt nie mieści się na froncie (za duży rozstaw albo odległość od krawędzi): ${noRoomHandles.join(', ')}.`);
+    issues.push(t('Uchwyt nie mieści się na froncie (za duży rozstaw albo odległość od krawędzi): {names}.', { names: noRoomHandles.join(', ') }));
   }
 
   const bounds = cabinetBounds(cabinet, project);
@@ -2093,13 +2115,13 @@ export function cabinetProblems(cabinet, project) {
   const corners = [...valid.flatMap(panelVertices), ...legBoxes.flatMap(boxCorners)];
   const outside = describeOutside(corners, space);
   if (outside) issues.push(outside);
-  const hitObstacles = space.obstacles.filter((o) => boxesOverlap(bounds, o)).map((o) => o.name || 'przeszkoda');
-  if (hitObstacles.length) issues.push(`Koliduje z: ${hitObstacles.join(', ')}.`);
+  const hitObstacles = space.obstacles.filter((o) => boxesOverlap(bounds, o)).map((o) => o.name || t('przeszkoda'));
+  if (hitObstacles.length) issues.push(t('Koliduje z: {names}.', { names: hitObstacles.join(', ') }));
 
   const hitCabinets = furniture
     .filter((c) => c.id !== cabinet.id && boxesOverlap(bounds, cabinetBounds(c, project)))
-    .map((c) => c.name || 'mebel');
-  if (hitCabinets.length) issues.push(`Nachodzi na: ${hitCabinets.join(', ')}.`);
+    .map((c) => c.name || t('mebel'));
+  if (hitCabinets.length) issues.push(t('Nachodzi na: {names}.', { names: hitCabinets.join(', ') }));
 
   return { errors: issues, warnings };
 }
@@ -2191,7 +2213,7 @@ export function normalizeCabinet(raw = {}) {
 
   return {
     id: typeof raw.id === 'string' && raw.id ? raw.id : newId(),
-    name: typeof raw.name === 'string' ? raw.name : 'Korpus',
+    name: typeof raw.name === 'string' ? raw.name : t('Korpus'),
     hidden: raw.hidden === true,
     x: num(raw.x, 0, -sizeMax, sizeMax),
     y: num(raw.y, 0, -sizeMax, sizeMax),
@@ -2220,6 +2242,8 @@ export function normalizeCabinet(raw = {}) {
       gap: raw.wallFit?.gap == null ? null : num(raw.wallFit.gap, null, 0, 500),
     },
     materialId: typeof raw.materialId === 'string' ? raw.materialId : null,
+    // materiał półek (null — jak korpus); starsze projekty go nie miały
+    shelfMaterialId: typeof raw.shelfMaterialId === 'string' && raw.shelfMaterialId ? raw.shelfMaterialId : null,
     colors: { body: normalizeColor(raw.colors?.body), blend: normalizeColor(raw.colors?.blend), front: normalizeColor(raw.colors?.front) },
     blendMaterialId: typeof raw.blendMaterialId === 'string' ? raw.blendMaterialId : null,
     // starsze projekty nie miały frontów — materiał frontów jak blendy

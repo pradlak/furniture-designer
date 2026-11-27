@@ -9,6 +9,10 @@ import { GOOGLE_ICON } from './projectsDialog.js';
 import { listAccountMaterials, createAccountMaterial, updateAccountMaterial, deleteAccountMaterial } from '../state/account.js';
 import { normalizeMaterials } from '../model/materials.js';
 import { escapeHtml, readNumberInput, setIfNotFocused, commitEmptyAsZero, scrollIntoPanel } from './dom.js';
+import { t, isEnglish } from '../i18n.js';
+
+// liczba z przecinkiem dziesiętnym po polsku (0,8), z kropką po angielsku (0.8)
+const dec = (n) => (isEnglish() ? String(n) : String(n).replace('.', ','));
 
 // Zakładka „Materiały”: biblioteka płyt projektu. Zmiana grubości materiału od razu przebudowuje
 // wszystkie korpusy i blendy, które go używają.
@@ -56,26 +60,28 @@ export function createMaterialsPanel(root, store) {
   function usage(project, id) {
     const body = project.furniture.filter((c) => c.materialId === id).length;
     const blend = project.furniture.filter((c) => c.blendMaterialId === id).length;
+    const shelves = project.furniture.filter((c) => c.shelfMaterialId === id && c.shelves?.length).length;
     const trims = project.trims.filter((t) => t.materialId === id).length;
     const parts = [];
-    if (body) parts.push(`korpus: ${body}`);
-    if (blend) parts.push(`blendy korpusów: ${blend}`);
-    if (trims) parts.push(`blendy dolne/górne: ${trims}`);
+    if (body) parts.push(t('korpus: {n}', { n: body }));
+    if (shelves) parts.push(t('półki korpusów: {n}', { n: shelves }));
+    if (blend) parts.push(t('blendy korpusów: {n}', { n: blend }));
+    if (trims) parts.push(t('blendy dolne/górne: {n}', { n: trims }));
     return parts;
   }
 
   function render(project) {
     root.innerHTML = `
-      <h2>Materiały</h2>
-      <p class="hint">Płyty używane w projekcie. Materiał określa grubość i kolor elementów.
+      <div class="ui-h2" role="heading" aria-level="2">${t('Materiały')}</div>
+      <p class="hint">${t(`Płyty używane w projekcie. Materiał określa grubość i kolor elementów.
         <b>Obrzeże</b> to taśma (ABS/PCV) oklejająca krawędzie płyty — wymiar gotowego elementu
         zawiera obrzeże, a wymiar do cięcia jest o nie mniejszy. Domyślnie ma kolor płyty, ale można wybrać inny
-        (w widoku 3D oklejone krawędzie mają kolor obrzeża). Lakierowany MDF i HDF zwykle nie mają obrzeża.</p>
+        (w widoku 3D oklejone krawędzie mają kolor obrzeża). Lakierowany MDF i HDF zwykle nie mają obrzeża.`)}</p>
       ${project.materials.length > 1 ? COLLAPSE_ALL_BUTTONS : ''}
       <div class="items">
-        ${project.materials.map(renderMaterial).join('') || '<p class="empty">Brak materiałów.</p>'}
+        ${project.materials.map(renderMaterial).join('') || `<p class="empty">${t('Brak materiałów.')}</p>`}
       </div>
-      <div class="add-row"><button type="button" data-action="add-material">+ Materiał</button></div>
+      <div class="add-row"><button type="button" data-action="add-material">${t('+ Materiał')}</button></div>
       <section class="material-library"></section>
       <datalist id="material-thicknesses">${MATERIAL_THICKNESSES.map((t) => `<option value="${t}"></option>`).join('')}</datalist>
     `;
@@ -90,53 +96,53 @@ export function createMaterialsPanel(root, store) {
       <div class="item material" data-kind="material" data-id="${m.id}">
         <div class="item-head">
           ${COLLAPSE_BUTTON}
-          <input type="text" data-f="name" value="${escapeHtml(m.name)}" aria-label="Nazwa materiału" />
+          <input type="text" data-f="name" value="${escapeHtml(m.name)}" aria-label="${t('Nazwa materiału')}" />
           <button type="button" class="cloud-save" data-cloud-save hidden>☁</button>
-          <button type="button" class="danger" data-remove-material="${m.id}" title="Usuń">✕</button>
+          <button type="button" class="danger" data-remove-material="${m.id}" title="${t('Usuń')}">✕</button>
         </div>
-        <div class="card-sum" data-collapse-card title="Kliknij, aby rozwinąć"><span class="sum-swatch"></span><span class="sum-text"></span></div>
+        <div class="card-sum" data-collapse-card title="${t('Kliknij, aby rozwinąć')}"><span class="sum-swatch"></span><span class="sum-text"></span></div>
         <div class="grid-3">
           <label class="field small">
-            <span>Rodzaj</span>
+            <span>${t('Rodzaj')}</span>
             <select data-f="type">
               ${MATERIAL_TYPES.map((t) => `<option value="${t.key}">${t.label}</option>`).join('')}
             </select>
           </label>
           <label class="field small">
-            <span>Grubość <small>mm</small></span>
+            <span>${t('Grubość')} <small>mm</small></span>
             <input type="number" list="material-thicknesses" step="0.1" min="1" max="100" data-f="thickness" data-type="number" />
           </label>
           <label class="field small">
-            <span>Obrzeże <small>mm</small></span>
+            <span>${t('Obrzeże')} <small>mm</small></span>
             <select data-f="edgeBanding" data-type="number">
-              ${EDGE_BANDING_OPTIONS.map((b) => `<option value="${b}">${b ? String(b).replace('.', ',') : 'brak'}</option>`).join('')}
+              ${EDGE_BANDING_OPTIONS.map((b) => `<option value="${b}">${b ? dec(b) : t('brak')}</option>`).join('')}
             </select>
           </label>
-          <label class="field small" title="Wygląd w 3D: jednolity kolor albo dekor z fakturą (słoje drewna, beton, marmur) w kolorze materiału">
-            <span>Wzór</span>
+          <label class="field small" title="${t('Wygląd w 3D: jednolity kolor albo dekor z fakturą (słoje drewna, beton, marmur) w kolorze materiału')}">
+            <span>${t('Wzór')}</span>
             <select data-texture>
               ${TEXTURES.map((t) => `<option value="${t.key ?? ''}">${t.label}</option>`).join('')}
             </select>
           </label>
         </div>
-        <label class="field small color-field wide" title="Kolor domyślny — używany tam, gdzie przy korpusie, blendzie czy froncie wybrano „jak w materiale”">
-          <span>Kolor płyty</span>
+        <label class="field small color-field wide" title="${t('Kolor domyślny — używany tam, gdzie przy korpusie, blendzie czy froncie wybrano „jak w materiale”')}">
+          <span>${t('Kolor płyty')}</span>
           <span class="color-row">
-            <select data-mat-color aria-label="Kolor płyty z listy">
-              <option value="custom">własny (z próbnika obok)</option>
+            <select data-mat-color aria-label="${t('Kolor płyty z listy')}">
+              <option value="custom">${t('własny (z próbnika obok)')}</option>
               ${colorOptions()}
             </select>
-            <input type="color" data-f="color" title="Własny kolor płyty" />
+            <input type="color" data-f="color" title="${t('Własny kolor płyty')}" />
           </span>
         </label>
         <div class="edge-color-row">
-          <span>Kolor obrzeża:</span>
-          <label class="check small"><input type="checkbox" data-edge-same /> jak płyta</label>
-          <select data-edge-select aria-label="Kolor obrzeża z listy">
-            <option value="custom">własny</option>
+          <span>${t('Kolor obrzeża:')}</span>
+          <label class="check small"><input type="checkbox" data-edge-same /> ${t('jak płyta')}</label>
+          <select data-edge-select aria-label="${t('Kolor obrzeża z listy')}">
+            <option value="custom">${t('własny')}</option>
             ${colorOptions()}
           </select>
-          <input type="color" data-edge-color title="Kolor obrzeża" />
+          <input type="color" data-edge-color title="${t('Kolor obrzeża')}" />
         </div>
         <p class="material-usage hint"></p>
       </div>`;
@@ -155,8 +161,8 @@ export function createMaterialsPanel(root, store) {
       const named = presetOf(m.color, m.texture ?? null);
       const near = named ? null : nearestPreset(m.color, m.texture ?? null);
       colorSelect.querySelector('option[value="custom"]').textContent = named
-        ? 'własny (z próbnika obok)'
-        : `własny ${m.color}${near ? ` (≈ ${near.name})` : ''}`;
+        ? t('własny (z próbnika obok)')
+        : t('własny {color}', { color: m.color }) + (near ? ` (≈ ${near.name})` : '');
       setIfNotFocused(colorSelect, named?.hex ?? 'custom');
       // Kolor obrzeża: „jak płyta” albo własny; ukryty, gdy materiał nie ma obrzeża.
       const sameColor = m.edgeColor == null;
@@ -175,11 +181,11 @@ export function createMaterialsPanel(root, store) {
       cloudBtn.hidden = !account?.get().user;
       const saved = m.cloudId && library?.find((x) => x.id === m.cloudId);
       const state = !saved ? 'new' : sameMaterial(saved.data, m) ? 'saved' : 'changed';
-      cloudBtn.textContent = { new: '☁ Zapisz', saved: '☁ ✓', changed: '☁ ↑' }[state];
+      cloudBtn.textContent = { new: t('☁ Zapisz'), saved: '☁ ✓', changed: '☁ ↑' }[state];
       cloudBtn.title = {
-        new: 'Zapisz ten materiał na koncie — będzie do wybrania w innych projektach',
-        saved: 'Materiał jest zapisany na koncie',
-        changed: 'Materiał zmieniono od zapisu — kliknij, aby zaktualizować go na koncie',
+        new: t('Zapisz ten materiał na koncie — będzie do wybrania w innych projektach'),
+        saved: t('Materiał jest zapisany na koncie'),
+        changed: t('Materiał zmieniono od zapisu — kliknij, aby zaktualizować go na koncie'),
       }[state];
       cloudBtn.className = `cloud-save cloud-${state}`;
       const used = usage(project, m.id);
@@ -191,14 +197,14 @@ export function createMaterialsPanel(root, store) {
       const colorName = presetOf(m.color, m.texture ?? null)?.name ?? (nearColor ? `≈ ${nearColor.name}` : m.color);
       el.querySelector('.sum-text').textContent = [
         MATERIAL_TYPES.find((t) => t.key === m.type)?.label.replace(/ \(.*\)/, ''),
-        `${String(m.thickness).replace('.', ',')} mm`,
+        `${dec(m.thickness)} mm`,
         colorName,
-        m.edgeBanding ? `obrzeże ${String(m.edgeBanding).replace('.', ',')}` : null,
-        used.length ? used.join(', ') : 'nieużywany',
+        m.edgeBanding ? t('obrzeże {mm}', { mm: dec(m.edgeBanding) }) : null,
+        used.length ? used.join(', ') : t('nieużywany'),
       ]
         .filter(Boolean)
         .join(' · ');
-      el.querySelector('.material-usage').textContent = used.length ? `Używany — ${used.join(', ')}` : 'Nieużywany';
+      el.querySelector('.material-usage').textContent = used.length ? t('Używany — {list}', { list: used.join(', ') }) : t('Nieużywany');
     }
   }
 
@@ -265,8 +271,8 @@ export function createMaterialsPanel(root, store) {
       const project = store.get();
       const used = usage(project, removeMaterial);
       const msg = used.length
-        ? `Materiał jest używany (${used.join(', ')}). Elementy przejdą na pierwszy materiał tego samego rodzaju. Usunąć?`
-        : 'Usunąć materiał?';
+        ? t('Materiał jest używany ({list}). Elementy przejdą na pierwszy materiał tego samego rodzaju. Usunąć?', { list: used.join(', ') })
+        : t('Usunąć materiał?');
       if (confirm(msg)) store.set((p) => ({ ...p, materials: p.materials.filter((m) => m.id !== removeMaterial) }));
     }
   });
@@ -301,7 +307,7 @@ export function createMaterialsPanel(root, store) {
       }
       await loadLibrary();
     } catch (err) {
-      alert(`Nie udało się zapisać materiału na koncie: ${err.message}`);
+      alert(t('Nie udało się zapisać materiału na koncie: {error}', { error: t(err.message) }));
     }
   }
 
@@ -314,12 +320,12 @@ export function createMaterialsPanel(root, store) {
       store.set((p) => ({ ...p, materials: [...p.materials, material] }));
       scrollIntoPanel(root.querySelector('.items > .material:last-child'), { block: 'nearest', behavior: 'smooth' });
     } else if (action === 'delete') {
-      if (!confirm(`Usunąć „${item.data.name}” z konta? Materiały w projektach zostaną bez zmian.`)) return;
+      if (!confirm(t('Usunąć „{name}” z konta? Materiały w projektach zostaną bez zmian.', { name: item.data.name }))) return;
       try {
         await deleteAccountMaterial(cloudId);
         await loadLibrary();
       } catch (err) {
-        alert(err.message);
+        alert(t(err.message));
       }
     }
   }
@@ -333,10 +339,10 @@ export function createMaterialsPanel(root, store) {
       return;
     }
     if (!s.user) {
-      box.innerHTML = `<h3>Moje materiały na koncie</h3>
-        <p class="hint">Po zalogowaniu zapiszesz tu swoje płyty — z kolorem, grubością i obrzeżem — i wstawisz je
-          w kolejnych projektach, na każdym urządzeniu. Konto znajdziesz też pod ikonką w prawym górnym rogu.</p>
-        <a class="google-login library-login" href="${account.loginUrl}" rel="nofollow">${GOOGLE_ICON}<span>Zaloguj przez Google</span></a>`;
+      box.innerHTML = `<h3>${t('Moje materiały na koncie')}</h3>
+        <p class="hint">${t(`Po zalogowaniu zapiszesz tu swoje płyty — z kolorem, grubością i obrzeżem — i wstawisz je
+          w kolejnych projektach, na każdym urządzeniu. Konto znajdziesz też pod ikonką w prawym górnym rogu.`)}</p>
+        <a class="google-login library-login" href="${account.loginUrl}" rel="nofollow">${GOOGLE_ICON}<span>${t('Zaloguj przez Google')}</span></a>`;
       return;
     }
     const inProject = new Set(store.get().materials.map((m) => m.cloudId).filter(Boolean));
@@ -344,22 +350,22 @@ export function createMaterialsPanel(root, store) {
     const item = (x) => `
       <li>
         <span class="library-swatch${x.data.texture ? ` tex-${x.data.texture}` : ''}" style="--swatch:${x.data.color}"></span>
-        <span class="library-name"><b>${escapeHtml(x.data.name)}</b><small>${String(x.data.thickness).replace('.', ',')} mm · ${escapeHtml(typeLabel(x.data.type))}</small></span>
+        <span class="library-name"><b>${escapeHtml(x.data.name)}</b><small>${dec(x.data.thickness)} mm · ${escapeHtml(typeLabel(x.data.type))}</small></span>
         ${
           inProject.has(x.id)
-            ? '<span class="library-badge">w projekcie</span>'
-            : `<button type="button" data-lib="add" data-id="${x.id}" title="Dodaj ten materiał do bieżącego projektu">+ Do projektu</button>`
+            ? `<span class="library-badge">${t('w projekcie')}</span>`
+            : `<button type="button" data-lib="add" data-id="${x.id}" title="${t('Dodaj ten materiał do bieżącego projektu')}">${t('+ Do projektu')}</button>`
         }
-        <button type="button" class="danger" data-lib="delete" data-id="${x.id}" title="Usuń z konta">✕</button>
+        <button type="button" class="danger" data-lib="delete" data-id="${x.id}" title="${t('Usuń z konta')}">✕</button>
       </li>`;
     const list =
       library == null
-        ? `<p class="hint">${libraryError ? `⚠ ${escapeHtml(libraryError)}` : 'Wczytuję…'}</p>`
+        ? `<p class="hint">${libraryError ? `⚠ ${escapeHtml(t(libraryError))}` : t('Wczytuję…')}</p>`
         : library.length
           ? `<ul class="library-list">${library.map(item).join('')}</ul>`
-          : '<p class="hint">Nie masz jeszcze materiałów na koncie. Kliknij „☁ Zapisz” przy materiale powyżej.</p>';
-    box.innerHTML = `<h3>Moje materiały na koncie</h3>
-      <p class="hint">Twoje płyty zapisane na koncie — do wstawienia w każdym projekcie.</p>${list}`;
+          : `<p class="hint">${t('Nie masz jeszcze materiałów na koncie. Kliknij „☁ Zapisz” przy materiale powyżej.')}</p>`;
+    box.innerHTML = `<h3>${t('Moje materiały na koncie')}</h3>
+      <p class="hint">${t('Twoje płyty zapisane na koncie — do wstawienia w każdym projekcie.')}</p>${list}`;
   }
 
   render(store.get());

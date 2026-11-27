@@ -7,6 +7,7 @@ import { describeEdges, describeHoles } from '../model/boardFeatures.js';
 import { attachDragReorder, moveInList, DRAG_HANDLE } from './dragReorder.js';
 import { createCardCollapse, COLLAPSE_BUTTON } from './collapsible.js';
 import { groupPanelSections } from './panelSections.js';
+import { t } from '../i18n.js';
 
 // Samodzielne płyty (blaty, półki) w zakładce „Blaty i półki”, pod blatami na szafkach: dodawanie, wymiary, położenie,
 // materiał i kolor, frezy krawędzi i otwory.
@@ -26,41 +27,41 @@ export function createBoardsPanel(root, store, ui) {
         <div class="item-head">
           ${DRAG_HANDLE}
           ${COLLAPSE_BUTTON}
-          <input type="text" data-f="name" value="${escapeHtml(b.name)}" aria-label="Nazwa" />
-          <button type="button" class="eye" data-board-hide title="Ukryj w widoku 3D">👁</button>
-          <button type="button" class="danger" data-board-remove title="Usuń" aria-label="Usuń">🗑</button>
+          <input type="text" data-f="name" value="${escapeHtml(b.name)}" aria-label="${t('Nazwa')}" />
+          <button type="button" class="eye" data-board-hide title="${t('Ukryj w widoku 3D')}">👁</button>
+          <button type="button" class="danger" data-board-remove title="${t('Usuń')}" aria-label="${t('Usuń')}">🗑</button>
         </div>
-        <div class="card-sum" data-collapse-card title="Kliknij, aby rozwinąć"></div>
+        <div class="card-sum" data-collapse-card title="${t('Kliknij, aby rozwinąć')}"></div>
         <div class="grid-3">
-          <label class="field small"><span>Rodzaj</span>
+          <label class="field small"><span>${t('Rodzaj')}</span>
             <select data-f="kind">${BOARD_KINDS.map((k) => `<option value="${k.key}">${k.label}</option>`).join('')}</select>
           </label>
-          ${numberField('Szerokość', 'width', b.width, { min: L.sizeMin, max: L.sizeMax, small: true, unit: 'mm' })}
-          ${numberField('Głębokość', 'depth', b.depth, { min: L.sizeMin, max: L.sizeMax, small: true, unit: 'mm' })}
-          ${numberField('Grubość (puste — z materiału)', 'thickness', b.thickness ?? '', { min: 3, max: 100, small: true, unit: 'mm' })}
-          ${numberField('X od lewej', 'x', b.x, { min: -L.sizeMax, max: L.sizeMax * 4, small: true, unit: 'mm' })}
-          ${numberField('Y od podłogi (spód)', 'y', b.y, { min: -L.sizeMax, max: L.sizeMax * 4, small: true, unit: 'mm' })}
-          ${numberField('Z od tyłu', 'z', b.z, { min: -L.sizeMax, max: L.sizeMax * 4, small: true, unit: 'mm' })}
-          ${numberField('Zapas (luz) przy wnęce', 'clearance', b.clearance ?? 0, { min: 0, max: 50, small: true, unit: 'mm' })}
+          ${numberField(t('Szerokość'), 'width', b.width, { min: L.sizeMin, max: L.sizeMax, small: true, unit: 'mm' })}
+          ${numberField(t('Głębokość'), 'depth', b.depth, { min: L.sizeMin, max: L.sizeMax, small: true, unit: 'mm' })}
+          ${numberField(t('Grubość (puste — z materiału)'), 'thickness', b.thickness ?? '', { min: 3, max: 100, small: true, unit: 'mm' })}
+          ${numberField(t('X od lewej'), 'x', b.x, { min: -L.sizeMax, max: L.sizeMax * 4, small: true, unit: 'mm' })}
+          ${numberField(t('Y od podłogi (spód)'), 'y', b.y, { min: -L.sizeMax, max: L.sizeMax * 4, small: true, unit: 'mm' })}
+          ${numberField(t('Z od tyłu'), 'z', b.z, { min: -L.sizeMax, max: L.sizeMax * 4, small: true, unit: 'mm' })}
+          ${numberField(t('Zapas (luz) przy wnęce'), 'clearance', b.clearance ?? 0, { min: 0, max: 50, small: true, unit: 'mm' })}
         </div>
         <div class="grid-2">
-          ${materialSelect('Materiał', 'materialId', project)}
+          ${materialSelect(t('Materiał'), 'materialId', project)}
         </div>
         <div class="grid-2 board-mount">
-          <label class="field small" title="Jak płyta trzyma się tylnej ściany — widać w 3D, a wsporniki / bolce trafiają do akcesoriów w „Formatkach”">
-            <span>Mocowanie do ściany</span>
+          <label class="field small" title="${t('Jak płyta trzyma się tylnej ściany — widać w 3D, a wsporniki / bolce trafiają do akcesoriów w „Formatkach”')}">
+            <span>${t('Mocowanie do ściany')}</span>
             <select data-mount="type">${BOARD_MOUNTS.map((m) => `<option value="${m.key ?? ''}">${escapeHtml(m.label)}</option>`).join('')}</select>
           </label>
-          <label class="field small mount-machining" title="Ukryte mocowanie chowa się w płycie — trzeba wywiercić otwory albo wyfrezować wpust; opis z położeniami trafia do „Formatek”">
-            <span>Obróbka tylnej krawędzi</span>
+          <label class="field small mount-machining" title="${t('Ukryte mocowanie chowa się w płycie — trzeba wywiercić otwory albo wyfrezować wpust; opis z położeniami trafia do „Formatek”')}">
+            <span>${t('Obróbka tylnej krawędzi')}</span>
             <select data-mount="machining">${MOUNT_MACHINING.map((m) => `<option value="${m.key ?? ''}">${escapeHtml(m.label)}</option>`).join('')}</select>
           </label>
-          <label class="field small mount-count" title="Liczba wsporników / bolców — puste: automatycznie (co ok. 70 cm, ukryte co 40 cm; skrajne: wspornik 7 cm, płytka mocowania ukrytego 3 cm od boku płyty)">
-            <span>Ilość (puste — auto)</span>
+          <label class="field small mount-count" title="${t('Liczba wsporników / bolców — puste: automatycznie (co ok. 70 cm, ukryte co 40 cm; skrajne: wspornik 7 cm, płytka mocowania ukrytego 3 cm od boku płyty)')}">
+            <span>${t('Ilość (puste — auto)')}</span>
             <input type="number" step="1" min="1" max="20" data-mount="count" />
           </label>
         </div>
-        ${colorPicker('Kolor / dekor (dąb, orzech, beton, marmur…)', 'color', { wide: true })}
+        ${colorPicker(t('Kolor / dekor (dąb, orzech, beton, marmur…)'), 'color', { wide: true })}
         ${renderBoardFeatures()}
         <p class="hint board-info"></p>
         <ul class="issues board-issues"></ul>
@@ -70,13 +71,13 @@ export function createBoardsPanel(root, store, ui) {
   function render(project) {
     const boards = project.boards ?? [];
     root.innerHTML = `
-      <h3 class="boards-title">Samodzielne blaty i półki</h3>
-      <p class="hint">Płyty niezwiązane z szafkami — np. blat biurka, parapet, półka na ścianie. Z frezami krawędzi
-        i otworami (gniazdko, przepust na kable, zlew, płyta grzewcza).</p>
+      <h3 class="boards-title">${t('Samodzielne blaty i półki')}</h3>
+      <p class="hint">${t(`Płyty niezwiązane z szafkami — np. blat biurka, parapet, półka na ścianie. Z frezami krawędzi
+        i otworami (gniazdko, przepust na kable, zlew, płyta grzewcza).`)}</p>
       <div class="items">${boards.map((b) => card(b, project)).join('')}</div>
       <div class="add-row">
-        <button type="button" data-board-add="worktop" draggable="true" data-dnd="application/x-meble-board-worktop" title="Kliknij — blat w wolnym miejscu; albo przeciągnij do widoku 3D i upuść tam, gdzie ma być">+ Blat samodzielny</button>
-        <button type="button" data-board-add="shelf" draggable="true" data-dnd="application/x-meble-board-shelf" title="Kliknij — półka w wolnym miejscu; albo przeciągnij do widoku 3D i upuść tam, gdzie ma być">+ Półka</button>
+        <button type="button" data-board-add="worktop" draggable="true" data-dnd="application/x-meble-board-worktop" title="${t('Kliknij — blat w wolnym miejscu; albo przeciągnij do widoku 3D i upuść tam, gdzie ma być')}">${t('+ Blat samodzielny')}</button>
+        <button type="button" data-board-add="shelf" draggable="true" data-dnd="application/x-meble-board-shelf" title="${t('Kliknij — półka w wolnym miejscu; albo przeciągnij do widoku 3D i upuść tam, gdzie ma być')}">${t('+ Półka')}</button>
       </div>`;
     renderedKey = structureKey(project);
     cardCollapse.applyAll();
@@ -106,25 +107,25 @@ export function createBoardsPanel(root, store, ui) {
       setIfNotFocused(el.querySelector('[data-mount="type"]'), b.mount?.type ?? '');
       const cnt = el.querySelector('[data-mount="count"]');
       setIfNotFocused(cnt, b.mount?.count ?? '');
-      cnt.placeholder = mount.count && mount.type !== 'cleat' ? `${mount.count} (auto)` : '';
+      cnt.placeholder = mount.count && mount.type !== 'cleat' ? t('{count} (auto)', { count: mount.count }) : '';
       el.querySelector('.mount-count').hidden = !mount.type || mount.type === 'cleat';
       el.querySelector('.mount-machining').hidden = mount.type !== 'hidden';
       setIfNotFocused(el.querySelector('[data-mount="machining"]'), normalizeMount(b.mount).machining ?? '');
       const thIn = el.querySelector('[data-f="thickness"]');
       if (thIn) thIn.placeholder = String(boardMaterial({ ...b, thickness: null }, project).thickness);
       syncColorPicker(el, 'color', b.color, mat.color);
-      setEye(el.querySelector('[data-board-hide]'), b.hidden, b.kind === 'worktop' ? 'blat' : 'półkę');
+      setEye(el.querySelector('[data-board-hide]'), b.hidden, b.kind === 'worktop' ? t('blat') : t('półkę'));
       syncBoardFeatures(el, b, b.width, b.depth);
       el.querySelector('.board-info').textContent =
-        `Formatka: ${b.width} × ${b.depth} × ${mat.thickness} mm` + [describeEdges(b.edges), describeHoles(b.holes, b.width, b.depth), describeMountWork(b, mat.thickness)].filter(Boolean).map((t) => ` · ${t}`).join('');
+        t('Formatka: {w} × {d} × {t} mm', { w: b.width, d: b.depth, t: mat.thickness }) + [describeEdges(b.edges), describeHoles(b.holes, b.width, b.depth), describeMountWork(b, mat.thickness)].filter(Boolean).map((x) => ` · ${x}`).join('');
       const issues = boardIssues(b, project);
       // podsumowanie widoczne w zwiniętej karcie
       el.querySelector('.card-sum').textContent =
-        `${BOARD_KINDS.find((k) => k.key === b.kind)?.label ?? 'Płyta'} ${b.width} × ${b.depth} × ${mat.thickness} mm` +
-        (b.holes?.length ? ` · otwory: ${b.holes.length}` : '') +
+        `${BOARD_KINDS.find((k) => k.key === b.kind)?.label ?? t('Płyta')} ${b.width} × ${b.depth} × ${mat.thickness} mm` +
+        (b.holes?.length ? ' · ' + t('otwory: {n}', { n: b.holes.length }) : '') +
         (issues.length ? ' · ⚠ ' + issues[0] : '');
       el.classList.toggle('has-issues', issues.length > 0);
-      el.querySelector('.board-issues').innerHTML = issues.map((t) => `<li>${escapeHtml(t)}</li>`).join('');
+      el.querySelector('.board-issues').innerHTML = issues.map((x) => `<li>${escapeHtml(x)}</li>`).join('');
     }
   }
 

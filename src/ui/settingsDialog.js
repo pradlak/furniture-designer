@@ -1,29 +1,30 @@
 import { HIGHLIGHT_PRESETS, UNITS, DEFAULT_SETTINGS, getSettings, setSettings, onSettingsChange } from '../state/settings.js';
 import { escapeHtml } from './dom.js';
+import { t } from '../i18n.js';
 
 // Pola ustawień (kolor zaznaczenia w 3D, jednostki) — wspólne dla okienka „Ustawienia” (koło zębate, bez
 // logowania) i menu pod awatarem (po zalogowaniu). Zmiany działają od razu.
 export function settingsFieldsHtml({ compact = false } = {}) {
   return `
     <fieldset class="settings-group">
-      <legend>Kolor zaznaczenia w 3D</legend>
-      ${compact ? '' : '<p class="welcome-note">Kolor, na który podświetlają się zaznaczone korpusy, fronty, blendy, nóżki i otwory.</p>'}
+      <legend>${t('Kolor zaznaczenia w 3D')}</legend>
+      ${compact ? '' : `<p class="welcome-note">${t('Kolor, na który podświetlają się zaznaczone korpusy, fronty, blendy, nóżki i otwory.')}</p>`}
       <div class="swatches">
         ${HIGHLIGHT_PRESETS.map(
           (c) => `<button type="button" class="swatch" data-highlight="${c.hex}" title="${escapeHtml(c.name)}" aria-label="${escapeHtml(c.name)}" style="--swatch:${c.hex}"></button>`,
         ).join('')}
-        <label class="swatch-custom" title="Własny kolor">własny <input type="color" data-highlight-custom /></label>
+        <label class="swatch-custom" title="${t('Własny kolor')}">${t('własny')} <input type="color" data-highlight-custom /></label>
       </div>
     </fieldset>
     <fieldset class="settings-group">
-      <legend>Jednostki</legend>
+      <legend>${t('Jednostki')}</legend>
       <label class="field small">
-        <span>Wymiary na widoku 3D</span>
+        <span>${t('Wymiary na widoku 3D')}</span>
         <select data-units>
           ${UNITS.map((u) => `<option value="${u.key}">${escapeHtml(u.label)}</option>`).join('')}
         </select>
       </label>
-      ${compact ? '' : '<p class="welcome-note">Pola w panelach i lista formatek są zawsze w milimetrach.</p>'}
+      ${compact ? '' : `<p class="welcome-note">${t('Pola w panelach i lista formatek są zawsze w milimetrach.')}</p>`}
     </fieldset>`;
 }
 
@@ -58,12 +59,12 @@ export function createSettingsDialog() {
   overlay.hidden = true;
   overlay.innerHTML = `
     <div class="welcome settings-dialog" role="dialog" aria-modal="true" aria-labelledby="settings-title">
-      <h2 id="settings-title">Ustawienia</h2>
-      <p class="welcome-note">Dotyczą tej przeglądarki — nie zmieniają projektu. Po zalogowaniu zapamiętują się na koncie.</p>
+      <div class="ui-h2" role="heading" aria-level="2" id="settings-title">${t('Ustawienia')}</div>
+      <p class="welcome-note">${t('Dotyczą tej przeglądarki — nie zmieniają projektu. Po zalogowaniu zapamiętują się na koncie.')}</p>
       ${settingsFieldsHtml()}
       <div class="welcome-actions">
-        <button type="button" data-settings="reset">Przywróć domyślne</button>
-        <button type="button" class="primary" data-settings="close">Gotowe</button>
+        <button type="button" data-settings="reset">${t('Przywróć domyślne')}</button>
+        <button type="button" class="primary" data-settings="close">${t('Gotowe')}</button>
       </div>
     </div>`;
   document.body.appendChild(overlay);

@@ -12,6 +12,7 @@ import { trimMaterial } from './materials.js';
 import { TRIM_THICKNESS_AXIS } from './edges.js';
 import { describeDecor } from './decor.js';
 import { buildXlsx } from './xlsx.js';
+import { t } from '../i18n.js';
 
 const r1 = (v) => Math.round(v * 10) / 10;
 
@@ -23,7 +24,7 @@ function faceSize(box, axis) {
 }
 
 // Frez uchwytowy — opis krawędzi.
-const GROOVE = { yMax: 'górna krawędź', yMin: 'dolna krawędź', xMin: 'lewa krawędź', xMax: 'prawa krawędź' };
+const GROOVE = { yMax: t('górna krawędź'), yMin: t('dolna krawędź'), xMin: t('lewa krawędź'), xMax: t('prawa krawędź') };
 
 export function mdfOrderItems(project) {
   const rows = [];
@@ -50,16 +51,16 @@ export function mdfOrderItems(project) {
       });
     }
   }
-  for (const t of project.trims ?? []) {
-    if (t.type === 'countertop') continue;
-    const material = trimMaterial(t, project);
+  for (const tr of project.trims ?? []) {
+    if (tr.type === 'countertop') continue;
+    const material = trimMaterial(tr, project);
     if (material.type !== 'mdf') continue;
-    for (const seg of trimSegments(t, project)) {
-      const [w, h] = faceSize(seg, TRIM_THICKNESS_AXIS[t.type]);
+    for (const seg of trimSegments(tr, project)) {
+      const [w, h] = faceSize(seg, TRIM_THICKNESS_AXIS[tr.type]);
       rows.push({
         kind: 'blend',
-        name: t.name || TRIM_TYPES[t.type].label,
-        owner: 'wspólne',
+        name: tr.name || TRIM_TYPES[tr.type].label,
+        owner: t('wspólne'),
         width: r1(w),
         height: r1(h),
         thickness: r1(material.thickness),
@@ -93,44 +94,48 @@ export function mdfOrderItems(project) {
 }
 
 // Opisy do Excela i rysunków.
-export const describeItemDecor = (it) => (it.decor ? describeDecor(it.decor).replace(/^frez dekoracyjny: /, '') : '');
-export const describeItemGroove = (it) => (it.groove ? `frez uchwytowy: ${GROOVE[it.groove] ?? it.groove}` : '');
+// (bez przedrostka „frez dekoracyjny: ” — w kolumnie o tej nazwie)
+const stripPrefix = (s, prefix) => (s.startsWith(prefix) ? s.slice(prefix.length) : s);
+export const describeItemDecor = (it) => (it.decor ? stripPrefix(describeDecor(it.decor), t('frez dekoracyjny: {name}', { name: '' })) : '');
+export const describeItemGroove = (it) => (it.groove ? t('frez uchwytowy: {edge}', { edge: GROOVE[it.groove] ?? it.groove }) : '');
 export function describeItemHandle(it) {
   if (!it.handle) return '';
-  const what = it.handle.type === 'knob' ? 'gałka' : `uchwyt, rozstaw ${it.handle.spacing} mm`;
-  return `${what}: ${it.handle.holes.length} × Ø${it.handle.d} przelotowe — ${it.handle.holes.map((p) => `(${p.x}; ${p.y})`).join(', ')}`;
+  const what = it.handle.type === 'knob' ? t('gałka') : t('uchwyt, rozstaw {s} mm', { s: it.handle.spacing });
+  return t('{what}: {n} × Ø{d} przelotowe — {list}', { what, n: it.handle.holes.length, d: it.handle.d, list: it.handle.holes.map((p) => `(${p.x}; ${p.y})`).join(', ') });
 }
 // Zawiasy: tylko wysokości (od dolnej krawędzi) i strona — odległość puszki od krawędzi frontu jest
 // standardowa dla zawiasu (wierci ją producent frontów), więc jej nie podajemy.
 export function describeItemHinges(it) {
   if (!it.hinges.length) return '';
   const { diameter, depth } = HINGE_CUP;
-  const side = it.hingeSide === 'right' ? 'prawej' : 'lewej';
-  return `${it.hinges.length} × Ø${diameter} gł. ${depth} od tyłu, przy ${side} krawędzi (patrząc od przodu), odległość od krawędzi standardowa — wysokości od dołu: ${it.hinges.map((p) => p.y).join(', ')}`;
+  const opts = { n: it.hinges.length, d: diameter, depth, list: it.hinges.map((p) => p.y).join(', ') };
+  return it.hingeSide === 'right'
+    ? t('{n} × Ø{d} gł. {depth} od tyłu, przy prawej krawędzi (patrząc od przodu), odległość od krawędzi standardowa — wysokości od dołu: {list}', opts)
+    : t('{n} × Ø{d} gł. {depth} od tyłu, przy lewej krawędzi (patrząc od przodu), odległość od krawędzi standardowa — wysokości od dołu: {list}', opts);
 }
 
 export const MDF_ORDER_NOTES = [
-  'Wymiary w mm. Szerokość × wysokość — patrząc na lico (od przodu).',
-  'Współrzędne otworów (x; y) — środki otworów, w mm od lewego dolnego narożnika frontu, patrząc na front od przodu.',
-  `Zawiasy: puszka Ø${HINGE_CUP.diameter} mm, głębokość ${HINGE_CUP.depth} mm, wiercona od tyłu frontu; podane są wysokości środków od dolnej krawędzi, odległość od krawędzi bocznej — standardowa dla zawiasu.`,
-  'Otwory pod uchwyty — przelotowe, wiercone od przodu.',
-  'Do każdej pozycji jest rysunek — plik PNG z rodzajem, numerem i wymiarami w nazwie, np. front_F1_395x717.png, blenda_B1_40x2390.png.',
+  t('Wymiary w mm. Szerokość × wysokość — patrząc na lico (od przodu).'),
+  t('Współrzędne otworów (x; y) — środki otworów, w mm od lewego dolnego narożnika frontu, patrząc na front od przodu.'),
+  t('Zawiasy: puszka Ø{d} mm, głębokość {depth} mm, wiercona od tyłu frontu; podane są wysokości środków od dolnej krawędzi, odległość od krawędzi bocznej — standardowa dla zawiasu.', { d: HINGE_CUP.diameter, depth: HINGE_CUP.depth }),
+  t('Otwory pod uchwyty — przelotowe, wiercone od przodu.'),
+  t('Do każdej pozycji jest rysunek — plik PNG z rodzajem, numerem i wymiarami w nazwie, np. front_F1_395x717.png, blenda_B1_40x2390.png.'),
 ];
 
 export function mdfOrderXlsx(project) {
   const items = mdfOrderItems(project);
   const header = [
-    'Nr rysunku', 'Rodzaj', 'Szerokość [mm]', 'Wysokość [mm]', 'Grubość [mm]', 'Ilość [szt.]', 'Kolor',
-    'Frez dekoracyjny', 'Frez uchwytowy', 'Otwory pod uchwyt', 'Otwory pod zawiasy', 'Element', 'Mebel',
+    t('Nr rysunku'), t('Rodzaj'), t('Szerokość [mm]'), t('Wysokość [mm]'), t('Grubość [mm]'), t('Ilość [szt.]'), t('Kolor'),
+    t('Frez dekoracyjny'), t('Frez uchwytowy'), t('Otwory pod uchwyt'), t('Otwory pod zawiasy'), t('Element'), t('Mebel'),
   ];
   const rows = items.map((it) => [
-    it.no, it.kind === 'front' ? 'front' : 'blenda', it.width, it.height, it.thickness, it.qty, it.color ?? '',
-    describeItemDecor(it), describeItemGroove(it).replace(/^frez uchwytowy: /, ''), describeItemHandle(it), describeItemHinges(it),
+    it.no, it.kind === 'front' ? t('front') : t('blenda'), it.width, it.height, it.thickness, it.qty, it.color ?? '',
+    describeItemDecor(it), stripPrefix(describeItemGroove(it), t('frez uchwytowy: {edge}', { edge: '' })), describeItemHandle(it), describeItemHinges(it),
     it.names.join(', '), it.owners.join(', '),
   ]);
   return buildXlsx([
-    { name: 'Fronty i blendy MDF', header, rows, widths: [9, 9, 11, 11, 10, 9, 16, 34, 18, 48, 60, 34, 22] },
-    { name: 'Objaśnienia', header: ['Objaśnienia'], rows: MDF_ORDER_NOTES.map((n) => [n]), widths: [140] },
+    { name: t('Fronty i blendy MDF'), header, rows, widths: [9, 9, 11, 11, 10, 9, 16, 34, 18, 48, 60, 34, 22] },
+    { name: t('Objaśnienia'), header: [t('Objaśnienia')], rows: MDF_ORDER_NOTES.map((n) => [n]), widths: [140] },
   ]);
 }
 
@@ -153,10 +158,10 @@ export function mdfDrawingSvg(it) {
   const tableTop = oy + fh + 90;
   const lineH = 22;
   const notes = [
-    'Widok od przodu (od lica). Wymiary w mm; współrzędne środków otworów od lewego dolnego narożnika.',
-    it.hinges.length ? `Z — otwory pod zawiasy: Ø${HINGE_CUP.diameter} mm, gł. ${HINGE_CUP.depth} mm, wiercone OD TYŁU (linia przerywana);` : '',
-    it.hinges.length ? 'podana jest wysokość środka od dolnej krawędzi, odległość od krawędzi bocznej — standardowa dla zawiasu.' : '',
-    it.handle ? `U — otwory pod uchwyt: Ø${it.handle.d} mm, przelotowe.` : '',
+    t('Widok od przodu (od lica). Wymiary w mm; współrzędne środków otworów od lewego dolnego narożnika.'),
+    it.hinges.length ? t('Z — otwory pod zawiasy: Ø{d} mm, gł. {depth} mm, wiercone OD TYŁU (linia przerywana);', { d: HINGE_CUP.diameter, depth: HINGE_CUP.depth }) : '',
+    it.hinges.length ? t('podana jest wysokość środka od dolnej krawędzi, odległość od krawędzi bocznej — standardowa dla zawiasu.') : '',
+    it.handle ? t('U — otwory pod uchwyt: Ø{d} mm, przelotowe.', { d: it.handle.d }) : '',
   ].filter(Boolean);
   const totalW = Math.max(ox + fw + 200, 760);
   const totalH = tableTop + (holes.length + 1) * lineH + notes.length * lineH + 40;
@@ -165,7 +170,7 @@ export function mdfDrawingSvg(it) {
 
   const parts = [];
   // nagłówek
-  const title = `${it.no} — ${it.kind === 'front' ? 'front' : 'blenda'} ${num(W)} × ${num(H)} × ${num(it.thickness)} mm — ${it.qty} szt.`;
+  const title = `${it.no} — ${it.kind === 'front' ? t('front') : t('blenda')} ${num(W)} × ${num(H)} × ${num(it.thickness)} mm — ` + t('{n} szt.', { n: it.qty });
   // bez materiału, koloru i frezów — wybiera się je u producenta frontów; rysunek pokazuje tylko wymiary i otwory
   parts.push(`<text x="24" y="40" class="t1">${esc(title)}</text>`);
   // front
@@ -188,19 +193,21 @@ export function mdfDrawingSvg(it) {
   // tabela otworów i uwagi
   let ty = tableTop;
   if (holes.length) {
-    parts.push(`<text x="24" y="${ty}" class="t2b">Otwory (środek: x; y od lewego dolnego narożnika):</text>`);
+    parts.push(`<text x="24" y="${ty}" class="t2b">${t('Otwory (środek: x; y od lewego dolnego narożnika):')}</text>`);
     for (const h of holes) {
       ty += lineH;
-      const side = it.hingeSide === 'right' ? 'prawa' : 'lewa';
+      const hv = { id: h.id, x: num(h.x), y: num(h.y), d: h.d, cup: HINGE_CUP.diameter, depth: HINGE_CUP.depth };
       const line =
         h.kind === 'hinge'
-          ? `${h.id}: y = ${num(h.y)} — zawias Ø${HINGE_CUP.diameter} gł. ${HINGE_CUP.depth} od tyłu, krawędź ${side}, odległość od krawędzi standardowa`
-          : `${h.id}: x = ${num(h.x)}, y = ${num(h.y)} — uchwyt Ø${h.d} przelotowy`;
+          ? it.hingeSide === 'right'
+            ? t('{id}: y = {y} — zawias Ø{cup} gł. {depth} od tyłu, krawędź prawa, odległość od krawędzi standardowa', hv)
+            : t('{id}: y = {y} — zawias Ø{cup} gł. {depth} od tyłu, krawędź lewa, odległość od krawędzi standardowa', hv)
+          : t('{id}: x = {x}, y = {y} — uchwyt Ø{d} przelotowy', hv);
       parts.push(`<text x="40" y="${ty}" class="t2">${esc(line)}</text>`);
     }
     ty += lineH;
   } else {
-    parts.push(`<text x="24" y="${ty}" class="t2">Bez otworów.</text>`);
+    parts.push(`<text x="24" y="${ty}" class="t2">${t('Bez otworów.')}</text>`);
     ty += lineH;
   }
   for (const n of notes) {

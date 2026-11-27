@@ -1,4 +1,5 @@
 import { escapeHtml } from './dom.js';
+import { t, tn } from '../i18n.js';
 import { cabinetProblems } from '../model/furniture.js';
 import { trimIssues } from '../model/trims.js';
 import { boardIssues } from '../model/boards.js';
@@ -8,11 +9,11 @@ import { boardIssues } from '../model/boards.js';
 // i otwiera jego okienko.
 const ICONS = {
   // czerwone kółko z wykrzyknikiem
-  err: '<svg viewBox="0 0 24 24" width="20" height="20" aria-label="Błędy"><circle cx="12" cy="12" r="11" fill="#dc2626"/><rect x="10.6" y="5.5" width="2.8" height="8.5" rx="1.4" fill="#fff"/><circle cx="12" cy="17.6" r="1.7" fill="#fff"/></svg>',
+  err: `<svg viewBox="0 0 24 24" width="20" height="20" aria-label="${t('Błędy')}"><circle cx="12" cy="12" r="11" fill="#dc2626"/><rect x="10.6" y="5.5" width="2.8" height="8.5" rx="1.4" fill="#fff"/><circle cx="12" cy="17.6" r="1.7" fill="#fff"/></svg>`,
   // pomarańczowy trójkąt ostrzegawczy z wykrzyknikiem
-  warn: '<svg viewBox="0 0 24 24" width="20" height="20" aria-label="Ostrzeżenia"><path d="M12 2.2 23 21.5H1Z" fill="#f59e0b" stroke="#b45309" stroke-width="1.2" stroke-linejoin="round"/><rect x="10.8" y="8.5" width="2.4" height="7" rx="1.2" fill="#111827"/><circle cx="12" cy="18.3" r="1.4" fill="#111827"/></svg>',
+  warn: `<svg viewBox="0 0 24 24" width="20" height="20" aria-label="${t('Ostrzeżenia')}"><path d="M12 2.2 23 21.5H1Z" fill="#f59e0b" stroke="#b45309" stroke-width="1.2" stroke-linejoin="round"/><rect x="10.8" y="8.5" width="2.4" height="7" rx="1.2" fill="#111827"/><circle cx="12" cy="18.3" r="1.4" fill="#111827"/></svg>`,
   // brak problemów
-  ok: '<svg viewBox="0 0 24 24" width="20" height="20" aria-label="Brak problemów"><circle cx="12" cy="12" r="11" fill="none" stroke="#16a34a" stroke-width="2"/><path d="M7 12.5l3.2 3.2L17 9" fill="none" stroke="#16a34a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  ok: `<svg viewBox="0 0 24 24" width="20" height="20" aria-label="${t('Brak problemów')}"><circle cx="12" cy="12" r="11" fill="none" stroke="#16a34a" stroke-width="2"/><path d="M7 12.5l3.2 3.2L17 9" fill="none" stroke="#16a34a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
 };
 
 export function initProblemsMenu(toolbar, store, ui) {
@@ -20,7 +21,7 @@ export function initProblemsMenu(toolbar, store, ui) {
   const menu = document.createElement('details');
   menu.className = 'win-menu problems-menu';
   menu.innerHTML = `
-    <summary class="win-btn" title="Błędy i ostrzeżenia projektu — klik w pozycję otwiera okienko obiektu"></summary>
+    <summary class="win-btn" title="${t('Błędy i ostrzeżenia projektu — klik w pozycję otwiera okienko obiektu')}"></summary>
     <div class="win-menu-list problems-list"></div>`;
   (anchor?.querySelector('.win-menu') ?? anchor)?.after(menu);
   const summary = menu.querySelector('summary');
@@ -54,18 +55,18 @@ export function initProblemsMenu(toolbar, store, ui) {
       summary.innerHTML = ICONS[level] + (count ? `<span class="pb-count">${count > 99 ? '99+' : count}</span>` : '');
       summary.dataset.level = sig;
     }
-    const plural = (n, one, few, many) => `${n} ${n === 1 ? one : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? few : many}`;
+    const plural = (n, one, few, many) => `${n} ${tn(n, one, few, many)}`;
     summary.title = !items.length
-      ? 'Brak błędów i ostrzeżeń'
-      : [errors.length && plural(errors.length, 'błąd', 'błędy', 'błędów'), warnings.length && plural(warnings.length, 'ostrzeżenie', 'ostrzeżenia', 'ostrzeżeń')].filter(Boolean).join(', ') + ' — kliknij, żeby zobaczyć listę';
+      ? t('Brak błędów i ostrzeżeń')
+      : [errors.length && plural(errors.length, 'błąd', 'błędy', 'błędów'), warnings.length && plural(warnings.length, 'ostrzeżenie', 'ostrzeżenia', 'ostrzeżeń')].filter(Boolean).join(', ') + t(' — kliknij, żeby zobaczyć listę');
     summary.className = `win-btn pb-icon pb-${level}`;
     if (!menu.open) return;
     const row = (it, i) =>
-      `<button type="button" data-pb="${i}" class="pb-${it.level}"><b>${it.level === 'error' ? '⚠' : 'ⓘ'} ${escapeHtml(it.name || 'obiekt')}</b><small>${escapeHtml(it.text)}</small></button>`;
+      `<button type="button" data-pb="${i}" class="pb-${it.level}"><b>${it.level === 'error' ? '⚠' : 'ⓘ'} ${escapeHtml(it.name || t('obiekt'))}</b><small>${escapeHtml(it.text)}</small></button>`;
     const group = (title, arr) => (arr.length ? `<div class="win-group">${title} (${arr.length})</div>${arr.map((it) => row(it, items.indexOf(it))).join('')}` : '');
     list.innerHTML = items.length
-      ? group('Błędy', errors) + group('Ostrzeżenia', warnings)
-      : '<div class="pb-none">✓ Wszystko w porządku — brak błędów i ostrzeżeń.</div>';
+      ? group(t('Błędy'), errors) + group(t('Ostrzeżenia'), warnings)
+      : `<div class="pb-none">${t('✓ Wszystko w porządku — brak błędów i ostrzeżeń.')}</div>`;
   };
   // przeliczane raz na klatkę (zmiany projektu przychodzą seriami, np. przy przeciąganiu)
   let pending = false;

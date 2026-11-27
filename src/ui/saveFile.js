@@ -1,9 +1,10 @@
+import { t } from '../i18n.js';
 // Zapis pliku z pytaniem, gdzie go zapisać (okno „Zapisz jako”).
 // Chrome i Edge mają do tego showSaveFilePicker; w innych przeglądarkach (Firefox, Safari) — zwykłe
 // pobranie (plik trafia do folderu pobranych albo przeglądarka sama pyta, zależnie od jej ustawień).
 // Trzeba wywołać bezpośrednio po kliknięciu użytkownika.
 // Zwraca true, gdy plik zapisano / pobrano, false — gdy użytkownik anulował okno zapisu.
-export async function saveFile(blob, fileName, { description = 'Plik', mime = blob.type || 'application/octet-stream' } = {}) {
+export async function saveFile(blob, fileName, { description = t('Plik'), mime = blob.type || 'application/octet-stream' } = {}) {
   const ext = fileName.includes('.') ? fileName.slice(fileName.lastIndexOf('.')) : '';
   if (typeof window.showSaveFilePicker === 'function') {
     try {

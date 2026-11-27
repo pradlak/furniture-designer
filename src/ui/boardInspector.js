@@ -17,13 +17,14 @@ import { renderBoardFeatures, syncBoardFeatures, readFeatureInput, readFeatureCl
 import { materialSelect, colorPicker, readColorInput, syncColorPicker } from './widgets.js';
 import { setPath } from '../model/furniture.js';
 import { downloadBoardCutList, downloadBoardDrawing } from './boardExport.js';
+import { t, isEnglish } from '../i18n.js';
 
 // Inspektor zaznaczonej samodzielnej płyty (półki, blatu) — okienko po prawej stronie widoku 3D:
 // wymiary i położenie, mocowanie do ściany z obróbką (wymiary otworów / frezu) oraz szkic z wymiarami:
 // widok z góry (tylna krawędź u góry — przy ścianie) i widok tylnej krawędzi (otwory w osi grubości / frezy w spodzie).
 // Pokazuje się przy jednej zaznaczonej płycie; ✕ chowa je do czasu zaznaczenia innej płyty.
 
-const fmt = (v) => String(Math.round(v * 10) / 10).replace('.', ',');
+const fmt = (v) => (isEnglish() ? String(Math.round(v * 10) / 10) : String(Math.round(v * 10) / 10).replace('.', ','));
 
 export function createBoardInspector(viewport, store, ui, { onMore } = {}) {
   const root = document.createElement('aside');
@@ -45,12 +46,12 @@ export function createBoardInspector(viewport, store, ui, { onMore } = {}) {
     if (extraFor !== board.id) {
       extra.innerHTML = `
         <div class="bi-head">
-          <b>${escapeHtml(board.name)} — obróbka i wygląd</b>
-          <button type="button" class="icon tiny" data-bx-close title="Zamknij">✕</button>
+          <b>${escapeHtml(board.name)} — ${t('obróbka i wygląd')}</b>
+          <button type="button" class="icon tiny" data-bx-close title="${t('Zamknij')}">✕</button>
         </div>
-        <div class="bi-sec">Materiał i kolor</div>
-        ${materialSelect('Materiał', 'materialId', project)}
-        ${colorPicker('Kolor / dekor (dąb, orzech, beton, marmur…)', 'color', { wide: true })}
+        <div class="bi-sec">${t('Materiał i kolor')}</div>
+        ${materialSelect(t('Materiał'), 'materialId', project)}
+        ${colorPicker(t('Kolor / dekor (dąb, orzech, beton, marmur…)'), 'color', { wide: true })}
         ${renderBoardFeatures()}`;
       extraFor = board.id;
     }
@@ -84,8 +85,8 @@ export function createBoardInspector(viewport, store, ui, { onMore } = {}) {
   const zoom = document.createElement('div');
   zoom.className = 'bi-zoom';
   zoom.hidden = true;
-  zoom.innerHTML = `<div class="bi-zoom-box" role="dialog" aria-label="Szkic płyty">
-      <div class="bi-zoom-head"><b></b><button type="button" class="icon" data-bi-zoom-close title="Zamknij (Esc)">✕</button></div>
+  zoom.innerHTML = `<div class="bi-zoom-box" role="dialog" aria-label="${t('Szkic płyty')}">
+      <div class="bi-zoom-head"><b></b><button type="button" class="icon" data-bi-zoom-close title="${t('Zamknij (Esc)')}">✕</button></div>
       <div class="bi-zoom-body bi-sketch"></div>
     </div>`;
   document.body.appendChild(zoom);
@@ -123,81 +124,81 @@ export function createBoardInspector(viewport, store, ui, { onMore } = {}) {
     root.innerHTML = `
       <div class="bi-head">
         <b>${escapeHtml(board.name)}</b>
-        <button type="button" class="icon tiny" data-bi-close title="Zamknij (płyta zostaje zaznaczona)">✕</button>
+        <button type="button" class="icon tiny" data-bi-close title="${t('Zamknij (płyta zostaje zaznaczona)')}">✕</button>
       </div>
-      <div class="bi-sec">Wymiary i położenie</div>
+      <div class="bi-sec">${t('Wymiary i położenie')}</div>
       <div class="bi-grid">
-        ${num('Szerokość', 'width', board.width, { min: L.sizeMin, max: L.sizeMax })}
-        ${num('Głębokość', 'depth', board.depth, { min: L.sizeMin, max: L.sizeMax })}
-        ${num('Grubość', 'thickness', board.thickness ?? '', { min: 3, max: 100, placeholder: `${matT} (materiał)`, title: 'Puste — grubość materiału' })}
-        ${num('Od podłogi', 'y', board.y)}
-        ${num('Od lewej', 'x', board.x)}
-        ${num('Od tyłu', 'z', board.z, { min: 0 })}
-        ${num('Zapas (luz)', 'clearance', board.clearance ?? 0, { min: 0, max: 50, step: 0.5, title: 'Płyta krótsza od wnęki o tyle mm łącznie (po połowie z każdej strony) — przy „Dopasuj do wnęki” i dosuwaniu. Na niedokładny pomiar i krzywe ściany, np. 2–3 mm.' })}
+        ${num(t('Szerokość'), 'width', board.width, { min: L.sizeMin, max: L.sizeMax })}
+        ${num(t('Głębokość'), 'depth', board.depth, { min: L.sizeMin, max: L.sizeMax })}
+        ${num(t('Grubość'), 'thickness', board.thickness ?? '', { min: 3, max: 100, placeholder: t('{t} (materiał)', { t: matT }), title: t('Puste — grubość materiału') })}
+        ${num(t('Od podłogi'), 'y', board.y)}
+        ${num(t('Od lewej'), 'x', board.x)}
+        ${num(t('Od tyłu'), 'z', board.z, { min: 0 })}
+        ${num(t('Zapas (luz)'), 'clearance', board.clearance ?? 0, { min: 0, max: 50, step: 0.5, title: t('Płyta krótsza od wnęki o tyle mm łącznie (po połowie z każdej strony) — przy „Dopasuj do wnęki” i dosuwaniu. Na niedokładny pomiar i krzywe ściany, np. 2–3 mm.') })}
       </div>
-      <button type="button" class="bi-fit" data-bi-fit title="Szerokość od lewego do prawego sąsiada (ściana, okap, korpus, inna płyta) minus zapas">⇔ Dopasuj szerokość do wnęki</button>
-      <div class="bi-sec">Mocowanie do ściany</div>
-      <label class="bi-field wide"><span>Rodzaj</span>
+      <button type="button" class="bi-fit" data-bi-fit title="${t('Szerokość od lewego do prawego sąsiada (ściana, okap, korpus, inna płyta) minus zapas')}">${t('⇔ Dopasuj szerokość do wnęki')}</button>
+      <div class="bi-sec">${t('Mocowanie do ściany')}</div>
+      <label class="bi-field wide"><span>${t('Rodzaj')}</span>
         <select data-bi="mount.type">${BOARD_MOUNTS.map((x) => `<option value="${x.key ?? ''}" ${(x.key ?? null) === m.type ? 'selected' : ''}>${escapeHtml(x.label)}</option>`).join('')}</select>
       </label>
       ${
         m.type && m.type !== 'cleat'
           ? `<div class="bi-grid">
-              ${num('Ilość', 'mount.count', m.count ?? '', { min: 1, max: 20, unit: 'szt.', placeholder: `${mountPoints(board).count} (auto)`, title: 'Puste — automatycznie (mocowania nie nachodzą na siebie i nie wychodzą poza płytę)' })}
-              ${num('Od boku', 'mount.edge', m.edge ?? '', { min: 0, max: 1000, placeholder: `${mountPoints(board).edge}`, title: 'Odstęp skrajnego mocowania (krawędzi płytki / wspornika) od lewego i prawego boku płyty' })}
+              ${num(t('Ilość'), 'mount.count', m.count ?? '', { min: 1, max: 20, unit: t('szt.'), placeholder: t('{count} (auto)', { count: mountPoints(board).count }), title: t('Puste — automatycznie (mocowania nie nachodzą na siebie i nie wychodzą poza płytę)') })}
+              ${num(t('Od boku'), 'mount.edge', m.edge ?? '', { min: 0, max: 1000, placeholder: `${mountPoints(board).edge}`, title: t('Odstęp skrajnego mocowania (krawędzi płytki / wspornika) od lewego i prawego boku płyty') })}
             </div>`
           : ''
       }
       ${
         m.type === 'hidden'
-          ? `<label class="bi-field wide"><span>Obróbka</span>
+          ? `<label class="bi-field wide"><span>${t('Obróbka')}</span>
                <select data-bi="mount.machining">${MOUNT_MACHINING.map((x) => `<option value="${x.key ?? ''}" ${(x.key ?? null) === m.machining ? 'selected' : ''}>${escapeHtml(x.label)}</option>`).join('')}</select>
              </label>
              ${
                work?.kind === 'holes'
                  ? `<div class="bi-grid">
-                      ${num('Średnica otworu', 'mount.holeD', m.holeD ?? '', { min: 3, max: 40, step: 0.5, placeholder: `${work.d}` })}
-                      ${num('Głębokość otworu', 'mount.holeDepth', m.holeDepth ?? '', { min: 10, max: 500, placeholder: `${work.depth}`, title: 'Jak głęboko pręt wchodzi w płytę (od tylnej krawędzi)' })}
+                      ${num(t('Średnica otworu'), 'mount.holeD', m.holeD ?? '', { min: 3, max: 40, step: 0.5, placeholder: `${work.d}` })}
+                      ${num(t('Głębokość otworu'), 'mount.holeDepth', m.holeDepth ?? '', { min: 10, max: 500, placeholder: `${work.depth}`, title: t('Jak głęboko pręt wchodzi w płytę (od tylnej krawędzi)') })}
                     </div>
-                    <label class="bi-check" title="Płytka montażowa wspornika (przykręcana do ściany) chowa się we wpuście w tylnej krawędzi — półka dochodzi do ściany bez szczeliny">
-                      <input type="checkbox" data-bi="mount.plate" ${m.plate ? 'checked' : ''} /> wpust pod płytkę montażową (przy ścianie)
+                    <label class="bi-check" title="${t('Płytka montażowa wspornika (przykręcana do ściany) chowa się we wpuście w tylnej krawędzi — półka dochodzi do ściany bez szczeliny')}">
+                      <input type="checkbox" data-bi="mount.plate" ${m.plate ? 'checked' : ''} /> ${t('wpust pod płytkę montażową (przy ścianie)')}
                     </label>
                     ${
                       work.plate
-                        ? `<label class="bi-field wide"><span>Wpust pod płytkę</span>
+                        ? `<label class="bi-field wide"><span>${t('Wpust pod płytkę')}</span>
                             <select data-bi="mount.plateMode">
-                              <option value="each" ${m.plateMode !== 'long' ? 'selected' : ''}>osobno przy każdym pręcie</option>
-                              <option value="long" ${m.plateMode === 'long' ? 'selected' : ''}>jeden długi — od pierwszej do ostatniej płytki</option>
+                              <option value="each" ${m.plateMode !== 'long' ? 'selected' : ''}>${t('osobno przy każdym pręcie')}</option>
+                              <option value="long" ${m.plateMode === 'long' ? 'selected' : ''}>${t('jeden długi — od pierwszej do ostatniej płytki')}</option>
                             </select>
                           </label>
                           <div class="bi-grid">
-                            ${num('Szer. płytki', 'mount.plateW', m.plateW ?? '', { min: 10, max: 400, placeholder: `${work.plate.w}` })}
-                            ${num('Wys. płytki', 'mount.plateH', m.plateH ?? '', { min: 5, max: 100, placeholder: `${work.plate.h}`, title: 'Wymiar w pionie — w osi grubości płyty' })}
-                            ${num('Gł. wpustu', 'mount.plateDepth', m.plateDepth ?? '', { min: 1, max: 30, step: 0.5, placeholder: `${work.plate.depth}`, title: 'Grubość płytki — o tyle wpust wchodzi w płytę od tylnej krawędzi' })}
+                            ${num(t('Szer. płytki'), 'mount.plateW', m.plateW ?? '', { min: 10, max: 400, placeholder: `${work.plate.w}` })}
+                            ${num(t('Wys. płytki'), 'mount.plateH', m.plateH ?? '', { min: 5, max: 100, placeholder: `${work.plate.h}`, title: t('Wymiar w pionie — w osi grubości płyty') })}
+                            ${num(t('Gł. wpustu'), 'mount.plateDepth', m.plateDepth ?? '', { min: 1, max: 30, step: 0.5, placeholder: `${work.plate.depth}`, title: t('Grubość płytki — o tyle wpust wchodzi w płytę od tylnej krawędzi') })}
                           </div>`
                         : ''
                     }`
                  : work?.kind === 'slot'
                    ? `<div class="bi-grid">
-                        ${num('Szer. frezu', 'mount.slotW', m.slotW ?? '', { min: 5, max: 100, placeholder: `${work.w}` })}
-                        ${num('Dł. frezu', 'mount.slotLen', m.slotLen ?? '', { min: 20, max: 600, placeholder: `${work.len}`, title: 'Od tylnej krawędzi w głąb płyty' })}
-                        ${num('Gł. frezu', 'mount.slotDepth', m.slotDepth ?? '', { min: 1, max: 40, step: 0.5, placeholder: `${work.depth}`, title: 'Od spodu płyty' })}
+                        ${num(t('Szer. frezu'), 'mount.slotW', m.slotW ?? '', { min: 5, max: 100, placeholder: `${work.w}` })}
+                        ${num(t('Dł. frezu'), 'mount.slotLen', m.slotLen ?? '', { min: 20, max: 600, placeholder: `${work.len}`, title: t('Od tylnej krawędzi w głąb płyty') })}
+                        ${num(t('Gł. frezu'), 'mount.slotDepth', m.slotDepth ?? '', { min: 1, max: 40, step: 0.5, placeholder: `${work.depth}`, title: t('Od spodu płyty') })}
                       </div>`
                    : ''
              }`
           : ''
       }
-      <div class="bi-sec bi-sec-row">Szkic <button type="button" class="icon tiny" data-bi-zoom title="Powiększ szkic (albo kliknij w szkic)">🔍 Powiększ</button></div>
-      <div class="bi-sketch" data-bi-zoom title="Kliknij, aby powiększyć"></div>
+      <div class="bi-sec bi-sec-row">${t('Szkic')} <button type="button" class="icon tiny" data-bi-zoom title="${t('Powiększ szkic (albo kliknij w szkic)')}">${t('🔍 Powiększ')}</button></div>
+      <div class="bi-sketch" data-bi-zoom title="${t('Kliknij, aby powiększyć')}"></div>
       <p class="bi-note"></p>
-      <button type="button" class="bi-more" data-bi-more>◂ Frezy krawędzi, otwory, materiał, kolor</button>
+      <button type="button" class="bi-more" data-bi-more>${t('◂ Frezy krawędzi, otwory, materiał, kolor')}</button>
       <div class="bi-download">
-        <button type="button" class="bi-download-btn" data-bi-download-toggle aria-haspopup="true">💾 Pobierz… <small>▾</small></button>
+        <button type="button" class="bi-download-btn" data-bi-download-toggle aria-haspopup="true">${t('💾 Pobierz…')} <small>▾</small></button>
         <div class="bi-download-menu" hidden>
-          <button type="button" data-bi-download="xlsx" title="Formatka tej płyty z obróbką i akcesoriami">Formatka — Excel (.xlsx)</button>
-          <button type="button" data-bi-download="csv">Formatka — CSV (.csv)</button>
-          <button type="button" data-bi-drawing="pdf" title="A4 poziomo: szkic z wymiarami, detal mocowania, opis obróbki i akcesoria">Rysunek z wymiarami — PDF</button>
-          <button type="button" data-bi-drawing="png">Rysunek z wymiarami — obraz PNG</button>
+          <button type="button" data-bi-download="xlsx" title="${t('Formatka tej płyty z obróbką i akcesoriami')}">${t('Formatka — Excel (.xlsx)')}</button>
+          <button type="button" data-bi-download="csv">${t('Formatka — CSV (.csv)')}</button>
+          <button type="button" data-bi-drawing="pdf" title="${t('A4 poziomo: szkic z wymiarami, detal mocowania, opis obróbki i akcesoria')}">${t('Rysunek z wymiarami — PDF')}</button>
+          <button type="button" data-bi-drawing="png">${t('Rysunek z wymiarami — obraz PNG')}</button>
         </div>
       </div>`;
   }
@@ -216,21 +217,21 @@ export function createBoardInspector(viewport, store, ui, { onMore } = {}) {
     root.querySelector('.bi-sketch').innerHTML = svg;
     if (!zoom.hidden) {
       zoom.querySelector('.bi-zoom-body').innerHTML = svg;
-      zoom.querySelector('.bi-zoom-head b').textContent = `Szkic: ${board.name}`;
+      zoom.querySelector('.bi-zoom-head b').textContent = t('Szkic: {name}', { name: board.name });
     }
     // przycisk dopasowania: docelowa szerokość (wnęka minus zapas)
     const niche = boardNicheWidth(project, board.id);
     const fitBtn = root.querySelector('[data-bi-fit]');
     if (fitBtn && niche != null) {
       const target = Math.round((niche - (board.clearance ?? 0)) * 10) / 10;
-      fitBtn.textContent = `⇔ Dopasuj szerokość do wnęki → ${fmt(target)} mm`;
+      fitBtn.textContent = t('⇔ Dopasuj szerokość do wnęki → {mm} mm', { mm: fmt(target) });
       fitBtn.disabled = Math.abs(target - board.width) < 0.5;
-      fitBtn.title = `Wnęka ${fmt(niche)} mm${board.clearance ? ` minus zapas ${fmt(board.clearance)} mm (po ${fmt(board.clearance / 2)} z każdej strony)` : ''}`;
+      fitBtn.title = t('Wnęka {mm} mm', { mm: fmt(niche) }) + (board.clearance ? t(' minus zapas {c} mm (po {half} z każdej strony)', { c: fmt(board.clearance), half: fmt(board.clearance / 2) }) : '');
     }
     const pts = mountPoints(board);
     root.querySelector('.bi-note').textContent = pts.type
-      ? `${BOARD_MOUNTS.find((x) => x.key === pts.type).label}${pts.count && pts.type !== 'cleat' ? ` — ${pts.count} szt.` : ''}`
-      : 'Bez mocowania do ściany.';
+      ? `${BOARD_MOUNTS.find((x) => x.key === pts.type).label}${pts.count && pts.type !== 'cleat' ? t(' — {qty} szt.', { qty: pts.count }) : ''}`
+      : t('Bez mocowania do ściany.');
   }
 
   function sync() {
@@ -330,11 +331,11 @@ export function sketchSvg(board, box) {
   const ey = pad.t + top.h + gap; // górna krawędź widoku krawędzi
   const out = [];
   const line = (x1, y1, x2, y2, cls = 'bi-dim') => out.push(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" class="${cls}"/>`);
-  const text = (x, y, t, cls = 'bi-txt', anchor = 'middle', rot = 0) =>
-    out.push(`<text x="${x}" y="${y}" class="${cls}" text-anchor="${anchor}"${rot ? ` transform="rotate(${rot} ${x} ${y})"` : ''}>${t}</text>`);
+  const text = (x, y, str, cls = 'bi-txt', anchor = 'middle', rot = 0) =>
+    out.push(`<text x="${x}" y="${y}" class="${cls}" text-anchor="${anchor}"${rot ? ` transform="rotate(${rot} ${x} ${y})"` : ''}>${str}</text>`);
   // ściana
   line(pad.l - 10, pad.t - 4, X(W) + 10, pad.t - 4, 'bi-wall');
-  text(X(W) + 12, pad.t - 1, 'ściana', 'bi-small', 'start');
+  text(X(W) + 12, pad.t - 1, t('ściana'), 'bi-small', 'start');
   // płyta z góry
   out.push(`<rect x="${X(0)}" y="${Yt(0)}" width="${W * s}" height="${D * s}" class="bi-board"/>`);
   // otwory w płycie (y w modelu — od przodu)
@@ -384,10 +385,10 @@ export function sketchSvg(board, box) {
     const len = Math.min(D, work.kind === 'holes' ? work.depth : work.len);
     const lx = X(u) + Math.max(6, ((work.kind === 'holes' ? work.d : work.w) / 2) * s + 6);
     line(lx, Yt(0), lx, Yt(len), 'bi-dim2');
-    text(lx + 3, Yt(len / 2) + 3, `gł. ${fmt(len)}`, 'bi-small', 'start');
+    text(lx + 3, Yt(len / 2) + 3, t('gł. {mm}', { mm: fmt(len) }), 'bi-small', 'start');
   }
   // widok tylnej krawędzi (od ściany)
-  text(pad.l, ey - 8, 'tylna krawędź (widok od ściany):', 'bi-small', 'start');
+  text(pad.l, ey - 8, t('tylna krawędź (widok od ściany):'), 'bi-small', 'start');
   out.push(`<rect x="${X(0)}" y="${ey}" width="${W * s}" height="${edgeH}" class="bi-board"/>`);
   for (const [a0, a1] of spans) {
     const ph = Math.min(edgeH, (Math.min(work.plate.h, T) / T) * edgeH);
@@ -412,12 +413,12 @@ export function sketchSvg(board, box) {
   const tx = X(W) + 14;
   line(tx, ey, tx, ey + edgeH);
   text(tx + 4, ey + edgeH / 2 + 3, `${fmt(T)}`, 'bi-txt', 'start');
-  if (work?.kind === 'holes') text(X(W / 2), ey + edgeH + 16, `otwory Ø${fmt(work.d)} w osi grubości (${fmt(T / 2)} od spodu)`, 'bi-small');
-  if (work?.plate) text(X(W / 2), ey + edgeH + 27, work.plate.long && spans[0] ? `jeden wpust pod płytkę dł. ${fmt(spans[0][1] - spans[0][0])} × ${fmt(Math.min(work.plate.h, T))}, gł. ${fmt(work.plate.depth)}` : `wpust pod płytkę ${fmt(work.plate.w)} × ${fmt(Math.min(work.plate.h, T))}, gł. ${fmt(work.plate.depth)}`, 'bi-small');
-  if (work?.kind === 'slot') text(X(W / 2), ey + edgeH + 16, `frez ${fmt(work.w)} × ${fmt(work.len)}, gł. ${fmt(work.depth)} od spodu`, 'bi-small');
+  if (work?.kind === 'holes') text(X(W / 2), ey + edgeH + 16, t('otwory Ø{d} w osi grubości ({half} od spodu)', { d: fmt(work.d), half: fmt(T / 2) }), 'bi-small');
+  if (work?.plate) text(X(W / 2), ey + edgeH + 27, work.plate.long && spans[0] ? t('jeden wpust pod płytkę dł. {len} × {h}, gł. {depth}', { len: fmt(spans[0][1] - spans[0][0]), h: fmt(Math.min(work.plate.h, T)), depth: fmt(work.plate.depth) }) : t('wpust pod płytkę {w} × {h}, gł. {depth}', { w: fmt(work.plate.w), h: fmt(Math.min(work.plate.h, T)), depth: fmt(work.plate.depth) }), 'bi-small');
+  if (work?.kind === 'slot') text(X(W / 2), ey + edgeH + 16, t('frez {w} × {len}, gł. {depth} od spodu', { w: fmt(work.w), len: fmt(work.len), depth: fmt(work.depth) }), 'bi-small');
   let detail = '';
   if (pts.xs.length && (work || pts.type === 'brackets' || pts.type === 'rail')) detail = detailSvg(pts, work, T, W);
-  return `<svg viewBox="0 0 ${VW} ${H}" width="100%" role="img" aria-label="Szkic płyty z wymiarami">${out.join('')}</svg>${detail}`;
+  return `<svg viewBox="0 0 ${VW} ${H}" width="100%" role="img" aria-label="${t('Szkic płyty z wymiarami')}">${out.join('')}</svg>${detail}`;
 }
 
 // Detal (powiększenie) skrajnego mocowania na tylnej krawędzi, od lewego boku płyty: odstęp od boku, szerokość
@@ -434,14 +435,14 @@ function detailSvg(pts, work, T, W) {
   const Y = (y) => pad.t + (T - y) * s; // y — od spodu płyty
   const out = [];
   const line = (x1, y1, x2, y2, cls = 'bi-dim') => out.push(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" class="${cls}"/>`);
-  const text = (x, y, t, cls = 'bi-txt', anchor = 'middle') => out.push(`<text x="${x}" y="${y}" class="${cls}" text-anchor="${anchor}">${t}</text>`);
+  const text = (x, y, str, cls = 'bi-txt', anchor = 'middle') => out.push(`<text x="${x}" y="${y}" class="${cls}" text-anchor="${anchor}">${str}</text>`);
   const dimH = (a, b, y, label) => {
     line(X(a), y, X(b), y);
     line(X(a), y - 3, X(a), y + 3);
     line(X(b), y - 3, X(b), y + 3);
     text((X(a) + X(b)) / 2, y - 3, label);
   };
-  text(pad.l, 12, 'detal — tylna krawędź przy lewym boku (od ściany)', 'bi-small', 'start');
+  text(pad.l, 12, t('detal — tylna krawędź przy lewym boku (od ściany)'), 'bi-small', 'start');
   // kawałek płyty — z prawej urwany
   out.push(`<path d="M${X(0)} ${Y(0)} L${X(region)} ${Y(0)} L${X(region) - 4} ${Y(T / 2)} L${X(region)} ${Y(T)} L${X(0)} ${Y(T)} Z" class="bi-board"/>`);
   const x0 = u - ew / 2;
@@ -451,7 +452,7 @@ function detailSvg(pts, work, T, W) {
     out.push(`<rect x="${X(x0)}" y="${Y(T / 2 + ph / 2)}" width="${pw * s}" height="${ph * s}" class="bi-plate"/>`);
     const rx = X(region) + 10;
     line(rx, Y(T / 2 + ph / 2), rx, Y(T / 2 - ph / 2));
-    text(rx + 3, Y(T / 2) + 3, `płytka ${fmt(ph)}`, 'bi-small', 'start');
+    text(rx + 3, Y(T / 2) + 3, t('płytka {mm}', { mm: fmt(ph) }), 'bi-small', 'start');
   } else if (work?.kind === 'slot') {
     out.push(`<rect x="${X(x0)}" y="${Y(work.depth)}" width="${ew * s}" height="${work.depth * s}" class="bi-hole-edge"/>`);
   } else if (!work) {
@@ -460,7 +461,7 @@ function detailSvg(pts, work, T, W) {
   if (work?.kind === 'holes') out.push(`<circle cx="${X(u)}" cy="${Y(T / 2)}" r="${(work.d / 2) * s}" class="bi-hole-edge"/>`);
   const yTop = pad.t - 8;
   if (pts.edge > 0.5) dimH(0, x0, yTop, fmt(pts.edge));
-  dimH(x0, x0 + ew, yTop, work?.plate ? `płytka ${fmt(ew)}` : work?.kind === 'slot' ? `frez ${fmt(ew)}` : work?.kind === 'holes' ? `Ø${fmt(ew)}` : fmt(ew));
+  dimH(x0, x0 + ew, yTop, work?.plate ? t('płytka {mm}', { mm: fmt(ew) }) : work?.kind === 'slot' ? t('frez {mm}', { mm: fmt(ew) }) : work?.kind === 'holes' ? `Ø${fmt(ew)}` : fmt(ew));
   if (work?.kind === 'holes') {
     // średnica: linie pomocnicze od krawędzi otworu w dół, pod płytą linia wymiarowa „Ø…”
     const r = (work.d / 2) * s;
@@ -469,13 +470,13 @@ function detailSvg(pts, work, T, W) {
     line(X(u) + r, Y(T / 2), X(u) + r, yd + 3, 'bi-dim2');
     line(X(u) - r, yd, X(u) + r, yd);
     text(X(u), yd + 12, `Ø${fmt(work.d)}`, 'bi-txt bi-dia');
-    text(X(u), yd + 24, `otwór w osi grubości (${fmt(T / 2)} od spodu), gł. ${fmt(work.depth)}`, 'bi-small');
+    text(X(u), yd + 24, t('otwór w osi grubości ({half} od spodu), gł. {depth}', { half: fmt(T / 2), depth: fmt(work.depth) }), 'bi-small');
     // środek otworu — krzyżyk
     line(X(u) - r - 3, Y(T / 2), X(u) + r + 3, Y(T / 2), 'bi-axis');
     line(X(u), Y(T / 2) - r - 3, X(u), Y(T / 2) + r + 3, 'bi-axis');
   }
   const gx = X(region) + 50;
   line(gx, Y(T), gx, Y(0));
-  text(gx + 3, Y(T / 2) + 3, `gr. ${fmt(T)}`, 'bi-small', 'start');
-  return `<svg viewBox="0 0 ${VW} ${H}" width="100%" class="bi-detail" role="img" aria-label="Detal mocowania">${out.join('')}</svg>`;
+  text(gx + 3, Y(T / 2) + 3, t('gr. {mm}', { mm: fmt(T) }), 'bi-small', 'start');
+  return `<svg viewBox="0 0 ${VW} ${H}" width="100%" class="bi-detail" role="img" aria-label="${t('Detal mocowania')}">${out.join('')}</svg>`;
 }

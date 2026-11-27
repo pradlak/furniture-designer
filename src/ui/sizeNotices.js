@@ -1,4 +1,5 @@
 import { escapeHtml } from './dom.js';
+import { t } from '../i18n.js';
 
 // Informacja dla użytkownika, gdy zmienia się rozmiar korpusu „przy okazji” innej zmiany — np. odstęp
 // od tylnej ściany zmniejsza głębokość, nóżki z „zachowaj wysokość” zmniejszają wysokość, łańcuszek
@@ -9,7 +10,7 @@ import { escapeHtml } from './dom.js';
 // podmianie projektu (nowy, import, cofnij / ponów). Zmiany z krótkiego czasu (pisanie w polu)
 // zbieramy w jeden komunikat: „Korpus 2: głębokość 560 → 540 mm (−20)”.
 
-const FIELDS = { width: 'szerokość', height: 'wysokość', depth: 'głębokość' };
+const FIELDS = { width: t('szerokość'), height: t('wysokość'), depth: t('głębokość') };
 const QUIET_MS = 700; // komunikat po tylu ms bez kolejnych zmian
 const SHOW_MS = 7000; // tyle widać komunikat
 
@@ -69,8 +70,8 @@ export function initSizeNotices(store) {
     const note = document.createElement('div');
     note.className = 'notice';
     note.innerHTML = `
-      <button type="button" class="notice-close" title="Zamknij">×</button>
-      <b>Zmieniono rozmiar ${lines.length === 1 ? 'korpusu' : 'korpusów'}</b>
+      <button type="button" class="notice-close" title="${t('Zamknij')}">×</button>
+      <b>${lines.length === 1 ? t('Zmieniono rozmiar korpusu') : t('Zmieniono rozmiar korpusów')}</b>
       <ul>${lines.map((e) => `<li>${escapeHtml(e.name)}: ${FIELDS[e.field]} ${num(e.from)} → ${num(e.to)} mm (${sign(e.to - e.from)})</li>`).join('')}</ul>`;
     note.querySelector('.notice-close').addEventListener('click', () => note.remove());
     box.appendChild(note);
@@ -92,7 +93,7 @@ export function showNotice(title, text) {
   }
   const note = document.createElement('div');
   note.className = 'notice';
-  note.innerHTML = `<button type="button" class="notice-close" title="Zamknij">×</button><b>${escapeHtml(title)}</b><div>${escapeHtml(text)}</div>`;
+  note.innerHTML = `<button type="button" class="notice-close" title="${t('Zamknij')}">×</button><b>${escapeHtml(title)}</b><div>${escapeHtml(text)}</div>`;
   note.querySelector('.notice-close').addEventListener('click', () => note.remove());
   box.appendChild(note);
   setTimeout(() => note.remove(), SHOW_MS + 3000);

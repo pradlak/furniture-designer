@@ -3,19 +3,20 @@ import { escapeHtml, setIfNotFocused, round1 } from './dom.js';
 import { setEye, materialSelect, colorPicker, syncColorPicker } from './widgets.js';
 import { cabinetMaterials } from '../model/materials.js';
 import { COLLAPSE_BUTTON } from './collapsible.js';
+import { t } from '../i18n.js';
 
 // Blendy boczne korpusu (lewa i prawa): blenda boczna (przy ścianie), panel na pełną wysokość, cokół boczny.
 // Edytowane w zakładce „Blendy” — po jednej karcie na korpus.
 
-const SIDE_LABEL = { left: 'Lewa', right: 'Prawa' };
+const SIDE_LABEL = { left: t('Lewa'), right: t('Prawa') };
 
 // Krótki opis, np. „L: blenda + panel · P: panel” (pusty, gdy korpus nie ma blend bocznych).
 export function sideBlendSummary(cabinet) {
   return ['left', 'right']
     .map((side) => {
       const sb = cabinet.sideBlends?.[side];
-      const name = { plinth: 'cokół boczny', full: 'panel', filler: sb?.wallPanel ? 'blenda + panel' : 'blenda' }[sb?.type];
-      return name && `${side === 'left' ? 'L' : 'P'}: ${name}${sb.hidden ? ' (ukryta)' : ''}`;
+      const name = { plinth: t('cokół boczny'), full: t('panel'), filler: sb?.wallPanel ? t('blenda + panel') : t('blenda') }[sb?.type];
+      return name && `${side === 'left' ? t('L') : t('P')}: ${name}${sb.hidden ? t(' (ukryta)') : ''}`;
     })
     .filter(Boolean)
     .join(' · ');
@@ -25,8 +26,8 @@ export function sideBlendSummary(cabinet) {
 function panelDepthField(side, field, cls, title) {
   return `
     <label class="field small ${cls}" data-side-auto="${field}" title="${title}">
-      <span>Głębokość panelu <small class="auto-tag">pełna</small>
-        <button type="button" class="icon tiny" data-reset-side-field="${field}" data-side="${side}" title="Pełna głębokość korpusu">↺</button>
+      <span>${t('Głębokość panelu')} <small class="auto-tag">${t('pełna')}</small>
+        <button type="button" class="icon tiny" data-reset-side-field="${field}" data-side="${side}" title="${t('Pełna głębokość korpusu')}">↺</button>
       </span>
       <input type="number" step="1" min="1" max="${CABINET_LIMITS.sizeMax}" data-f="sideBlends.${side}.${field}" />
     </label>`;
@@ -57,32 +58,32 @@ function sideFields(side) {
       </div>
       <div class="grid-2 filler-opts">
         <label class="field small" data-side-auto="width">
-          <span>Szerokość blendy <small class="auto-tag">auto</small>
-            <button type="button" class="icon tiny" data-reset-side-width="${side}" title="Automatycznie: wypełnia miejsce do ściany / sąsiada (minus panel przy ścianie)">↺</button>
+          <span>${t('Szerokość blendy')} <small class="auto-tag">${t('auto')}</small>
+            <button type="button" class="icon tiny" data-reset-side-width="${side}" title="${t('Automatycznie: wypełnia miejsce do ściany / sąsiada (minus panel przy ścianie)')}">↺</button>
           </span>
           <input type="number" step="1" min="1" max="${CABINET_LIMITS.sizeMax}" data-f="sideBlends.${side}.width" />
         </label>
-        <label class="check small" title="Panel na pełną wysokość za blendą boczną, przylegający do ściany">
-          <input type="checkbox" data-f="sideBlends.${side}.wallPanel" /> + panel przy ścianie
+        <label class="check small" title="${t('Panel na pełną wysokość za blendą boczną, przylegający do ściany')}">
+          <input type="checkbox" data-f="sideBlends.${side}.wallPanel" /> ${t('+ panel przy ścianie')}
         </label>
-        ${panelDepthField(side, 'wallPanelDepth', 'wall-panel-depth', 'Panel jest widoczny głównie z przodu — można go skrócić od tyłu (oszczędność materiału)')}
-        <label class="field small allowance-field" title="Blenda boczna dłuższa o zapas w stronę ściany — do docięcia na miejscu. Blenda dolna wydłuża się razem z nią. Zapas nie powoduje kolizji.">
-          <span>Zapas na docięcie <small>mm</small></span>
+        ${panelDepthField(side, 'wallPanelDepth', 'wall-panel-depth', t('Panel jest widoczny głównie z przodu — można go skrócić od tyłu (oszczędność materiału)'))}
+        <label class="field small allowance-field" title="${t('Blenda boczna dłuższa o zapas w stronę ściany — do docięcia na miejscu. Blenda dolna wydłuża się razem z nią. Zapas nie powoduje kolizji.')}">
+          <span>${t('Zapas na docięcie')} <small>mm</small></span>
           <input type="number" step="1" min="0" max="500" data-f="sideBlends.${side}.allowance" />
         </label>
       </div>
       <div class="grid-2 panel-opts">
-        <label class="check small" title="Wysunięcie o grubość blendy górnej (albo frontu), żeby licowało z frontem">
-          <input type="checkbox" data-f="sideBlends.${side}.flushFront" /> wysuń do linii frontu
+        <label class="check small" title="${t('Wysunięcie o grubość blendy górnej (albo frontu), żeby licowało z frontem')}">
+          <input type="checkbox" data-f="sideBlends.${side}.flushFront" /> ${t('wysuń do linii frontu')}
         </label>
-        <label class="check small to-ceiling" title="Blenda i panele górą do sufitu albo skosu (docięte pod kąt skosu, z luzem do skosu). Działa, gdy korpus sam sięga sufitu lub skosu; odznaczone — wysokość korpusu.">
-          <input type="checkbox" data-f="sideBlends.${side}.toCeiling" /> do sufitu / skosu
+        <label class="check small to-ceiling" title="${t('Blenda i panele górą do sufitu albo skosu (docięte pod kąt skosu, z luzem do skosu). Działa, gdy korpus sam sięga sufitu lub skosu; odznaczone — wysokość korpusu.')}">
+          <input type="checkbox" data-f="sideBlends.${side}.toCeiling" /> ${t('do sufitu / skosu')}
         </label>
         <label class="field small">
-          <span>Wysunięcie <small>mm</small></span>
+          <span>${t('Wysunięcie')} <small>mm</small></span>
           <input type="number" step="1" min="0" max="500" data-f="sideBlends.${side}.extend" />
         </label>
-        ${panelDepthField(side, 'fullPanelDepth', 'full-panel-depth', 'Panel można skrócić od tyłu, jeśli jego tylna część jest niewidoczna')}
+        ${panelDepthField(side, 'fullPanelDepth', 'full-panel-depth', t('Panel można skrócić od tyłu, jeśli jego tylna część jest niewidoczna'))}
       </div>
     </div>`;
 }
@@ -95,7 +96,7 @@ export function renderSideBlendCard(cabinet, project) {
         <span class="side-blends-name">${escapeHtml(cabinet.name)}</span>
         <span class="side-blends-sum"></span>
       </div>
-      <div class="side-blend-material" title="Materiał blend bocznych, paneli bocznych i cokołów bocznych tego korpusu (ten sam co „Materiał blend” w karcie korpusu)">${materialSelect('Materiał blend', 'blendMaterialId', project)}${colorPicker('Kolor blend', 'colors.blend')}</div>
+      <div class="side-blend-material" title="${t('Materiał blend bocznych, paneli bocznych i cokołów bocznych tego korpusu (ten sam co „Materiał blend” w karcie korpusu)')}">${materialSelect(t('Materiał blend'), 'blendMaterialId', project)}${colorPicker(t('Kolor blend'), 'colors.blend')}</div>
       <div class="side-blend-pair">${sideFields('left')}${sideFields('right')}</div>
     </div>`;
 }
@@ -103,7 +104,7 @@ export function renderSideBlendCard(cabinet, project) {
 export function updateSideBlendCard(el, cabinet, project) {
   el.querySelector('.side-blends-name').textContent = cabinet.name;
   syncColorPicker(el, 'colors.blend', cabinet.colors?.blend, cabinetMaterials(cabinet, project).blend.color);
-  el.querySelector('.side-blends-sum').textContent = sideBlendSummary(cabinet) || 'brak';
+  el.querySelector('.side-blends-sum').textContent = sideBlendSummary(cabinet) || t('brak');
   el.querySelectorAll('[data-f]').forEach((input) => {
     const value = getPath(cabinet, input.dataset.f);
     if (input.type === 'checkbox') input.checked = !!value;
@@ -129,8 +130,8 @@ export function updateSideBlendCard(el, cabinet, project) {
     toCeiling.querySelector('input').disabled = !reachesTop;
     toCeiling.classList.toggle('inactive', !reachesTop);
     toCeiling.title = reachesTop
-      ? 'Blenda i panele górą do sufitu albo skosu (docięte pod kąt skosu, z luzem do skosu); odznaczone — wysokość korpusu.'
-      : 'Korpus nie sięga sufitu ani skosu — blenda ma wysokość korpusu.';
+      ? t('Blenda i panele górą do sufitu albo skosu (docięte pod kąt skosu, z luzem do skosu); odznaczone — wysokość korpusu.')
+      : t('Korpus nie sięga sufitu ani skosu — blenda ma wysokość korpusu.');
     const extend = box.querySelector(`[data-f="sideBlends.${side}.extend"]`);
     extend.disabled = !!sb?.flushFront;
     if (canExtend && sb.flushFront) extend.value = sidePanelExtension(cabinet, side, project); // wartość wyliczona
@@ -143,7 +144,7 @@ export function updateSideBlendCard(el, cabinet, project) {
 
     const eye = box.querySelector('[data-toggle-side-hidden]');
     eye.hidden = !sb || sb.type === 'none';
-    setEye(eye, sb?.hidden, 'blendę');
+    setEye(eye, sb?.hidden, t('blendę'));
     box.classList.toggle('is-hidden', !!sb?.hidden);
   }
 }

@@ -15,6 +15,10 @@ import { json, randomId, sha256, getCookie, cookie, isLocal, sameOrigin, readJso
 
 const SESSION_COOKIE = 'ms_session';
 const STATE_COOKIE = 'ms_oauth_state';
+// Wersja językowa, do której wracamy po logowaniu: /api/auth/google?lang=en → /en/ (tylko te dwie strony — bez
+// dowolnych adresów powrotu, żeby nie dało się przekierować nigdzie indziej).
+const HOME_COOKIE = 'ms_oauth_home';
+const homeOf = (request) => (getCookie(request, HOME_COOKIE) === 'en' ? '/en/' : '/');
 const SESSION_DAYS = 30;
 
 const redirectUri = (request) => `${new URL(request.url).origin}/api/auth/callback`;
@@ -102,12 +106,17 @@ async function googleStart(request, env) {
     state,
     prompt: 'select_account',
   });
-  return redirect(url.toString(), [cookie(STATE_COOKIE, state, { maxAge: 600, secure: !isLocal(request) })]);
+  const lang = url0.searchParams.get('lang') === 'en' ? 'en' : 'pl';
+  return redirect(url.toString(), [
+    cookie(STATE_COOKIE, state, { maxAge: 600, secure: !isLocal(request) }),
+    cookie(HOME_COOKIE, lang, { maxAge: 600, secure: !isLocal(request) }),
+  ]);
 }
 
 async function googleCallback(request, env) {
   const url = new URL(request.url);
-  const fail = (why) => redirect(`/?logowanie=blad&powod=${encodeURIComponent(why)}`, [cookie(STATE_COOKIE, '', { maxAge: 0, secure: !isLocal(request) })]);
+  const home = homeOf(request);
+  const fail = (why) => redirect(`${home}?logowanie=blad&powod=${encodeURIComponent(why)}`, [cookie(STATE_COOKIE, '', { maxAge: 0, secure: !isLocal(request) })]);
   if (url.searchParams.get('error')) return fail('anulowano');
   const state = url.searchParams.get('state');
   if (!state || state !== getCookie(request, STATE_COOKIE)) return fail('stan');
@@ -136,14 +145,15 @@ async function googleCallback(request, env) {
     return fail('token');
   }
   const userId = await upsertUser(env, { sub: p.sub, email: p.email, name: p.name ?? p.given_name ?? '', picture: p.picture ?? '' });
-  return redirect('/?logowanie=ok', [await startSession(request, env, userId), cookie(STATE_COOKIE, '', { maxAge: 0, secure: !isLocal(request) })]);
+  return redirect(`${home}?logowanie=ok`, [await startSession(request, env, userId), cookie(STATE_COOKIE, '', { maxAge: 0, secure: !isLocal(request) })]);
 }
 
 // Logowanie testowe (lokalnie, bez Google) — do sprawdzania programu na localhoście.
 async function devLogin(request, env) {
   if (env.DEV_LOGIN !== '1' || !isLocal(request)) return json(404, { error: 'Nie ma takiego adresu.' });
   const userId = await upsertUser(env, { sub: 'dev-user', email: 'test@localhost', name: 'Użytkownik testowy' });
-  return redirect('/?logowanie=ok', [await startSession(request, env, userId)]);
+  const home = new URL(request.url).searchParams.get('lang') === 'en' ? '/en/' : '/';
+  return redirect(`${home}?logowanie=ok`, [await startSession(request, env, userId)]);
 }
 
 async function logout(request, env) {

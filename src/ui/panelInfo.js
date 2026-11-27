@@ -1,5 +1,6 @@
 import { cabinetPanels, panelCutSize, describeCuts, describeMilling, describeHandle, describeHinges } from '../model/furniture.js';
 import { panelEdgeSet, isManualEdgeSet, edgeKeys, edgeCounts, EDGE_LABELS } from '../model/edges.js';
+import { t } from '../i18n.js';
 
 // Menu „wymiary i obrzeże” jednej płyty korpusu (bok, wieniec, półka, front, blenda boczna…) — w widoku 3D
 // po prawym kliknięciu: wymiary gotowe i do cięcia, materiał, które krawędzie są oklejone (z długością
@@ -21,19 +22,19 @@ export function panelInfoMenu(store, cabinetId, panelKey) {
   const panel = cabinet && cabinetPanels(cabinet, project).find((p) => p.key === panelKey);
   if (!panel) return null;
   const title = `${cabinet.name} · ${panel.name}`;
-  if (!panel.valid) return { title, items: [{ info: true, icon: '⚠', label: 'Błędne wymiary płyty — popraw je w karcie korpusu.' }] };
+  if (!panel.valid) return { title, items: [{ info: true, icon: '⚠', label: t('Błędne wymiary płyty — popraw je w karcie korpusu.') }] };
 
   const edgeSet = panelEdgeSet(panel, cabinet, project);
   const s = panelCutSize({ ...panel, edges: edgeCounts(panel, panel.thicknessAxis, edgeSet) });
   const manual = isManualEdgeSet(panel, cabinet);
   const items = [
-    { info: true, icon: '▭', label: `Materiał: ${panel.material.name}` },
-    { info: true, icon: '📐', label: `Wymiar gotowy: ${r(s.length)} × ${r(s.width)} × ${r(s.thickness)} mm` },
+    { info: true, icon: '▭', label: t('Materiał: {name}', { name: panel.material.name }) },
+    { info: true, icon: '📐', label: t('Wymiar gotowy: {size} mm', { size: `${r(s.length)} × ${r(s.width)} × ${r(s.thickness)}` }) },
   ];
   if (s.band && (s.edges.l || s.edges.w)) {
-    items.push({ info: true, icon: '✂', label: `Do cięcia: ${r(s.cutLength)} × ${r(s.cutWidth)} mm (bez obrzeża)` });
+    items.push({ info: true, icon: '✂', label: t('Do cięcia: {size} mm (bez obrzeża)', { size: `${r(s.cutLength)} × ${r(s.cutWidth)}` }) });
   }
-  if (s.allowance) items.push({ info: true, icon: '⚠', label: `Zapas na docięcie +${r(s.allowance)} mm (wliczony)` });
+  if (s.allowance) items.push({ info: true, icon: '⚠', label: t('Zapas na docięcie +{mm} mm (wliczony)', { mm: r(s.allowance) }) });
   const work = [describeCuts(s), describeMilling(panel), describeHandle(panel), describeHinges(panel)].filter(Boolean).join('; ');
   if (work) items.push({ info: true, icon: '⚙', label: work });
 
@@ -43,8 +44,8 @@ export function panelInfoMenu(store, cabinetId, panelKey) {
       icon: '▤',
       label:
         panel.material.type === 'mdf' || panel.material.type === 'hdf'
-          ? 'Obrzeże: brak — tego materiału się nie okleja.'
-          : 'Obrzeże: brak — materiał ma grubość obrzeża 0 (można ją ustawić w zakładce „Materiały”).',
+          ? t('Obrzeże: brak — tego materiału się nie okleja.')
+          : t('Obrzeże: brak — materiał ma grubość obrzeża 0 (można ją ustawić w zakładce „Materiały”).'),
     });
     return { title, items };
   }
@@ -52,9 +53,9 @@ export function panelInfoMenu(store, cabinetId, panelKey) {
     info: true,
     icon: '▤',
     label:
-      `Obrzeże ${r(s.band)} mm (${manual ? 'wybrane ręcznie' : 'automatycznie — widoczne krawędzie'}): ` +
-      (edgeSet.length ? edgeSet.map((k) => EDGE_LABELS[k]).join(', ') : 'brak') +
-      (edgeSet.length ? ` · na długości ${s.edges.l}, na szerokości ${s.edges.w}` : ''),
+      t('Obrzeże {mm} mm ({how}): ', { mm: r(s.band), how: manual ? t('wybrane ręcznie') : t('automatycznie — widoczne krawędzie') }) +
+      (edgeSet.length ? edgeSet.map((k) => EDGE_LABELS[k]).join(', ') : t('brak')) +
+      (edgeSet.length ? t(' · na długości {l}, na szerokości {w}', { l: s.edges.l, w: s.edges.w }) : ''),
   });
 
   // Przełączniki krawędzi — menu zostaje otwarte, z odświeżonymi wymiarami.
@@ -86,7 +87,7 @@ export function panelInfoMenu(store, cabinetId, panelKey) {
   if (manual) {
     items.push({
       icon: '↺',
-      label: 'Obrzeże automatycznie (widoczne krawędzie)',
+      label: t('Obrzeże automatycznie (widoczne krawędzie)'),
       run: () => {
         setEdges(({ edgeSet: _removed, ...o }) => o);
         return reopen();

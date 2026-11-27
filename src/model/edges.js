@@ -1,5 +1,6 @@
 import { cabinetPanels } from './furniture.js';
 import { trimSegments } from './trims.js';
+import { t } from '../i18n.js';
 
 // Obrzeże (taśma na krawędziach płyty) — które krawędzie są oklejone.
 //
@@ -14,7 +15,7 @@ import { trimSegments } from './trims.js';
 const DIM = { x: 'width', y: 'height', z: 'depth' };
 const FACE_AXES = { x: ['y', 'z'], y: ['x', 'z'], z: ['x', 'y'] };
 
-export const EDGE_LABELS = { xMin: 'lewa', xMax: 'prawa', yMin: 'dół', yMax: 'góra', zMin: 'tył', zMax: 'przód' };
+export const EDGE_LABELS = { xMin: t('lewa'), xMax: t('prawa'), yMin: t('dół'), yMax: t('góra'), zMin: t('tył'), zMax: t('przód') };
 export const TRIM_THICKNESS_AXIS = { plinth: 'z', topBlend: 'z', countertop: 'y' };
 
 // Krawędzie płyty o danej osi grubości, w kolejności do wyświetlania (przód/góra najpierw).

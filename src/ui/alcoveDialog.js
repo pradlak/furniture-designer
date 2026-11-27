@@ -1,4 +1,5 @@
 import { escapeHtml } from './dom.js';
+import { t } from '../i18n.js';
 
 // Okienko „Do której wnęki dodać korpus?” — gdy występ ściany (np. kominek) dzieli przestrzeń na kilka wnęk.
 // Każda wnęka to przycisk z małym rzutem z góry (wnęka wyróżniona) i opisem zajętości.
@@ -9,10 +10,10 @@ export function createAlcoveDialog() {
   overlay.hidden = true;
   overlay.innerHTML = `
     <div class="welcome alcove-dialog" role="dialog" aria-modal="true" aria-labelledby="alcove-dialog-title">
-      <h2 id="alcove-dialog-title">Do której wnęki dodać korpus?</h2>
+      <div class="ui-h2" role="heading" aria-level="2" id="alcove-dialog-title">${t('Do której wnęki dodać korpus?')}</div>
       <div class="alcove-options"></div>
       <div class="welcome-actions">
-        <button type="button" data-alcove="cancel">Anuluj</button>
+        <button type="button" data-alcove="cancel">${t('Anuluj')}</button>
       </div>
     </div>`;
   document.body.appendChild(overlay);
@@ -34,10 +35,16 @@ export function createAlcoveDialog() {
     if (e.key === 'Escape' && !overlay.hidden) finish(null);
   });
 
-  const NAMES = { 2: ['Lewa wnęka', 'Prawa wnęka'], 3: ['Lewa wnęka', 'Środkowa wnęka', 'Prawa wnęka'] };
-  const nameOf = (i, n) => NAMES[n]?.[i] ?? `Wnęka ${i + 1}`;
+  const NAMES = { 2: [t('Lewa wnęka'), t('Prawa wnęka')], 3: [t('Lewa wnęka'), t('Środkowa wnęka'), t('Prawa wnęka')] };
+  const nameOf = (i, n) => NAMES[n]?.[i] ?? t('Wnęka {n}', { n: i + 1 });
   const status = ({ count, free }) =>
-    !count ? 'pusta' : free >= 200 ? `${count === 1 ? '1 korpus' : `${count} korpusy`}, wolne ${free} mm` : 'pełna — korpusy zwężą się, żeby zrobić miejsce';
+    !count
+      ? t('pusta')
+      : free >= 200
+        ? count === 1
+          ? t('1 korpus, wolne {free} mm', { free })
+          : t('{count} korpusy, wolne {free} mm', { count, free })
+        : t('pełna — korpusy zwężą się, żeby zrobić miejsce');
 
   // Rzut z góry: cała szerokość, występy ścian (szare), wybrana wnęka (zielona).
   function sketch(space, alcoves, index) {

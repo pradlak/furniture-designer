@@ -8,21 +8,22 @@
 
 import { distanceOutside, normalizeOutline, outlineFromCuts, cutCorner } from './outline.js';
 import { normalizeWallFinish } from './wallFinish.js';
+import { t } from '../i18n.js';
 
 export const WALLS = [
-  { key: 'floor', label: 'Podłoga' },
-  { key: 'back', label: 'Ściana tylna' },
-  { key: 'left', label: 'Ściana lewa' },
-  { key: 'right', label: 'Ściana prawa' },
-  { key: 'ceiling', label: 'Sufit' },
+  { key: 'floor', label: t('Podłoga') },
+  { key: 'back', label: t('Ściana tylna') },
+  { key: 'left', label: t('Ściana lewa') },
+  { key: 'right', label: t('Ściana prawa') },
+  { key: 'ceiling', label: t('Sufit') },
 ];
 
 // Strona, przy której skos schodzi w dół (tam stoi ścianka kolankowa).
 export const SLOPE_SIDES = [
-  { key: 'left', label: 'Przy lewej ścianie' },
-  { key: 'right', label: 'Przy prawej ścianie' },
-  { key: 'back', label: 'Przy tylnej ścianie' },
-  { key: 'front', label: 'Z przodu' },
+  { key: 'left', label: t('Przy lewej ścianie') },
+  { key: 'right', label: t('Przy prawej ścianie') },
+  { key: 'back', label: t('Przy tylnej ścianie') },
+  { key: 'front', label: t('Z przodu') },
 ];
 
 export const DEFAULT_COLORS = { walls: '#f4f3ef', floor: '#d9c9ad' };
@@ -35,7 +36,7 @@ export const LIMITS = {
 
 export function createDefaultSpace() {
   return {
-    name: 'Wnęka',
+    name: t('Wnęka'),
     width: 2000,
     height: 2500,
     depth: 600,
@@ -51,9 +52,9 @@ export function createDefaultSpace() {
 // Rodzaje przeszkód: zwykła (listwa, rura…) albo występ ściany (kominek, filar, wnęka w ścianie) — rysowany
 // jak ściana i dzielący przestrzeń na osobne wnęki (patrz wallSegments): np. kominek z zabudową po obu stronach.
 export const OBSTACLE_KINDS = [
-  { key: 'obstacle', label: 'Przeszkoda' },
-  { key: 'wall', label: 'Występ ściany' },
-  { key: 'hood', label: 'Wypust od sufitu (okap)' },
+  { key: 'obstacle', label: t('Przeszkoda') },
+  { key: 'wall', label: t('Występ ściany') },
+  { key: 'hood', label: t('Wypust od sufitu (okap)') },
 ];
 export const isWallObstacle = (o) => o?.kind === 'wall';
 // Wypust od sufitu (okap, obudowa okapu, podciąg): przyczepiony do sufitu, opuszczony do wysokości przestrzeń − height.
@@ -70,18 +71,18 @@ export function anchorHoods(space) {
 // Wygląd występu ściany (tylko widok 3D — nie wpływa na formatki, kolizje ani obrzeże): na przedniej ścianie
 // występu rysujemy kominek, wkład kominkowy albo telewizor (scene/wallDecor.js).
 export const WALL_DECORS = [
-  { key: null, label: 'Sama ściana' },
-  { key: 'fireplace', label: 'Kominek klasyczny' },
-  { key: 'insert', label: 'Kominek nowoczesny (wkład z szybą)' },
-  { key: 'tv', label: 'Telewizor' },
+  { key: null, label: t('Sama ściana') },
+  { key: 'fireplace', label: t('Kominek klasyczny') },
+  { key: 'insert', label: t('Kominek nowoczesny (wkład z szybą)') },
+  { key: 'tv', label: t('Telewizor') },
 ];
 // Wygląd okapu (wypustu od sufitu): urządzenie pod zabudową — tylko wygląd w 3D (scene/wallDecor.js).
 export const HOOD_DECORS = [
-  { key: null, label: 'Sama zabudowa (bez okapu)' },
-  { key: 'hoodChimney', label: 'Okap kominowy (stal)' },
-  { key: 'hoodBox', label: 'Okap prostokątny (box)' },
-  { key: 'hoodGlass', label: 'Okap szklany skośny' },
-  { key: 'hoodBuiltIn', label: 'Okap do zabudowy (w pełni schowany — widać tylko od spodu)' },
+  { key: null, label: t('Sama zabudowa (bez okapu)') },
+  { key: 'hoodChimney', label: t('Okap kominowy (stal)') },
+  { key: 'hoodBox', label: t('Okap prostokątny (box)') },
+  { key: 'hoodGlass', label: t('Okap szklany skośny') },
+  { key: 'hoodBuiltIn', label: t('Okap do zabudowy (w pełni schowany — widać tylko od spodu)') },
 ];
 // lista wyglądów dla rodzaju przeszkody (występ ściany — kominek / telewizor, okap — urządzenie)
 export const decorsFor = (o) => (o?.kind === 'hood' ? HOOD_DECORS : o?.kind === 'wall' ? WALL_DECORS : []);
@@ -91,7 +92,7 @@ export function createObstacle(overrides = {}) {
     id: newId(),
     kind: 'obstacle',
     decor: null, // tylko występ ściany — patrz WALL_DECORS
-    name: 'Przeszkoda',
+    name: t('Przeszkoda'),
     x: 0,
     y: 0,
     z: 0,
@@ -106,31 +107,31 @@ export function createObstacle(overrides = {}) {
 export const OBSTACLE_PRESETS = [
   {
     key: 'generic',
-    label: 'Przeszkoda',
+    label: t('Przeszkoda'),
     create: () => createObstacle(),
   },
   {
     key: 'skirting',
-    label: 'Listwa przypodłogowa',
+    label: t('Listwa przypodłogowa'),
     create: (space) =>
-      createObstacle({ name: 'Listwa przypodłogowa', x: 0, y: 0, z: 0, width: space.width, height: 80, depth: 15 }),
+      createObstacle({ name: t('Listwa przypodłogowa'), x: 0, y: 0, z: 0, width: space.width, height: 80, depth: 15 }),
   },
   {
     key: 'pipe',
-    label: 'Rura pionowa',
+    label: t('Rura pionowa'),
     create: (space) =>
-      createObstacle({ name: 'Rura', x: 50, y: 0, z: 0, width: 40, height: space.height, depth: 40 }),
+      createObstacle({ name: t('Rura'), x: 50, y: 0, z: 0, width: 40, height: space.height, depth: 40 }),
   },
   {
     // okap (obudowa komina okapu) — od sufitu w dół, na środku tylnej ściany; po bokach półki / szafki wiszące
     key: 'hood',
-    label: 'Okap / wypust od sufitu',
+    label: t('Okap / wypust od sufitu'),
     create: (space) => {
       const width = Math.min(600, Math.round(space.width / 3));
       const height = Math.min(800, Math.round(space.height / 3));
       return createObstacle({
         kind: 'hood',
-        name: 'Okap',
+        name: t('Okap'),
         x: Math.round((space.width - width) / 2),
         y: space.height - height,
         z: 0,
@@ -143,13 +144,13 @@ export const OBSTACLE_PRESETS = [
   {
     // na środku tylnej ściany, od podłogi do sufitu, wystaje na całą głębokość — po bokach dwie wnęki
     key: 'chimney',
-    label: 'Kominek / występ ściany',
+    label: t('Kominek / występ ściany'),
     create: (space) => {
       const width = Math.min(1000, Math.round(space.width / 3));
       return createObstacle({
         kind: 'wall',
         decor: 'fireplace',
-        name: 'Kominek',
+        name: t('Kominek'),
         x: Math.round((space.width - width) / 2),
         y: 0,
         z: 0,
@@ -250,50 +251,50 @@ export function slopePlanes(space) {
 export const OUTLINE_PRESETS = [
   {
     key: 'leftFront',
-    label: 'Skośna lewa ściana',
-    title: 'Lewa ściana skośna — wnęka węższa z przodu',
+    label: t('Skośna lewa ściana'),
+    title: t('Lewa ściana skośna — wnęka węższa z przodu'),
     cut: (s) => ['frontLeft', roundTo(Math.min(300, s.width / 4), 10), s.depth],
   },
   {
     key: 'rightFront',
-    label: 'Skośna prawa ściana',
-    title: 'Prawa ściana skośna — wnęka węższa z przodu',
+    label: t('Skośna prawa ściana'),
+    title: t('Prawa ściana skośna — wnęka węższa z przodu'),
     cut: (s) => ['frontRight', roundTo(Math.min(300, s.width / 4), 10), s.depth],
   },
   {
     key: 'leftBack',
-    label: 'Lewa ściana — węziej z tyłu',
-    title: 'Lewa ściana skośna — wnęka węższa z tyłu',
+    label: t('Lewa ściana — węziej z tyłu'),
+    title: t('Lewa ściana skośna — wnęka węższa z tyłu'),
     cut: (s) => ['backLeft', roundTo(Math.min(300, s.width / 4), 10), s.depth],
   },
   {
     key: 'rightBack',
-    label: 'Prawa ściana — węziej z tyłu',
-    title: 'Prawa ściana skośna — wnęka węższa z tyłu',
+    label: t('Prawa ściana — węziej z tyłu'),
+    title: t('Prawa ściana skośna — wnęka węższa z tyłu'),
     cut: (s) => ['backRight', roundTo(Math.min(300, s.width / 4), 10), s.depth],
   },
   {
     key: 'backLeft',
-    label: 'Skośna tylna ściana',
-    title: 'Tylna ściana skośna — płycej z lewej',
+    label: t('Skośna tylna ściana'),
+    title: t('Tylna ściana skośna — płycej z lewej'),
     cut: (s) => ['backLeft', s.width, roundTo(Math.min(200, s.depth / 3), 10)],
   },
   {
     key: 'backRight',
-    label: 'Tylna — płycej z prawej',
-    title: 'Tylna ściana skośna — płycej z prawej',
+    label: t('Tylna — płycej z prawej'),
+    title: t('Tylna ściana skośna — płycej z prawej'),
     cut: (s) => ['backRight', s.width, roundTo(Math.min(200, s.depth / 3), 10)],
   },
   {
     key: 'chamferLeft',
-    label: 'Ścięty narożnik lewy',
-    title: 'Ścięty narożnik — lewy tylny',
+    label: t('Ścięty narożnik lewy'),
+    title: t('Ścięty narożnik — lewy tylny'),
     cut: (s) => ['backLeft', roundTo(Math.min(400, s.width / 4, s.depth / 2), 10), roundTo(Math.min(400, s.width / 4, s.depth / 2), 10)],
   },
   {
     key: 'chamferRight',
-    label: 'Ścięty narożnik prawy',
-    title: 'Ścięty narożnik — prawy tylny',
+    label: t('Ścięty narożnik prawy'),
+    title: t('Ścięty narożnik — prawy tylny'),
     cut: (s) => ['backRight', roundTo(Math.min(400, s.width / 4, s.depth / 2), 10), roundTo(Math.min(400, s.width / 4, s.depth / 2), 10)],
   },
 ];
@@ -314,7 +315,6 @@ export function isPointInside([x, y, z], space, eps = 0.01) {
 // Opis, którędy i o ile punkty (narożniki elementu, [x, y, z] w mm) wychodzą poza przestrzeń, np.
 // „Wychodzi poza przestrzeń: ponad sufit o 18 mm.” — albo null, gdy wszystkie są w środku.
 // openFront — przód przestrzeni to pokój (nie ma tam ściany): wystawanie do przodu (np. blat) nie jest błędem.
-const SLOPE_NAMES = { left: 'lewy', right: 'prawy', back: 'tylny', front: 'przedni' };
 export function describeOutside(points, space, { openFront = false } = {}) {
   const over = { left: 0, right: 0, floor: 0, ceiling: 0, back: 0, front: 0 };
   const slopes = {};
@@ -341,18 +341,20 @@ export function describeOutside(points, space, { openFront = false } = {}) {
   }
   const mm = (v) => `${Math.round(v)} mm`;
   const labels = {
-    left: (v) => `za lewą ścianę o ${mm(v)}`,
-    right: (v) => `za prawą ścianę o ${mm(v)}`,
-    floor: (v) => `pod podłogę o ${mm(v)}`,
-    ceiling: (v) => `ponad sufit o ${mm(v)} (wysokość przestrzeni ${space.height} mm)`,
-    back: (v) => `za tylną ścianę o ${mm(v)}`,
-    front: (v) => `do przodu poza przestrzeń o ${mm(v)} (głębokość przestrzeni ${space.depth} mm)`,
+    left: (v) => t('za lewą ścianę o {mm}', { mm: mm(v) }),
+    right: (v) => t('za prawą ścianę o {mm}', { mm: mm(v) }),
+    floor: (v) => t('pod podłogę o {mm}', { mm: mm(v) }),
+    ceiling: (v) => t('ponad sufit o {mm} (wysokość przestrzeni {h} mm)', { mm: mm(v), h: space.height }),
+    back: (v) => t('za tylną ścianę o {mm}', { mm: mm(v) }),
+    front: (v) => t('do przodu poza przestrzeń o {mm} (głębokość przestrzeni {d} mm)', { mm: mm(v), d: space.depth }),
   };
   const parts = Object.entries(over).filter(([, v]) => v > 0.5).map(([k, v]) => labels[k](v));
-  for (const [side, v] of Object.entries(slopes)) if (v > 0.5) parts.push(`nad ${SLOPE_NAMES[side] ?? ''} skos o ${mm(v)}`);
-  if (outlineOver > 0.5) parts.push(`za ścianę (kształt pomieszczenia) o ${mm(outlineOver)}`);
+  for (const [side, v] of Object.entries(slopes)) {
+    if (v > 0.5) parts.push(side === 'left' ? t('nad lewy skos o {mm}', { mm: mm(v) }) : side === 'right' ? t('nad prawy skos o {mm}', { mm: mm(v) }) : side === 'back' ? t('nad tylny skos o {mm}', { mm: mm(v) }) : side === 'front' ? t('nad przedni skos o {mm}', { mm: mm(v) }) : t('nad  skos o {mm}', { mm: mm(v) }));
+  }
+  if (outlineOver > 0.5) parts.push(t('za ścianę (kształt pomieszczenia) o {mm}', { mm: mm(outlineOver) }));
   if (!parts.length) return null; // (przekroczenia do 0,5 mm pomijamy)
-  return `Wychodzi poza przestrzeń: ${parts.join(', ')}.`;
+  return t('Wychodzi poza przestrzeń: {list}.', { list: parts.join(', ') });
 }
 
 export function isObstacleOutside(o, space) {

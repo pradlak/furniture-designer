@@ -1,5 +1,6 @@
 import { createDefaultProject } from './project.js';
 import { createSlope, createObstacle, LIMITS } from './space.js';
+import { t } from '../i18n.js';
 
 // Szablony przestrzeni dla nowego projektu. Każdy ma pola do uzupełnienia (z wartościami domyślnymi)
 // i buduje z nich przestrzeń. Wymiary w mm.
@@ -8,41 +9,41 @@ import { createSlope, createObstacle, LIMITS } from './space.js';
 //  alcoves — ściana z kominkiem (występem ściany) i dwie wnęki po bokach.
 
 const dims = (w, h, d) => [
-  { key: 'width', label: 'Szerokość', unit: 'mm', value: w, min: LIMITS.spaceMin, max: LIMITS.spaceMax },
-  { key: 'height', label: 'Wysokość', unit: 'mm', value: h, min: LIMITS.spaceMin, max: LIMITS.spaceMax },
-  { key: 'depth', label: 'Głębokość', unit: 'mm', value: d, min: LIMITS.spaceMin, max: LIMITS.spaceMax },
+  { key: 'width', label: t('Szerokość'), unit: 'mm', value: w, min: LIMITS.spaceMin, max: LIMITS.spaceMax },
+  { key: 'height', label: t('Wysokość'), unit: 'mm', value: h, min: LIMITS.spaceMin, max: LIMITS.spaceMax },
+  { key: 'depth', label: t('Głębokość'), unit: 'mm', value: d, min: LIMITS.spaceMin, max: LIMITS.spaceMax },
 ];
 
 export const SPACE_TEMPLATES = [
   {
     key: 'niche',
-    label: 'Wnęka prostokątna',
-    description: 'Wnęka albo pomieszczenie bez skosów — np. szafa między ścianami.',
-    name: 'Wnęka',
+    label: t('Wnęka prostokątna'),
+    description: t('Wnęka albo pomieszczenie bez skosów — np. szafa między ścianami.'),
+    name: t('Wnęka'),
     fields: dims(2000, 2500, 600),
   },
   {
     key: 'attic',
-    label: 'Poddasze ze skosem',
-    description: 'Zabudowa pod skosem: z tyłu ścianka kolankowa, nad nią skos opadający w stronę tylnej ściany. Korpusy dostaną skośną górę.',
-    name: 'Poddasze',
+    label: t('Poddasze ze skosem'),
+    description: t('Zabudowa pod skosem: z tyłu ścianka kolankowa, nad nią skos opadający w stronę tylnej ściany. Korpusy dostaną skośną górę.'),
+    name: t('Poddasze'),
     fields: [
       ...dims(3000, 2500, 1200),
-      { key: 'kneeHeight', label: 'Ścianka kolankowa', unit: 'mm', value: 1000, min: 0, max: LIMITS.spaceMax },
-      { key: 'angle', label: 'Kąt skosu', unit: '°', value: 45, min: 1, max: 89, step: 0.5 },
+      { key: 'kneeHeight', label: t('Ścianka kolankowa'), unit: 'mm', value: 1000, min: 0, max: LIMITS.spaceMax },
+      { key: 'angle', label: t('Kąt skosu'), unit: '°', value: 45, min: 1, max: 89, step: 0.5 },
     ],
   },
   {
     key: 'alcoves',
-    label: 'Wnęki przy kominku',
-    description: 'Ściana z kominkiem (albo filarem) pośrodku i dwie wnęki po bokach — np. zabudowa po obu stronach kominka.',
-    name: 'Wnęki przy kominku',
+    label: t('Wnęki przy kominku'),
+    description: t('Ściana z kominkiem (albo filarem) pośrodku i dwie wnęki po bokach — np. zabudowa po obu stronach kominka.'),
+    name: t('Wnęki przy kominku'),
     fields: [
-      { ...dims(3200, 2500, 400)[0], label: 'Szerokość całej ściany' },
+      { ...dims(3200, 2500, 400)[0], label: t('Szerokość całej ściany') },
       dims(3200, 2500, 400)[1],
-      { ...dims(3200, 2500, 400)[2], label: 'Głębokość wnęk' },
-      { key: 'chimneyWidth', label: 'Szerokość kominka', unit: 'mm', value: 1200, min: 1, max: LIMITS.spaceMax },
-      { key: 'chimneyLeft', label: 'Lewa wnęka (od ściany do kominka)', unit: 'mm', value: 1000, min: 0, max: LIMITS.spaceMax },
+      { ...dims(3200, 2500, 400)[2], label: t('Głębokość wnęk') },
+      { key: 'chimneyWidth', label: t('Szerokość kominka'), unit: 'mm', value: 1200, min: 1, max: LIMITS.spaceMax },
+      { key: 'chimneyLeft', label: t('Lewa wnęka (od ściany do kominka)'), unit: 'mm', value: 1000, min: 0, max: LIMITS.spaceMax },
     ],
   },
 ];
@@ -52,13 +53,13 @@ export function templateIssues(template, values) {
   const issues = [];
   for (const f of template.fields) {
     const v = values[f.key];
-    if (!Number.isFinite(v) || v < f.min || v > f.max) issues.push(`${f.label}: od ${f.min} do ${f.max} ${f.unit}.`);
+    if (!Number.isFinite(v) || v < f.min || v > f.max) issues.push(t('{label}: od {min} do {max} {unit}.', { label: f.label, min: f.min, max: f.max, unit: f.unit }));
   }
   if (template.key === 'attic' && values.kneeHeight >= values.height) {
-    issues.push('Ścianka kolankowa musi być niższa niż wysokość pomieszczenia.');
+    issues.push(t('Ścianka kolankowa musi być niższa niż wysokość pomieszczenia.'));
   }
   if (template.key === 'alcoves' && values.chimneyLeft + values.chimneyWidth > values.width) {
-    issues.push('Lewa wnęka i kominek razem są szersze niż cała ściana.');
+    issues.push(t('Lewa wnęka i kominek razem są szersze niż cała ściana.'));
   }
   return issues;
 }
@@ -86,7 +87,7 @@ export function createProjectFromTemplate(key, values) {
       createObstacle({
         kind: 'wall',
         decor: 'fireplace',
-        name: 'Kominek',
+        name: t('Kominek'),
         x: values.chimneyLeft,
         y: 0,
         z: 0,

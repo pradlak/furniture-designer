@@ -5,6 +5,8 @@
 // Wtedy każda zmiana zapisuje się na koncie po chwili (debounce). updatedAt — wersja z serwera, od której
 // zaczęto zmiany; gdy na serwerze jest nowsza (zmiana z innego urządzenia), serwer zwraca konflikt.
 
+import { t, isEnglish } from '../i18n.js';
+
 const LINK_KEY = 'furnitureDesigner.cloudLink';
 const AUTOSAVE_MS = 2500;
 
@@ -16,7 +18,7 @@ async function api(path, { method = 'GET', body } = {}) {
     body: body ? JSON.stringify(body) : undefined,
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw Object.assign(new Error(data.error || `Błąd ${res.status}`), { status: res.status, data });
+  if (!res.ok) throw Object.assign(new Error(data.error ? t(data.error) : t('Błąd {status}', { status: res.status })), { status: res.status, data });
   return data;
 }
 
@@ -96,7 +98,7 @@ export function createAccount(store, { onConflict } = {}) {
         onConflict?.(err.data?.updatedAt);
       } else if (err.status === 404) {
         setLink(null); // projekt usunięty na koncie (np. z innego urządzenia)
-        set({ saveStatus: 'idle', saveError: 'Projektu nie ma już na koncie — zapisuje się tylko w przeglądarce.' });
+        set({ saveStatus: 'idle', saveError: t('Projektu nie ma już na koncie — zapisuje się tylko w przeglądarce.') });
       } else {
         set({ saveStatus: 'error', saveError: err.message });
       }
@@ -127,7 +129,7 @@ export function createAccount(store, { onConflict } = {}) {
       return () => listeners.delete(fn);
     },
     refresh,
-    loginUrl: '/api/auth/google',
+    loginUrl: isEnglish() ? '/api/auth/google?lang=en' : '/api/auth/google', // po logowaniu — powrót do tej wersji językowej
     async logout() {
       await api('/api/auth/logout', { method: 'POST' });
       clearTimeout(timer);

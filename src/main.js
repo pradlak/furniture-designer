@@ -1,4 +1,5 @@
 import { scrollIntoPanel } from './ui/dom.js';
+import { t } from './i18n.js';
 import './style.css';
 import { createStore } from './state/store.js';
 import { createDefaultProject, loadProject, saveProject, normalizeProject } from './model/project.js';
@@ -43,6 +44,8 @@ import { createDrawerWindow } from './ui/drawerWindow.js';
 import { createMultiCabinetWindow } from './ui/multiCabinetWindow.js';
 import { createHingeWindow } from './ui/hingeWindow.js';
 import { createDecoration } from './model/decorations.js';
+import { createMaterial } from './model/materials.js';
+import { NEW_MATERIAL } from './ui/widgets.js';
 import { createDecorAddWindow } from './ui/decorAddWindow.js';
 import { initSketchZoom } from './ui/sketchZoom.js';
 
@@ -97,6 +100,43 @@ document.addEventListener('click', (e) => {
   if (open) openPanelWin(ui.get().panelWin === open ? null : open);
   else if (e.target.closest?.('[data-win-close]')) openPanelWin(null);
 });
+// „+ Nowy materiał…” na liście materiałów (widgets.js): nowy materiał — kopia wybranego wcześniej (ten sam rodzaj,
+// grubość, kolor, obrzeże) — od razu wybrany w tej liście (zapisuje go panel, do którego należy lista), a potem
+// okienko „Materiały” z jego kartą, żeby nadać mu nazwę i grubość.
+const materialBeforeNew = new WeakMap();
+document.addEventListener(
+  'focusin',
+  (e) => {
+    const el = e.target;
+    if (el instanceof HTMLSelectElement && el.querySelector(`option[value="${NEW_MATERIAL}"]`)) materialBeforeNew.set(el, el.value);
+  },
+  true,
+);
+// „input” przychodzi przed „change” (panele zapisują wybór przy jednym albo drugim) — podmieniamy wartość
+// na samym początku, w fazie przechwytywania, zanim zobaczy ją którykolwiek panel.
+document.addEventListener(
+  'input',
+  (e) => {
+    const select = e.target;
+    if (!(select instanceof HTMLSelectElement) || select.value !== NEW_MATERIAL) return;
+    const prev = store.get().materials.find((m) => m.id === materialBeforeNew.get(select));
+    const copy = prev ? { type: prev.type, thickness: prev.thickness, color: prev.color, edgeBanding: prev.edgeBanding, edgeColor: prev.edgeColor ?? null } : {};
+    const material = { ...createMaterial(), ...copy, name: t('Nowy materiał') };
+    select.add(new Option(`${material.name} (${material.thickness} mm)`, material.id), select.querySelector(`option[value="${NEW_MATERIAL}"]`));
+    select.value = material.id; // zdarzenie idzie dalej — panel zapisze wybór nowego materiału
+    setTimeout(() => {
+      store.set((p) => ({ ...p, materials: [...p.materials, material] }));
+      openPanelWin('materials');
+      requestAnimationFrame(() => {
+        const card = document.querySelector(`#materials-panel [data-kind="material"][data-id="${material.id}"]`);
+        if (!card) return;
+        scrollIntoPanel(card, { block: 'start', behavior: 'smooth' });
+        card.querySelector('input[data-f="name"]')?.select();
+      });
+    });
+  },
+  true,
+);
 function openSpace(open = true) {
   const st = ui.get();
   ui.set(open ? { ...st, selectedId: null, selectedIds: [], selectedFronts: [], selectedBlends: [], selectedHole: null, selectedObstacle: null, spaceOpen: true, panelWin: null } : { ...st, spaceOpen: false });
@@ -138,7 +178,7 @@ const notesPanel = createNotesPanel(document.getElementById('notes-panel'), stor
     ui.set({ ...ui.get(), selectedId: id, selectedIds: [id], selectedFronts: [], selectedBlends: [], selectedHole: null }, { reveal: true });
   },
   onCountChange: (open) => {
-    if (notesTab) notesTab.textContent = open ? `Notatki (${open})` : 'Notatki';
+    if (notesTab) notesTab.textContent = open ? t('Notatki ({n})', { n: open }) : t('Notatki');
   },
 });
 const examples = createExamplesDialog(store);
@@ -161,23 +201,29 @@ const welcome = createWelcome(store, {
     examples.open();
   },
 });
-// Link prosto do przykładu, np. meblesamemu.pl/?przyklad=szafa — otwiera gotowy projekt (do postów, poradników).
-// Gdy ktoś ma już własny projekt, pytamy, czy go zastąpić. Parametr znika z adresu (odświeżenie nie wczytuje
-// przykładu ponownie).
-const EXAMPLE_LINKS = { kuchnia: 'kitchen', szafa: 'wardrobe', poddasze: 'attic', regal: 'bookcase', 'regał': 'bookcase', komoda: 'chest', blat: 'worktop' };
-const exampleParam = new URLSearchParams(location.search).get('przyklad')?.toLowerCase();
+// Link prosto do przykładu, np. meblesamemu.pl/?przyklad=szafa (po angielsku: /en/?example=wardrobe) — otwiera
+// gotowy projekt (do postów, poradników). Gdy ktoś ma już własny projekt, pytamy, czy go zastąpić. Parametr znika
+// z adresu (odświeżenie nie wczytuje przykładu ponownie).
+const EXAMPLE_LINKS = {
+  kuchnia: 'kitchen', kominek: 'fireplace', szafa: 'wardrobe', poddasze: 'attic', regal: 'bookcase', 'regał': 'bookcase', komoda: 'chest', blat: 'worktop',
+  // angielskie (te same co klucze przykładów)
+  kitchen: 'kitchen', fireplace: 'fireplace', wardrobe: 'wardrobe', attic: 'attic', bookcase: 'bookcase', chest: 'chest', worktop: 'worktop',
+};
+const exampleSearch = new URLSearchParams(location.search);
+const exampleParam = (exampleSearch.get('przyklad') ?? exampleSearch.get('example'))?.toLowerCase();
 const linkedExample = exampleParam && EXAMPLES.find((ex) => ex.key === (EXAMPLE_LINKS[exampleParam] ?? exampleParam));
 // Sam przykład wczytujemy na końcu (pendingExample), gdy panele i widok już nasłuchują zmian projektu.
 let pendingExample = null;
 if (linkedExample) {
   const hasOwnProject = !!savedProject && savedProject.furniture.length > 0;
-  if (!hasOwnProject || confirm(`Otworzyć przykład „${linkedExample.label}”? Twój bieżący projekt zostanie zastąpiony — jeśli chcesz go zachować, kliknij Anuluj i najpierw użyj „Eksportuj”.`)) {
+  if (!hasOwnProject || confirm(t('Otworzyć przykład „{name}”? Twój bieżący projekt zostanie zastąpiony — jeśli chcesz go zachować, kliknij Anuluj i najpierw użyj „Eksportuj”.', { name: linkedExample.label }))) {
     pendingExample = linkedExample;
     welcome.hide();
     templateOffered = true;
   }
   const url = new URL(location.href);
   url.searchParams.delete('przyklad');
+  url.searchParams.delete('example');
   history.replaceState(null, '', url.pathname + url.search + url.hash);
 }
 // Okienko powitalne już kiedyś zamknięte — wybór przestrzeni od razu.
@@ -199,7 +245,7 @@ const toolbar = createToolbar(document.getElementById('toolbar'), store, viewer,
 initAddMenu(document.getElementById('toolbar'), {
   // dekoracje (tylko wygląd): nowa — w sensownym miejscu, od razu zaznaczona (okienko po prawej)
   // dekoracje — osobne okienko po prawej (kategoria, wyszukiwarka, dekoracja, podgląd 3D)
-  extra: [{ title: '', items: [{ label: '🎨 Dekoracje (tylko wygląd)…', run: () => openPanelWin('decor') }] }],
+  extra: [{ title: '', items: [{ label: t('🎨 Dekoracje (tylko wygląd)…'), run: () => openPanelWin('decor') }] }],
 }); // „+ Dodaj ▾” — korpus, półka, blat, blendy, przeszkody, dekoracje
 initWindowsMenu(document.getElementById('toolbar'), store, ui, { openSpace: (open) => openSpace(open) });
 initProblemsMenu(document.getElementById('toolbar'), store, ui); // „Problemy” — wszystkie błędy i ostrzeżenia // „🏠 Przestrzeń”, „🗄️ Korpusy ▾”
@@ -215,11 +261,9 @@ async function loadCloudVersion() {
 const account = createAccount(store, {
   onConflict: () => {
     const takeServer = confirm(
-      'Ten projekt zmieniono na innym urządzeniu.\n\n' +
-        'OK — wczytaj wersję z konta (zmiany zrobione tutaj od ostatniego zapisu przepadną).\n' +
-        'Anuluj — zapisz wersję z tego urządzenia (zastąpi tamtą).',
+      t('Ten projekt zmieniono na innym urządzeniu.\n\nOK — wczytaj wersję z konta (zmiany zrobione tutaj od ostatniego zapisu przepadną).\nAnuluj — zapisz wersję z tego urządzenia (zastąpi tamtą).'),
     );
-    if (takeServer) loadCloudVersion().catch((err) => alert(err.message));
+    if (takeServer) loadCloudVersion().catch((err) => alert(t(err.message)));
     else account.overwrite();
   },
 });
@@ -233,7 +277,7 @@ createUserMenu(document.querySelector('.user-slot'), account, {
     openPanelWin('materials');
     scrollIntoPanel(document.querySelector('#materials-panel .material-library'), { block: 'start', behavior: 'smooth' });
   },
-  onLogout: () => account.logout().catch((err) => alert(err.message)),
+  onLogout: () => account.logout().catch((err) => alert(t(err.message))),
 });
 // Ustawienia (kolor zaznaczenia, jednostki) zapamiętane na koncie: po zalogowaniu wczytujemy je z konta
 // (a gdy konto jeszcze ich nie ma — zapisujemy tam bieżące z przeglądarki); każda zmiana idzie na konto.
@@ -272,14 +316,14 @@ account.refresh().then(async () => {
       document.querySelectorAll('.welcome-overlay').forEach((o) => (o.hidden = true));
       projectsDialog.open();
     }
-    else alert('Nie udało się zalogować. Spróbuj ponownie.');
+    else alert(t('Nie udało się zalogować. Spróbuj ponownie.'));
   }
   // Projekt połączony z kontem: gdy na koncie jest nowsza wersja (zmiana na innym urządzeniu) — proponujemy ją.
   const { user, link } = account.get();
   if (user && link) {
     try {
       const p = await getProject(link.id);
-      if (p.updatedAt > link.updatedAt && confirm(`Na koncie jest nowsza wersja projektu „${p.name}” (zmieniona na innym urządzeniu). Wczytać ją?`)) {
+      if (p.updatedAt > link.updatedAt && confirm(t('Na koncie jest nowsza wersja projektu „{name}” (zmieniona na innym urządzeniu). Wczytać ją?', { name: p.name }))) {
         await loadCloudVersion();
       }
     } catch (err) {

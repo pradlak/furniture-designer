@@ -1,51 +1,207 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
   <url>
     <loc>https://meblesamemu.pl/</loc>
-    <lastmod>2026-11-22</lastmod>
+    <lastmod>2026-11-27</lastmod>
+    <xhtml:link rel="alternate" hreflang="pl" href="https://meblesamemu.pl/" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://meblesamemu.pl/en/" />
+  </url>
+  <url>
+    <loc>https://meblesamemu.pl/en/</loc>
+    <lastmod>2026-11-27</lastmod>
+    <xhtml:link rel="alternate" hreflang="pl" href="https://meblesamemu.pl/" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://meblesamemu.pl/en/" />
   </url>
   <url>
     <loc>https://meblesamemu.pl/o-programie</loc>
-    <lastmod>2026-11-14</lastmod>
+    <lastmod>2026-11-27</lastmod>
+    <xhtml:link rel="alternate" hreflang="pl" href="https://meblesamemu.pl/o-programie" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://meblesamemu.pl/en/about" />
+  </url>
+  <url>
+    <loc>https://meblesamemu.pl/en/about</loc>
+    <lastmod>2026-11-27</lastmod>
+    <xhtml:link rel="alternate" hreflang="pl" href="https://meblesamemu.pl/o-programie" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://meblesamemu.pl/en/about" />
   </url>
   <url>
     <loc>https://meblesamemu.pl/poradniki/</loc>
-    <lastmod>2026-11-14</lastmod>
+    <lastmod>2026-11-27</lastmod>
+    <xhtml:link rel="alternate" hreflang="pl" href="https://meblesamemu.pl/poradniki/" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://meblesamemu.pl/en/guides/" />
+  </url>
+  <url>
+    <loc>https://meblesamemu.pl/en/guides/</loc>
+    <lastmod>2026-11-27</lastmod>
+    <xhtml:link rel="alternate" hreflang="pl" href="https://meblesamemu.pl/poradniki/" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://meblesamemu.pl/en/guides/" />
   </url>
   <url>
     <loc>https://meblesamemu.pl/poradniki/szafa-do-wneki</loc>
-    <lastmod>2026-11-14</lastmod>
+    <lastmod>2026-11-27</lastmod>
+    <xhtml:link rel="alternate" hreflang="pl" href="https://meblesamemu.pl/poradniki/szafa-do-wneki" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://meblesamemu.pl/en/guides/built-in-wardrobe-alcove" />
+  </url>
+  <url>
+    <loc>https://meblesamemu.pl/en/guides/built-in-wardrobe-alcove</loc>
+    <lastmod>2026-11-27</lastmod>
+    <xhtml:link rel="alternate" hreflang="pl" href="https://meblesamemu.pl/poradniki/szafa-do-wneki" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://meblesamemu.pl/en/guides/built-in-wardrobe-alcove" />
   </url>
   <url>
     <loc>https://meblesamemu.pl/poradniki/zabudowa-poddasza-skos</loc>
-    <lastmod>2026-11-14</lastmod>
+    <lastmod>2026-11-27</lastmod>
+    <xhtml:link rel="alternate" hreflang="pl" href="https://meblesamemu.pl/poradniki/zabudowa-poddasza-skos" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://meblesamemu.pl/en/guides/attic-wardrobe-under-slope" />
+  </url>
+  <url>
+    <loc>https://meblesamemu.pl/en/guides/attic-wardrobe-under-slope</loc>
+    <lastmod>2026-11-27</lastmod>
+    <xhtml:link rel="alternate" hreflang="pl" href="https://meblesamemu.pl/poradniki/zabudowa-poddasza-skos" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://meblesamemu.pl/en/guides/attic-wardrobe-under-slope" />
   </url>
   <url>
     <loc>https://meblesamemu.pl/poradniki/formatki-rozkroj-plyt</loc>
-    <lastmod>2026-11-14</lastmod>
+    <lastmod>2026-11-27</lastmod>
+    <xhtml:link rel="alternate" hreflang="pl" href="https://meblesamemu.pl/poradniki/formatki-rozkroj-plyt" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://meblesamemu.pl/en/guides/cut-list-panel-cutting" />
+  </url>
+  <url>
+    <loc>https://meblesamemu.pl/en/guides/cut-list-panel-cutting</loc>
+    <lastmod>2026-11-27</lastmod>
+    <xhtml:link rel="alternate" hreflang="pl" href="https://meblesamemu.pl/poradniki/formatki-rozkroj-plyt" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://meblesamemu.pl/en/guides/cut-list-panel-cutting" />
   </url>
   <url>
     <loc>https://meblesamemu.pl/poradniki/rozkroj-meble-pl-csv</loc>
-    <lastmod>2026-11-14</lastmod>
+    <lastmod>2026-11-27</lastmod>
+    <xhtml:link rel="alternate" hreflang="pl" href="https://meblesamemu.pl/poradniki/rozkroj-meble-pl-csv" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://meblesamemu.pl/en/guides/meble-pl-cutting-csv" />
+  </url>
+  <url>
+    <loc>https://meblesamemu.pl/en/guides/meble-pl-cutting-csv</loc>
+    <lastmod>2026-11-27</lastmod>
+    <xhtml:link rel="alternate" hreflang="pl" href="https://meblesamemu.pl/poradniki/rozkroj-meble-pl-csv" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://meblesamemu.pl/en/guides/meble-pl-cutting-csv" />
   </url>
   <url>
     <loc>https://meblesamemu.pl/poradniki/polecane-materialy-i-narzedzia</loc>
-    <lastmod>2026-11-19</lastmod>
+    <lastmod>2026-11-27</lastmod>
+    <xhtml:link rel="alternate" hreflang="pl" href="https://meblesamemu.pl/poradniki/polecane-materialy-i-narzedzia" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://meblesamemu.pl/en/guides/recommended-materials-and-tools" />
+  </url>
+  <url>
+    <loc>https://meblesamemu.pl/en/guides/recommended-materials-and-tools</loc>
+    <lastmod>2026-11-27</lastmod>
+    <xhtml:link rel="alternate" hreflang="pl" href="https://meblesamemu.pl/poradniki/polecane-materialy-i-narzedzia" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://meblesamemu.pl/en/guides/recommended-materials-and-tools" />
+  </url>
+  <url>
+    <loc>https://meblesamemu.pl/poradniki/wymiary-szafek-kuchennych</loc>
+    <lastmod>2026-11-27</lastmod>
+    <xhtml:link rel="alternate" hreflang="pl" href="https://meblesamemu.pl/poradniki/wymiary-szafek-kuchennych" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://meblesamemu.pl/en/guides/kitchen-cabinet-dimensions" />
+  </url>
+  <url>
+    <loc>https://meblesamemu.pl/en/guides/kitchen-cabinet-dimensions</loc>
+    <lastmod>2026-11-27</lastmod>
+    <xhtml:link rel="alternate" hreflang="pl" href="https://meblesamemu.pl/poradniki/wymiary-szafek-kuchennych" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://meblesamemu.pl/en/guides/kitchen-cabinet-dimensions" />
+  </url>
+  <url>
+    <loc>https://meblesamemu.pl/poradniki/ile-plyty-na-szafe</loc>
+    <lastmod>2026-11-27</lastmod>
+    <xhtml:link rel="alternate" hreflang="pl" href="https://meblesamemu.pl/poradniki/ile-plyty-na-szafe" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://meblesamemu.pl/en/guides/how-much-board-for-a-wardrobe" />
+  </url>
+  <url>
+    <loc>https://meblesamemu.pl/en/guides/how-much-board-for-a-wardrobe</loc>
+    <lastmod>2026-11-27</lastmod>
+    <xhtml:link rel="alternate" hreflang="pl" href="https://meblesamemu.pl/poradniki/ile-plyty-na-szafe" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://meblesamemu.pl/en/guides/how-much-board-for-a-wardrobe" />
+  </url>
+  <url>
+    <loc>https://meblesamemu.pl/poradniki/zawiasy-puszkowe-otwory</loc>
+    <lastmod>2026-11-27</lastmod>
+    <xhtml:link rel="alternate" hreflang="pl" href="https://meblesamemu.pl/poradniki/zawiasy-puszkowe-otwory" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://meblesamemu.pl/en/guides/concealed-hinge-holes" />
+  </url>
+  <url>
+    <loc>https://meblesamemu.pl/en/guides/concealed-hinge-holes</loc>
+    <lastmod>2026-11-27</lastmod>
+    <xhtml:link rel="alternate" hreflang="pl" href="https://meblesamemu.pl/poradniki/zawiasy-puszkowe-otwory" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://meblesamemu.pl/en/guides/concealed-hinge-holes" />
+  </url>
+  <url>
+    <loc>https://meblesamemu.pl/poradniki/okleina-obrzeze-krawedzi</loc>
+    <lastmod>2026-11-27</lastmod>
+    <xhtml:link rel="alternate" hreflang="pl" href="https://meblesamemu.pl/poradniki/okleina-obrzeze-krawedzi" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://meblesamemu.pl/en/guides/edge-banding" />
+  </url>
+  <url>
+    <loc>https://meblesamemu.pl/en/guides/edge-banding</loc>
+    <lastmod>2026-11-27</lastmod>
+    <xhtml:link rel="alternate" hreflang="pl" href="https://meblesamemu.pl/poradniki/okleina-obrzeze-krawedzi" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://meblesamemu.pl/en/guides/edge-banding" />
+  </url>
+  <url>
+    <loc>https://meblesamemu.pl/poradniki/darmowy-program-do-projektowania-mebli</loc>
+    <lastmod>2026-11-27</lastmod>
+    <xhtml:link rel="alternate" hreflang="pl" href="https://meblesamemu.pl/poradniki/darmowy-program-do-projektowania-mebli" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://meblesamemu.pl/en/guides/free-furniture-design-software" />
+  </url>
+  <url>
+    <loc>https://meblesamemu.pl/en/guides/free-furniture-design-software</loc>
+    <lastmod>2026-11-27</lastmod>
+    <xhtml:link rel="alternate" hreflang="pl" href="https://meblesamemu.pl/poradniki/darmowy-program-do-projektowania-mebli" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://meblesamemu.pl/en/guides/free-furniture-design-software" />
   </url>
   <url>
     <loc>https://meblesamemu.pl/projektant-szaf</loc>
-    <lastmod>2026-11-22</lastmod>
+    <lastmod>2026-11-27</lastmod>
+    <xhtml:link rel="alternate" hreflang="pl" href="https://meblesamemu.pl/projektant-szaf" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://meblesamemu.pl/en/wardrobe-designer" />
+  </url>
+  <url>
+    <loc>https://meblesamemu.pl/en/wardrobe-designer</loc>
+    <lastmod>2026-11-27</lastmod>
+    <xhtml:link rel="alternate" hreflang="pl" href="https://meblesamemu.pl/projektant-szaf" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://meblesamemu.pl/en/wardrobe-designer" />
   </url>
   <url>
     <loc>https://meblesamemu.pl/szafa-na-skosy</loc>
-    <lastmod>2026-11-22</lastmod>
+    <lastmod>2026-11-27</lastmod>
+    <xhtml:link rel="alternate" hreflang="pl" href="https://meblesamemu.pl/szafa-na-skosy" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://meblesamemu.pl/en/sloped-ceiling-wardrobe" />
+  </url>
+  <url>
+    <loc>https://meblesamemu.pl/en/sloped-ceiling-wardrobe</loc>
+    <lastmod>2026-11-27</lastmod>
+    <xhtml:link rel="alternate" hreflang="pl" href="https://meblesamemu.pl/szafa-na-skosy" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://meblesamemu.pl/en/sloped-ceiling-wardrobe" />
   </url>
   <url>
     <loc>https://meblesamemu.pl/projektant-kuchni</loc>
-    <lastmod>2026-11-22</lastmod>
+    <lastmod>2026-11-27</lastmod>
+    <xhtml:link rel="alternate" hreflang="pl" href="https://meblesamemu.pl/projektant-kuchni" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://meblesamemu.pl/en/kitchen-designer" />
+  </url>
+  <url>
+    <loc>https://meblesamemu.pl/en/kitchen-designer</loc>
+    <lastmod>2026-11-27</lastmod>
+    <xhtml:link rel="alternate" hreflang="pl" href="https://meblesamemu.pl/projektant-kuchni" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://meblesamemu.pl/en/kitchen-designer" />
   </url>
   <url>
     <loc>https://meblesamemu.pl/lista-formatek</loc>
-    <lastmod>2026-11-22</lastmod>
+    <lastmod>2026-11-27</lastmod>
+    <xhtml:link rel="alternate" hreflang="pl" href="https://meblesamemu.pl/lista-formatek" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://meblesamemu.pl/en/cut-list" />
+  </url>
+  <url>
+    <loc>https://meblesamemu.pl/en/cut-list</loc>
+    <lastmod>2026-11-27</lastmod>
+    <xhtml:link rel="alternate" hreflang="pl" href="https://meblesamemu.pl/lista-formatek" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://meblesamemu.pl/en/cut-list" />
   </url>
 </urlset>
